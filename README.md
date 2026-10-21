@@ -21,12 +21,13 @@ pnpm install
 pnpm dev          # run the app with hot reload
 pnpm test         # unit tests
 pnpm test:e2e     # end-to-end tests against the built app
+pnpm test:packaged # package the app and check it launches
 pnpm lint
 pnpm typecheck
-pnpm build:mac    # unsigned Apple Silicon .dmg in dist/
+pnpm build:mac    # Apple Silicon .dmg in dist/
 ```
 
-The unsigned app needs right-click → Open the first time you launch it.
+The app is ad-hoc signed rather than signed with an Apple Developer ID, so a downloaded copy needs right-click → Open the first time you launch it.
 
 ## How notes are stored
 

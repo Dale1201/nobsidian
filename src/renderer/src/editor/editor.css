@@ -232,3 +232,8 @@
   color: var(--nb-muted);
   text-decoration-color: var(--nb-muted);
 }
+
+/* The wrapper pads its left edge for row handles; pull it back so the table lines up with text. */
+.bn-root .bn-editor [data-content-type='table'] .tableWrapper {
+  margin-left: calc(-1 * var(--bn-table-handle-size));
+}
