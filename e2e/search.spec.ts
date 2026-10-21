@@ -48,6 +48,8 @@ test('Cmd+K on selected text adds a link instead of opening search', async ({ nb
   const page = await nb.relaunch()
   await page.getByTestId('sidebar-row-Note').click()
   await page.locator(editor).getByText('Link this word.').dblclick()
+  // BlockNote binds its link shortcut only while the formatting toolbar is shown.
+  await expect(page.locator('[data-test="createLink"]')).toBeVisible()
   await page.keyboard.press('Meta+k')
   await expect(page.getByRole('dialog', { name: 'Search' })).toHaveCount(0)
   await expect(page.getByPlaceholder('Edit URL')).toBeVisible()

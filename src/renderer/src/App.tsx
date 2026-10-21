@@ -15,6 +15,14 @@ function canSearch(): boolean {
   return workspace !== null && overlay === null && confirms === 0
 }
 
+// Cmd+K on selected text is the editor's link shortcut, even before its toolbar has appeared.
+function editorHasSelection(): boolean {
+  const selection = window.getSelection()
+  const node = selection?.anchorNode
+  const el = node instanceof Element ? node : node?.parentElement
+  return !!selection && !selection.isCollapsed && !!el?.closest('[contenteditable="true"]')
+}
+
 export function App(): React.JSX.Element | null {
   const ready = useApp((s) => s.ready)
   const workspace = useApp((s) => s.workspace)
@@ -36,7 +44,7 @@ export function App(): React.JSX.Element | null {
     // Cmd+K opens search unless the editor used it to add a link to selected text.
     const onKey = (e: KeyboardEvent): void => {
       if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.key.toLowerCase() !== 'k') return
-      if (e.defaultPrevented || !canSearch()) return
+      if (e.defaultPrevented || !canSearch() || editorHasSelection()) return
       e.preventDefault()
       useApp.getState().setOverlay({ kind: 'search' })
     }
