@@ -1,12 +1,8 @@
-import {
-  test as base,
-  _electron as electron,
-  type ElectronApplication,
-  type Page
-} from '@playwright/test'
+import { test as base, type ElectronApplication, type Page } from '@playwright/test'
 import { mkdtemp, mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { launchElectron } from './launch'
 
 export interface AppFixture {
   app: ElectronApplication
@@ -17,9 +13,9 @@ export interface AppFixture {
 }
 
 export async function launch(userData: string): Promise<{ app: ElectronApplication; page: Page }> {
-  const app = await electron.launch({
+  const app = await launchElectron({
     args: ['out/main/index.js'],
-    env: { ...process.env, NOBSIDIAN_USER_DATA: userData, NODE_ENV: 'test' }
+    env: { NOBSIDIAN_USER_DATA: userData, NODE_ENV: 'test' }
   })
   const page = await app.firstWindow()
   await page.waitForLoadState('domcontentloaded')

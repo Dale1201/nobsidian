@@ -22,6 +22,10 @@ import { SettingsStore } from './settings'
 
 if (process.env.NOBSIDIAN_USER_DATA) app.setPath('userData', process.env.NOBSIDIAN_USER_DATA)
 
+// Test runs stay off screen and never take focus; NOBSIDIAN_E2E_SHOW=1 shows them for debugging.
+const hidden = process.env.NOBSIDIAN_E2E === '1' && process.env.NOBSIDIAN_E2E_SHOW !== '1'
+if (hidden && process.platform === 'darwin') app.setActivationPolicy('accessory')
+
 protocol.registerSchemesAsPrivileged([
   {
     scheme: ASSET_SCHEME,
@@ -69,12 +73,13 @@ function createWindow(): void {
       preload: join(__dirname, '../preload/index.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: true
+      sandbox: true,
+      backgroundThrottling: !hidden
     }
   })
   mainWindow = win
 
-  win.on('ready-to-show', () => win.show())
+  if (!hidden) win.on('ready-to-show', () => win.show())
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (/^(https?|mailto):/i.test(url)) void shell.openExternal(url)
     return { action: 'deny' }

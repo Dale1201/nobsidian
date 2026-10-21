@@ -42,5 +42,23 @@ export default defineConfig(
       'no-empty-pattern': 'off'
     }
   },
+  {
+    files: ['e2e/**/*.ts', 'e2e-packaged/**/*.ts'],
+    ignores: ['e2e/launch.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: '@playwright/test',
+              importNames: ['_electron'],
+              message: 'Launch through launchElectron in e2e/launch.ts so the app runs hidden.'
+            }
+          ]
+        }
+      ]
+    }
+  },
   eslintConfigPrettier
 )

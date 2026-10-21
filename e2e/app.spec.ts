@@ -1,18 +1,18 @@
 import { readdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { _electron as electron } from '@playwright/test'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { expect, test } from './fixtures'
+import { launchElectron } from './launch'
 
 import { editor, newPage, typeNewPageTitle, waitForFile } from './helpers'
 
 test('first run asks for a folder and creates the first page', async () => {
   const userData = await mkdtemp(join(tmpdir(), 'nobsidian-e2e-user-'))
   const folder = await mkdtemp(join(tmpdir(), 'nobsidian-e2e-ws-'))
-  const app = await electron.launch({
+  const app = await launchElectron({
     args: ['out/main/index.js'],
-    env: { ...process.env, NOBSIDIAN_USER_DATA: userData }
+    env: { NOBSIDIAN_USER_DATA: userData }
   })
   const page = await app.firstWindow()
   await expect(page.getByText('Welcome to Nobsidian')).toBeVisible()
@@ -32,9 +32,9 @@ test('a missing notes folder is reported, not recreated', async () => {
   const userData = await mkdtemp(join(tmpdir(), 'nobsidian-e2e-user-'))
   const gone = join(userData, 'Moved Notes')
   await writeFile(join(userData, 'settings.json'), JSON.stringify({ lastWorkspace: gone }))
-  const app = await electron.launch({
+  const app = await launchElectron({
     args: ['out/main/index.js'],
-    env: { ...process.env, NOBSIDIAN_USER_DATA: userData }
+    env: { NOBSIDIAN_USER_DATA: userData }
   })
   const page = await app.firstWindow()
   await expect(page.getByText("Can't find your notes")).toBeVisible()

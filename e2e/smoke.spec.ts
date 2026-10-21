@@ -1,17 +1,23 @@
-import { test, expect, _electron as electron } from '@playwright/test'
+import { test, expect } from '@playwright/test'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { launchElectron } from './launch'
 
 test('launches a sandboxed window titled Nobsidian', async () => {
   const userData = await mkdtemp(join(tmpdir(), 'nobsidian-smoke-'))
-  const app = await electron.launch({
+  const app = await launchElectron({
     args: ['out/main/index.js'],
-    env: { ...process.env, NOBSIDIAN_USER_DATA: userData }
+    env: { NOBSIDIAN_USER_DATA: userData }
   })
   const page = await app.firstWindow()
   await expect(page).toHaveTitle('Nobsidian')
   expect(await app.evaluate(({ app }) => app.getPath('userData'))).toBe(userData)
+  if (process.env.NOBSIDIAN_E2E_SHOW !== '1') {
+    expect(
+      await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isVisible())
+    ).toBe(false)
+  }
   expect(await page.evaluate(() => typeof (globalThis as { require?: unknown }).require)).toBe(
     'undefined'
   )
