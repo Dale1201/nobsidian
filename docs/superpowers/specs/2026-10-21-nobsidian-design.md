@@ -112,7 +112,7 @@ My Notes/
 
 - A page is a `.md` file.
   Its child pages live in a folder with the same name beside it.
-- A folder without a matching `.md` file (for example created in Finder) is shown as a page with an empty body; the file is created on first edit.
+- A folder without a matching `.md` file (for example created in Finder) becomes a page: the app creates the empty `.md` file with an id when it first sees the folder, so the page keeps a stable id.
 - `attachments/` at the workspace root holds all images and files.
   Pasted or imported files keep their original name, with a numeric suffix if the name is taken.
 - Non-Markdown files outside `attachments/` and `.nobsidian/` are ignored.
@@ -135,10 +135,12 @@ Body in Markdown.
 - The page title is the filename without `.md`.
   Characters macOS does not allow, or that we reserve (`/ \ : * ? " < > |`, a leading `.`), are replaced with `-`, and the exact title is stored in a `title` field in the frontmatter.
   Siblings with the same title get ` (2)`, ` (3)` and so on.
-  At the workspace root, a page titled `attachments` is saved as `attachments (page).md` with `title: attachments`.
+  At the workspace root the name `attachments` is reserved, so a page titled `attachments` is saved as `attachments (2).md` with `title: attachments`.
 - Renaming a page renames its file and its child folder.
   Moving a page moves both.
   In both cases every link to the page, and every attachment link inside the moved pages, is rewritten.
+- Inside the app, links to pages use the page id (`nobsidian://page/<id>`) and links to files use workspace-root paths (`/attachments/x.png`).
+  The main process converts them to relative paths when it writes a file and back when it reads one, so renaming or moving a page never leaves stale links in an open editor.
 
 ### Workspace data
 
@@ -149,15 +151,17 @@ Body in Markdown.
 ### Markdown dialect
 
 Base: CommonMark plus GFM (tables, task lists, strikethrough), frontmatter, and math.
-Parsing and serializing use unified/remark (`remark-parse`, `remark-gfm`, `remark-math`, `remark-frontmatter`, `remark-stringify`) with custom handlers for the extensions below.
+Parsing and serializing use unified/remark (`remark-parse`, `remark-gfm`, `remark-math`, `remark-stringify`) with custom handling for the extensions below; frontmatter is split off and parsed with `yaml`.
 
 | Content | Syntax |
 |---|---|
-| Headings 1-3, paragraph, bold, italic, strike, inline code, link | Standard Markdown |
+| Headings 1-6 (the `/` menu offers 1-3), paragraph, bold, italic, strike, inline code, link, hard line break | Standard Markdown |
+| Empty paragraph (blank line kept for spacing) | `&nbsp;` on its own line |
 | Underline | `<u>text</u>` |
 | Text color | `<span data-color="red">text</span>` |
 | Highlight (background color) | `<span data-bg="yellow">text</span>` |
-| Block text or background color | Block wrapped in `<div data-color="red">` or `<div data-bg="yellow">`, with blank lines around the inner Markdown |
+| Block text or background color | Trailing comment on the block's text: `Text<!-- color=red bg=yellow -->` (invisible in other Markdown apps) |
+| Children of a block that has no Markdown nesting (paragraph, heading, code...) | `<div data-children>` right after the block, children inside, separated by blank lines |
 | Bulleted, numbered, to-do lists | Standard / GFM task lists, nesting by indentation |
 | Toggle | `<details>`, `<summary>title</summary>`, blank line, child blocks, `</details>` |
 | Toggle heading | `<details data-heading="2">` with the same structure |
@@ -166,10 +170,10 @@ Parsing and serializing use unified/remark (`remark-parse`, `remark-gfm`, `remar
 | Divider | `---` |
 | Code block | Fenced block with language |
 | Math | `$inline$` and `$$` block |
-| Table | GFM table (first row is the header) |
+| Table | GFM table; line breaks inside cells become `<br>` |
 | Image | `![caption](attachments/x.png)`, or `<img src="..." alt="..." width="480">` when resized |
 | File | `[report.pdf](attachments/report.pdf "file")` on its own line |
-| Video / audio | `<video src="..." controls></video>` / `<audio src="..." controls></audio>` |
+| Video / audio | `<video src="..." controls></video>` / `<audio src="..." controls></audio>`, caption in `data-caption` |
 | Columns | `<div data-columns>` containing one `<div data-column data-width="0.5">` per column, inner Markdown separated by blank lines |
 | Link to sub-page (page block) | `[Website Redesign](Projects/Website%20Redesign.md "page")` on its own line |
 | Inline link to a page | `[Website Redesign](Projects/Website%20Redesign.md)` |
@@ -181,7 +185,13 @@ Invariants, enforced by tests:
 
 - `parse(serialize(doc))` equals `doc` for every supported block and style.
 - `serialize(parse(md))` equals `md` for Markdown in canonical form.
-- Markdown the parser does not understand (for example hand-written HTML) is preserved verbatim as a raw block and written back unchanged, never dropped.
+- Markdown the parser does not understand (for example hand-written HTML or footnotes) is kept as a raw block and written back, never dropped.
+
+Known, accepted normalizations:
+
+- Whitespace at the edge of bold, italic or strikethrough text moves just outside the mark, because CommonMark cannot express `**word **`.
+- Inline code cannot carry other styles (BlockNote's code mark excludes the others).
+- Unknown inline HTML is shown as plain text.
 
 ## 6. Editor and UI
 
