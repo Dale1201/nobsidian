@@ -208,3 +208,23 @@ test('page icon from the emoji picker and an uploaded cover', async ({ nb }) => 
   await expect(page.getByTestId('page-cover').locator('img')).toHaveJSProperty('naturalWidth', 1)
   await waitForFile(join(workspace, 'Trip.md'), /cover: attachments\/cover-\d+\.png/)
 })
+
+test('a title typed just before quitting is kept', async ({ nb }) => {
+  await nb.page.getByRole('button', { name: 'New page' }).first().click()
+  await typeNewPageTitle(nb.page, 'Journal')
+  const page = await nb.relaunch()
+  await expect(page.getByTestId('page-title')).toHaveText('Journal')
+  expect(await readdir(nb.workspace)).toContain('Journal.md')
+})
+
+test('a title still being typed is not reverted by an earlier rename', async ({ nb }) => {
+  const { page } = nb
+  await page.getByRole('button', { name: 'New page' }).first().click()
+  await typeNewPageTitle(page, 'Hel')
+  await page.waitForTimeout(450)
+  await page.keyboard.type('lo')
+  await page.locator(editor).click()
+  await expect(page.getByTestId('sidebar-row-Hello')).toBeVisible()
+  await page.waitForTimeout(800)
+  await expect(page.getByTestId('page-title')).toHaveText('Hello')
+})

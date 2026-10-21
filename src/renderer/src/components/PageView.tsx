@@ -57,6 +57,7 @@ export function PageView({ theme }: { theme: 'light' | 'dark' }): React.JSX.Elem
               <div className={`page-header ${doc.meta.cover ? 'has-cover' : ''}`}>
                 <PageIconAndControls meta={doc.meta} onChange={updateMeta} />
                 <PageTitle
+                  key={doc.id}
                   id={doc.id}
                   title={node.title}
                   onEnter={() =>

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Workspace } from './workspace'
@@ -189,5 +189,71 @@ describe('Workspace page operations', () => {
     const ws = await Workspace.open(root)
     expect(ws.resolveAsset('/../../etc/passwd')).toBe(join(root, 'etc', 'passwd'))
     expect(ws.resolveAsset('/.nobsidian/workspace.json')).toBeNull()
+  })
+})
+
+describe('Workspace keeps existing notes intact', () => {
+  it('keeps a page whose child folder differs only in case', async () => {
+    await writeFile(join(root, 'Notes.md'), 'important content\n')
+    await mkdir(join(root, 'notes'))
+    await writeFile(join(root, 'notes', 'Child.md'), 'child\n')
+    const ws = await Workspace.open(root)
+    expect(await read('Notes.md')).toContain('important content')
+    expect(ws.tree()).toHaveLength(1)
+    expect(ws.tree()[0].children.map((c) => c.title)).toEqual(['Child'])
+  })
+
+  it('only adds an id when opening existing notes, leaving the rest byte for byte', async () => {
+    const body =
+      '# Plan\n\nSee [[Other]] and ![badge](https://x/b.svg) inline, press <kbd>Ctrl</kbd>.\n\n* a\n* b\n'
+    await writeFile(join(root, 'Plan.md'), body)
+    await writeFile(join(root, 'Meta.md'), '---\n# a comment\ntags: [x, y]\n---\nBody *text*\n')
+    await writeFile(join(root, 'Bom.md'), '\uFEFF---\nid: abc\ntitle: T\n---\n\nHello\n')
+    const ws = await Workspace.open(root)
+    const plan = await read('Plan.md')
+    const front = /^---\nid: [0-9a-f-]{36}\n---\n\n/
+    expect(plan).toMatch(front)
+    expect(plan.replace(front, '')).toBe(body)
+    expect(await read('Meta.md')).toMatch(
+      /^---\n# a comment\ntags: \[x, y\]\nid: [0-9a-f-]{36}\n---\nBody \*text\*\n$/
+    )
+    expect(await read('Bom.md')).toBe('\uFEFF---\nid: abc\ntitle: T\n---\n\nHello\n')
+    expect(ws.tree().find((n) => n.id === 'abc')?.title).toBe('T')
+  })
+
+  it('reads a page only after queued writes have landed', async () => {
+    const ws = await Workspace.open(root)
+    const p = await ws.createPage(null)
+    const other = await ws.createPage(null)
+    void ws.renamePage(other.id, 'Renamed')
+    void ws.writePage(p.id, [text('latest')])
+    expect((await ws.readPage(p.id)).blocks).toEqual([text('latest')])
+  })
+
+  it('keeps image icons working after a move', async () => {
+    const ws = await Workspace.open(root)
+    const a = await ws.createPage(null)
+    await ws.renamePage(a.id, 'A')
+    const b = await ws.createPage(null)
+    await ws.renamePage(b.id, 'B')
+    const icon = await ws.saveAttachment('i.png', new Uint8Array([1]))
+    await ws.updateMeta(b.id, { icon })
+    await ws.movePage(b.id, a.id, 0)
+    expect(ws.tree()[0].children[0].icon).toBe('/attachments/i.png')
+    expect(await read('A/B.md')).toContain('icon: ../attachments/i.png')
+  })
+
+  it('renames without reading pages that do not link to the renamed page', async () => {
+    const ws = await Workspace.open(root)
+    const p = await ws.createPage(null)
+    const other = await ws.createPage(null)
+    await ws.writePage(other.id, [text('unrelated')])
+    await chmod(join(root, other.path), 0o000)
+    try {
+      await ws.renamePage(p.id, 'Fresh name')
+      expect(ws.tree().map((n) => n.title)).toContain('Fresh name')
+    } finally {
+      await chmod(join(root, other.path), 0o644)
+    }
   })
 })

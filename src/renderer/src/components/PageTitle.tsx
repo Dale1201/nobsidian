@@ -1,5 +1,5 @@
-import { useEffect, useRef } from 'react'
-import { useApp } from '../store'
+import { useCallback, useEffect, useRef } from 'react'
+import { registerFlusher, useApp } from '../store'
 
 const RENAME_DELAY_MS = 400
 
@@ -16,32 +16,36 @@ export function PageTitle({
   const ref = useRef<HTMLHeadingElement>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const latest = useRef(title)
+  // The last title sent to the main process; snapshots echoing older renames are ignored.
+  const committed = useRef(title)
+
+  const commit = useCallback((): Promise<void> => {
+    if (timer.current) clearTimeout(timer.current)
+    timer.current = null
+    if (latest.current === committed.current) return Promise.resolve()
+    committed.current = latest.current
+    return useApp.getState().renamePage(id, latest.current)
+  }, [id])
+
+  useEffect(() => {
+    if (ref.current) ref.current.textContent = latest.current
+    // A brand-new page starts with the cursor in its title, like Notion.
+    if (latest.current === '') ref.current?.focus()
+    const unregister = registerFlusher(commit)
+    return () => {
+      unregister()
+      void commit()
+    }
+  }, [commit])
 
   useEffect(() => {
     const el = ref.current
-    if (el && document.activeElement !== el && el.textContent !== title) el.textContent = title
+    if (!el || timer.current || title === committed.current || document.activeElement === el) return
+    // Renamed elsewhere (sidebar, or a failed rename being reverted).
     latest.current = title
+    committed.current = title
+    el.textContent = title
   }, [title])
-
-  // A brand-new page starts with the cursor in its title, like Notion.
-  useEffect(() => {
-    if (latest.current === '') ref.current?.focus()
-  }, [id])
-
-  useEffect(
-    () => () => {
-      if (timer.current) {
-        clearTimeout(timer.current)
-        void useApp.getState().renamePage(id, latest.current)
-      }
-    },
-    [id]
-  )
-
-  const commit = (): void => {
-    timer.current = null
-    void useApp.getState().renamePage(id, latest.current)
-  }
 
   return (
     <h1
@@ -55,15 +59,12 @@ export function PageTitle({
       onInput={(e) => {
         latest.current = (e.currentTarget.textContent ?? '').replace(/\n/g, ' ')
         if (timer.current) clearTimeout(timer.current)
-        timer.current = setTimeout(commit, RENAME_DELAY_MS)
+        timer.current = setTimeout(() => void commit(), RENAME_DELAY_MS)
       }}
       onKeyDown={(e) => {
         if (e.key === 'Enter') {
           e.preventDefault()
-          if (timer.current) {
-            clearTimeout(timer.current)
-            commit()
-          }
+          void commit()
           onEnter()
         }
       }}

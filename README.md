@@ -34,6 +34,7 @@ The app is ad-hoc signed rather than signed with an Apple Developer ID, so a dow
 Each page is a `.md` file; a page's child pages live in a folder with the same name.
 Images and files go in `attachments/`, and app data (favorites, page order, trash) lives in `.nobsidian/`.
 Notion-only formatting uses small Markdown extensions, described in `docs/superpowers/specs/2026-10-21-nobsidian-design.md`.
+Opening an existing folder only adds an `id` to each note's frontmatter; a note is rewritten in Nobsidian's Markdown style only when you edit it, and anything the editor can't show (raw HTML, wikilinks, footnotes) is kept exactly as written.
 
 ## License
 

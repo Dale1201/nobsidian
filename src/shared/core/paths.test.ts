@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { relativeHref, resolveHref, sanitizeTitle, encodeHref, isExternalHref } from './paths'
-import { parsePage, serializePage } from './page'
+import { insertId, parsePage, serializePage } from './page'
 
 describe('paths', () => {
   it('sanitizes titles for filenames', () => {
@@ -9,6 +9,14 @@ describe('paths', () => {
     expect(sanitizeTitle('   ')).toBe('Untitled')
     expect(sanitizeTitle('a\\b')).toBe('a-b')
     expect(sanitizeTitle('🚀 Launch')).toBe('🚀 Launch')
+  })
+
+  it('keeps long titles within filename limits', () => {
+    for (const title of ['a'.repeat(199) + '🚀', '漢'.repeat(200)]) {
+      const name = sanitizeTitle(title)
+      expect(name.isWellFormed()).toBe(true)
+      expect(Buffer.byteLength(name, 'utf8')).toBeLessThanOrEqual(200)
+    }
   })
 
   it('resolves and relativizes hrefs', () => {
@@ -54,6 +62,33 @@ describe('page files', () => {
         children: []
       }
     ])
+  })
+
+  it('ignores a byte-order mark before the frontmatter', () => {
+    expect(parsePage('\uFEFF---\nid: abc\n---\n\nHello\n').meta.id).toBe('abc')
+  })
+
+  it('keeps frontmatter values that other tools write with different types', () => {
+    const page = parsePage('---\nid: 42\ntitle: 2024\ncoverPosition: "30"\nfullWidth: maybe\n---\n')
+    expect(page.meta).toEqual({
+      id: '42',
+      title: '2024',
+      coverPosition: 30,
+      extra: { fullWidth: 'maybe' }
+    })
+    expect(serializePage(page.meta, page.blocks)).toContain('fullWidth: maybe')
+  })
+
+  it('adds an id without changing anything else', () => {
+    expect(insertId('', 'x')).toBe('---\nid: x\n---\n')
+    expect(insertId('Body *a*\n', 'x')).toBe('---\nid: x\n---\n\nBody *a*\n')
+    expect(insertId('---\n# c\ntags: [a]\n---\nBody\n', 'x')).toBe(
+      '---\n# c\ntags: [a]\nid: x\n---\nBody\n'
+    )
+    expect(insertId('---\nid: [broken\n---\nBody\n', 'x')).toBe(
+      '---\nid: x\n---\n\n---\nid: [broken\n---\nBody\n'
+    )
+    expect(insertId('\uFEFFHi\n', 'x')).toBe('\uFEFF---\nid: x\n---\n\nHi\n')
   })
 
   it('handles files without frontmatter', () => {

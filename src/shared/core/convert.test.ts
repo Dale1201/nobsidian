@@ -133,6 +133,60 @@ describe('markdownToBlocks structure', () => {
   })
 })
 
+describe('markdown from other tools', () => {
+  it('reads toggles from files with Windows line endings', () => {
+    const [toggle] = markdownToBlocks(
+      '<details>\r\n<summary>T</summary>\r\n\r\nInside\r\n\r\n</details>\r\n'
+    )
+    expect(toggle).toMatchObject({ type: 'toggleListItem', children: [{ type: 'paragraph' }] })
+  })
+
+  const verbatim = [
+    'See [[Other]] here',
+    'See ![badge](a.png) here',
+    '[![badge](a.png)](https://x.dev)',
+    '[$x$](https://x.dev)',
+    'press <kbd>Ctrl</kbd> now',
+    'a <!-- note --> b'
+  ]
+  for (const md of verbatim) {
+    it(`keeps ${JSON.stringify(md)} verbatim`, () => {
+      expect(markdownToBlocks(md)).toEqual([{ type: 'raw', props: { markdown: md }, children: [] }])
+      expect(roundTrip(`${md}\n`)).toBe(`${md}\n`)
+    })
+  }
+
+  it('keeps unsupported markdown inside a list item verbatim', () => {
+    const md = '- item\n\n  See [[A]] and [[B]]\n'
+    expect(markdownToBlocks(md)[0].children[0]).toEqual({
+      type: 'raw',
+      props: { markdown: 'See [[A]] and [[B]]' },
+      children: []
+    })
+    expect(roundTrip(md)).toBe(md)
+  })
+
+  it('keeps editor text that merely looks like a wikilink editable', () => {
+    const md = blocksToMarkdown([
+      {
+        type: 'paragraph',
+        props: {},
+        content: [{ type: 'text', text: '[[x]]', styles: {} }],
+        children: []
+      }
+    ])
+    expect(markdownToBlocks(md)[0].type).toBe('paragraph')
+  })
+
+  it('writes file blocks whose url has a stray percent sign', () => {
+    expect(
+      blocksToMarkdown([
+        { type: 'file', props: { url: 'https://x.dev/100%', name: '' }, children: [] }
+      ])
+    ).toBe('[100%](https://x.dev/100% "file")\n')
+  })
+})
+
 describe('editor documents survive a round trip', () => {
   const editorDoc: Block[] = [
     {

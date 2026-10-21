@@ -9,6 +9,7 @@ import {
 } from './blocks'
 import { isColor, renderAttrs } from './html'
 import { inlineToPhrasing } from './inline'
+import { decodeHref } from './paths'
 import { stringifyMarkdown, stringifyPhrasing } from './processor'
 
 export function blocksToMarkdown(blocks: Block[]): string {
@@ -199,8 +200,7 @@ function blockToFlow(block: Block): RootContent[] {
       return [html(`<${block.type}${attrs}></${block.type}>`), ...childrenContainer(block.children)]
     }
     case 'file': {
-      const name =
-        block.props.name || decodeURIComponent(block.props.url.split('/').pop() ?? 'file')
+      const name = block.props.name || decodeHref(block.props.url.split('/').pop() ?? 'file')
       return [
         {
           type: 'paragraph',
@@ -270,7 +270,7 @@ function detailsFlow(
 
 function pageLabel(href: string): string {
   const file = href.split('/').pop() ?? href
-  return decodeURIComponent(file).replace(/\.md$/i, '')
+  return decodeHref(file).replace(/\.md$/i, '')
 }
 
 function tableNode(content: TableContent): RootContent {

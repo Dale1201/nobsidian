@@ -25,6 +25,7 @@ interface AppState {
   history: string[]
   historyIndex: number
   renamingId: string | null
+  error: string | null
 
   init: () => Promise<void>
   chooseWorkspace: () => Promise<void>
@@ -40,6 +41,7 @@ interface AppState {
   updateSettings: (patch: Partial<Settings>) => Promise<void>
   setExpanded: (id: string, open: boolean) => Promise<void>
   setRenaming: (id: string | null) => void
+  reportError: (action: string, err: unknown) => Promise<void>
 }
 
 export const useApp = create<AppState>((set, get) => ({
@@ -52,6 +54,7 @@ export const useApp = create<AppState>((set, get) => ({
   history: [],
   historyIndex: -1,
   renamingId: null,
+  error: null,
 
   init: async () => {
     const [settings, workspace] = await Promise.all([
@@ -119,21 +122,27 @@ export const useApp = create<AppState>((set, get) => ({
   },
 
   renamePage: async (id, title) => {
-    await api.invoke('page:rename', { id, title })
+    await api.invoke('page:rename', { id, title }).catch((e) => get().reportError('rename', e))
   },
 
   movePage: async (id, parentId, index) => {
-    await api.invoke('page:move', { id, parentId, index })
-    if (parentId) await get().setExpanded(parentId, true)
+    try {
+      await api.invoke('page:move', { id, parentId, index })
+      if (parentId) await get().setExpanded(parentId, true)
+    } catch (e) {
+      await get().reportError('move', e)
+    }
   },
 
   trashPage: async (id) => {
     await flushAll()
-    await api.invoke('page:trash', { id })
+    await api.invoke('page:trash', { id }).catch((e) => get().reportError('delete', e))
   },
 
   toggleFavorite: async (id) => {
-    await api.invoke('page:favorite', { id, favorite: !get().favorites.includes(id) })
+    await api
+      .invoke('page:favorite', { id, favorite: !get().favorites.includes(id) })
+      .catch((e) => get().reportError('update favorites for', e))
   },
 
   updateSettings: async (patch) => {
@@ -152,5 +161,16 @@ export const useApp = create<AppState>((set, get) => ({
     })
   },
 
-  setRenaming: (id) => set({ renamingId: id })
+  setRenaming: (id) => set({ renamingId: id }),
+
+  /** Shows what failed and re-syncs the sidebar with what is actually on disk. */
+  reportError: async (action, err) => {
+    const reason =
+      err instanceof Error
+        ? err.message.replace(/^Error invoking remote method '[^']+': /, '')
+        : String(err)
+    set({ error: `Couldn't ${action} the page: ${reason}` })
+    setTimeout(() => set({ error: null }), 6000)
+    get().applySnapshot(await api.invoke('tree:get', undefined))
+  }
 }))

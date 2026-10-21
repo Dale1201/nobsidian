@@ -4,6 +4,7 @@ import { basename, extname, join } from 'node:path'
 import type { Block } from '../../shared/core/blocks'
 import { mapBlockLinks, pageIdFromHref, pageLinkHref } from '../../shared/core/links'
 import {
+  insertId,
   parsePage,
   serializePage,
   splitFrontmatter,
@@ -40,6 +41,8 @@ export class Workspace {
   private pages = new Map<string, PageRecord>()
   /** Last known path of every id ever seen, so links to trashed pages still serialize. */
   private knownPaths = new Map<string, string>()
+  /** Last text read or written for each page path; lets renames skip pages that cannot link. */
+  private texts = new Map<string, string>()
   private queue: Promise<unknown> = Promise.resolve()
 
   private constructor(
@@ -67,6 +70,17 @@ export class Workspace {
     return join(this.root, ...path.split('/'))
   }
 
+  private async readText(path: string): Promise<string> {
+    const text = await readFile(this.abs(path), 'utf8')
+    this.texts.set(path, text)
+    return text
+  }
+
+  private async writeText(path: string, text: string): Promise<void> {
+    await writeFileAtomic(this.abs(path), text)
+    this.texts.set(path, text)
+  }
+
   // ---------- scanning ----------
 
   rescan(): Promise<void> {
@@ -75,6 +89,7 @@ export class Workspace {
 
   private async scan(): Promise<void> {
     this.pages.clear()
+    this.texts.clear()
     const seen = new Set<string>()
     await this.scanDir('', null, seen)
   }
@@ -95,8 +110,11 @@ export class Workspace {
     // A folder without a page file becomes a page so its children stay reachable.
     for (const name of dirs) {
       if (dir === '' && name === ATTACHMENTS_DIR) continue
-      if (![...files].some((f) => f.slice(0, -3) === name)) {
-        await writeFileAtomic(this.abs(joinPath(dir, `${name}.md`)), '')
+      // macOS volumes are usually case-insensitive: "notes/" belongs to "Notes.md".
+      const owned = [...files].some((f) => f.slice(0, -3).toLowerCase() === name.toLowerCase())
+      const pageFile = joinPath(dir, `${name}.md`)
+      if (!owned && !(await exists(this.abs(pageFile)))) {
+        await writeFileAtomic(this.abs(pageFile), '')
         files.add(`${name}.md`)
       }
     }
@@ -115,32 +133,34 @@ export class Workspace {
     parentId: string | null,
     seen: Set<string>
   ): Promise<PageRecord> {
-    const text = await readFile(this.abs(path), 'utf8')
-    const { data, body } = splitFrontmatter(text)
+    const text = await this.readText(path)
+    const { data } = splitFrontmatter(text)
     const meta = data ? metaFromData(data) : { extra: {} }
     let id = meta.id
     if (!id || seen.has(id)) {
       id = randomUUID()
-      const blocks = parsePage(body).blocks
-      await writeFileAtomic(this.abs(path), serializePage({ ...meta, id }, blocks))
+      // Only the id is added; the rest of the file is left exactly as the user wrote it.
+      await this.writeText(path, insertId(text, id))
     }
     seen.add(id)
-    return { id, title: meta.title ?? stemOf(path), icon: meta.icon, path, parentId }
+    return {
+      id,
+      title: meta.title ?? stemOf(path),
+      icon: iconToInternal(path, meta.icon),
+      path,
+      parentId
+    }
   }
 
   // ---------- queries ----------
 
   tree(): PageNode[] {
+    const groups = this.groupChildren()
     const build = (parentId: string | null): PageNode[] =>
-      this.childrenOf(parentId).map((r) => ({
+      (groups.get(parentId) ?? []).map((r) => ({
         id: r.id,
         title: r.title,
-        icon:
-          r.icon && !r.icon.includes('/')
-            ? r.icon
-            : r.icon
-              ? this.toInternalHref(r.path, r.icon)
-              : undefined,
+        icon: r.icon,
         path: r.path,
         children: build(r.id)
       }))
@@ -151,16 +171,27 @@ export class Workspace {
     return this.state.favorites.filter((id) => this.pages.has(id))
   }
 
-  private childrenOf(parentId: string | null): PageRecord[] {
-    const kids = [...this.pages.values()].filter((r) => r.parentId === parentId)
-    const order = this.state.order[parentId ?? ROOT_ORDER_KEY] ?? []
-    const rank = (r: PageRecord): number => {
-      const i = order.indexOf(r.id)
-      return i === -1 ? Number.MAX_SAFE_INTEGER : i
+  /** Every parent's children in sidebar order, built in one pass. */
+  private groupChildren(): Map<string | null, PageRecord[]> {
+    const groups = new Map<string | null, PageRecord[]>()
+    for (const r of this.pages.values()) {
+      const list = groups.get(r.parentId)
+      if (list) list.push(r)
+      else groups.set(r.parentId, [r])
     }
-    return kids.sort(
-      (a, b) => rank(a) - rank(b) || a.title.localeCompare(b.title, undefined, { numeric: true })
-    )
+    for (const [parentId, kids] of groups) {
+      const order = this.state.order[parentId ?? ROOT_ORDER_KEY] ?? []
+      const rank = new Map(order.map((id, i) => [id, i]))
+      const at = (r: PageRecord): number => rank.get(r.id) ?? Number.MAX_SAFE_INTEGER
+      kids.sort(
+        (a, b) => at(a) - at(b) || a.title.localeCompare(b.title, undefined, { numeric: true })
+      )
+    }
+    return groups
+  }
+
+  private childrenOf(parentId: string | null): PageRecord[] {
+    return this.groupChildren().get(parentId) ?? []
   }
 
   private record(id: string): PageRecord {
@@ -170,38 +201,49 @@ export class Workspace {
   }
 
   private descendantsOf(id: string): PageRecord[] {
+    const groups = this.groupChildren()
     const out: PageRecord[] = []
-    for (const child of this.childrenOf(id)) out.push(child, ...this.descendantsOf(child.id))
+    const walk = (parentId: string): void => {
+      for (const child of groups.get(parentId) ?? []) {
+        out.push(child)
+        walk(child.id)
+      }
+    }
+    walk(id)
     return out
   }
 
   // ---------- reading and writing ----------
 
-  async readPage(id: string): Promise<PageDoc> {
-    const r = this.record(id)
-    const { meta, blocks } = parsePage(await readFile(this.abs(r.path), 'utf8'))
-    return {
-      id,
-      title: r.title,
-      path: r.path,
-      meta: this.metaToInternal(r.path, meta),
-      blocks: mapBlockLinks(blocks, (href) => this.toInternalHref(r.path, href))
-    }
+  /** Queued like writes, so a page never loads content that a pending save is replacing. */
+  readPage(id: string): Promise<PageDoc> {
+    return this.run(async () => {
+      const r = this.record(id)
+      const { meta, blocks } = parsePage(await this.readText(r.path))
+      const byPath = this.pathIndex()
+      return {
+        id,
+        title: r.title,
+        path: r.path,
+        meta: this.metaToInternal(r.path, meta, byPath),
+        blocks: mapBlockLinks(blocks, (href) => this.toInternalHref(r.path, href, byPath))
+      }
+    })
   }
 
   writePage(id: string, blocks: Block[]): Promise<void> {
     return this.run(async () => {
       const r = this.record(id)
-      const { meta } = parsePage(await readFile(this.abs(r.path), 'utf8'))
+      const { meta } = parsePage(await this.readText(r.path))
       const fileBlocks = mapBlockLinks(blocks, (href) => this.toFileHref(r.path, href))
-      await writeFileAtomic(this.abs(r.path), serializePage({ ...meta, id }, fileBlocks))
+      await this.writeText(r.path, serializePage({ ...meta, id }, fileBlocks))
     })
   }
 
   updateMeta(id: string, patch: PageMetaPatch): Promise<void> {
     return this.run(async () => {
       const r = this.record(id)
-      const { meta, blocks } = parsePage(await readFile(this.abs(r.path), 'utf8'))
+      const { meta, blocks } = parsePage(await this.readText(r.path))
       const next: PageMeta = { ...meta, id }
       if (patch.icon !== undefined)
         next.icon = patch.icon ? this.metaHrefToFile(r.path, patch.icon) : undefined
@@ -209,8 +251,8 @@ export class Workspace {
         next.cover = patch.cover ? this.toFileHref(r.path, patch.cover) : undefined
       if (patch.coverPosition !== undefined) next.coverPosition = patch.coverPosition ?? undefined
       if (patch.fullWidth !== undefined) next.fullWidth = patch.fullWidth
-      await writeFileAtomic(this.abs(r.path), serializePage(next, blocks))
-      r.icon = next.icon
+      await this.writeText(r.path, serializePage(next, blocks))
+      if (patch.icon !== undefined) r.icon = patch.icon ?? undefined
     })
   }
 
@@ -227,7 +269,7 @@ export class Workspace {
       const path = joinPath(dir, `${stem}.md`)
       const id = randomUUID()
       const meta: PageMeta = { id, extra: {}, ...(stem !== title ? { title } : {}) }
-      await writeFileAtomic(this.abs(path), serializePage(meta, []))
+      await this.writeText(path, serializePage(meta, []))
       const record: PageRecord = { id, title, path, parentId }
       this.pages.set(id, record)
       this.knownPaths.set(id, path)
@@ -298,7 +340,10 @@ export class Workspace {
           2
         )
       )
-      for (const d of [r, ...this.descendantsOf(id)]) this.pages.delete(d.id)
+      for (const d of [r, ...this.descendantsOf(id)]) {
+        this.pages.delete(d.id)
+        this.texts.delete(d.path)
+      }
       this.removeOrder(r.parentId, id)
       this.state.favorites = this.state.favorites.filter((f) => this.pages.has(f))
       await removeDirIfEmpty(this.abs(dirOf(r.path)))
@@ -346,10 +391,10 @@ export class Workspace {
 
   /** Stores the exact title in frontmatter only when the filename cannot carry it. */
   private async syncTitleField(r: PageRecord): Promise<void> {
-    const { meta, blocks } = parsePage(await readFile(this.abs(r.path), 'utf8'))
+    const { meta, blocks } = parsePage(await this.readText(r.path))
     const title = stemOf(r.path) === r.title ? undefined : r.title
     if (meta.title === title) return
-    await writeFileAtomic(this.abs(r.path), serializePage({ ...meta, id: r.id, title }, blocks))
+    await this.writeText(r.path, serializePage({ ...meta, id: r.id, title }, blocks))
   }
 
   /** Moves a page file (and its child folder) to `dir/stem.md`, then fixes links everywhere. */
@@ -368,7 +413,11 @@ export class Workspace {
     if (await exists(this.abs(oldChildDir)))
       await rename(this.abs(oldChildDir), this.abs(newChildDir))
     for (const rec of [r, ...this.descendantsOf(r.id)]) {
-      rec.path = moved.get(rec.path) ?? rec.path
+      const next = moved.get(rec.path) ?? rec.path
+      const text = this.texts.get(rec.path)
+      this.texts.delete(rec.path)
+      if (text !== undefined) this.texts.set(next, text)
+      rec.path = next
       this.knownPaths.set(rec.id, rec.path)
     }
     await this.rewriteLinks(moved, [stemOf(oldPath)])
@@ -379,9 +428,11 @@ export class Workspace {
     const needles = tokens.flatMap((t) => [t, encodeURIComponent(t)])
     for (const rec of this.pages.values()) {
       const oldFile = newToOld.get(rec.path) ?? rec.path
-      const text = await readFile(this.abs(rec.path), 'utf8')
-      if (!newToOld.has(rec.path) && !needles.some((n) => text.includes(n))) continue
-      const { meta, blocks } = parsePage(text)
+      const cached = this.texts.get(rec.path)
+      const candidate =
+        newToOld.has(rec.path) || cached === undefined || needles.some((n) => cached.includes(n))
+      if (!candidate) continue
+      const { meta, blocks } = parsePage(await this.readText(rec.path))
       let changed = false
       const remap = (href: string): string => {
         if (isExternalHref(href)) return href
@@ -395,17 +446,21 @@ export class Workspace {
       const nextMeta = { ...meta }
       if (meta.cover) nextMeta.cover = remap(meta.cover)
       if (meta.icon?.includes('/')) nextMeta.icon = remap(meta.icon)
-      if (changed) await writeFileAtomic(this.abs(rec.path), serializePage(nextMeta, nextBlocks))
+      if (changed) await this.writeText(rec.path, serializePage(nextMeta, nextBlocks))
     }
   }
 
   // ---------- href translation between disk and editor ----------
 
-  private toInternalHref(pagePath: string, href: string): string {
+  private pathIndex(): Map<string, string> {
+    return new Map([...this.pages.values()].map((r) => [r.path, r.id]))
+  }
+
+  private toInternalHref(pagePath: string, href: string, byPath: Map<string, string>): string {
     if (isExternalHref(href)) return href
     const target = resolveHref(pagePath, href)
-    for (const r of this.pages.values()) if (r.path === target) return pageLinkHref(r.id)
-    return '/' + encodeHref(target)
+    const id = byPath.get(target)
+    return id ? pageLinkHref(id) : '/' + encodeHref(target)
   }
 
   private toFileHref(pagePath: string, href: string): string {
@@ -419,11 +474,11 @@ export class Workspace {
     return href
   }
 
-  private metaToInternal(pagePath: string, meta: PageMeta): PageMeta {
+  private metaToInternal(pagePath: string, meta: PageMeta, byPath: Map<string, string>): PageMeta {
     return {
       ...meta,
-      icon: meta.icon?.includes('/') ? this.toInternalHref(pagePath, meta.icon) : meta.icon,
-      cover: meta.cover ? this.toInternalHref(pagePath, meta.cover) : undefined
+      icon: iconToInternal(pagePath, meta.icon),
+      cover: meta.cover ? this.toInternalHref(pagePath, meta.cover, byPath) : undefined
     }
   }
 
@@ -448,4 +503,10 @@ export class Workspace {
     const list = this.state.order[key]
     if (list) this.state.order[key] = list.filter((x) => x !== id)
   }
+}
+
+/** Image icons are kept as workspace paths so they survive the page moving. */
+function iconToInternal(pagePath: string, icon: string | undefined): string | undefined {
+  if (!icon || !icon.includes('/') || isExternalHref(icon)) return icon
+  return '/' + encodeHref(resolveHref(pagePath, icon))
 }

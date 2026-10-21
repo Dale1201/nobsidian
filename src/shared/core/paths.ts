@@ -2,6 +2,9 @@
 // No node:path so the renderer can use them too.
 
 const FORBIDDEN = new Set([...'/\\:*?"<>|'])
+// macOS allows 255 bytes per name; leave room for " (2)" and ".md".
+const MAX_NAME_BYTES = 200
+const utf8 = new TextEncoder()
 
 export function sanitizeTitle(title: string): string {
   const cleaned = [...title]
@@ -9,7 +12,15 @@ export function sanitizeTitle(title: string): string {
     .join('')
     .replace(/^\.+/, '-')
     .trim()
-  return cleaned === '' ? 'Untitled' : cleaned.slice(0, 200)
+  if (cleaned === '') return 'Untitled'
+  let out = ''
+  let bytes = 0
+  for (const ch of cleaned) {
+    bytes += utf8.encode(ch).length
+    if (bytes > MAX_NAME_BYTES) break
+    out += ch
+  }
+  return out.trim() || 'Untitled'
 }
 
 export function stemOf(path: string): string {

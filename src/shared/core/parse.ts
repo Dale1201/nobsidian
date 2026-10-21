@@ -1,4 +1,5 @@
 import type {
+  Node,
   List,
   ListItem,
   Paragraph,
@@ -12,8 +13,12 @@ import { parseAttrs, parseBlockColorComment } from './html'
 import { phrasingToInline } from './inline'
 import { parseMarkdown, stringifyMarkdown } from './processor'
 
+// The source being parsed, so raw blocks can keep the author's exact bytes.
+let source = ''
+
 export function markdownToBlocks(markdown: string): Block[] {
-  return parseFlow(parseMarkdown(markdown).children)
+  source = markdown.replace(/\r\n?/g, '\n')
+  return parseFlow(parseMarkdown(source).children)
 }
 
 const NBSP = ' '
@@ -152,6 +157,7 @@ function parseNode(node: RootContent): Block[] {
     case 'paragraph':
       return [parseParagraph(node)]
     case 'heading': {
+      if (hasUnsupportedPhrasing(node.children)) return [rawBlock(node)]
       const { content, colors } = phrasingToInline(node.children)
       return [{ type: 'heading', props: { level: node.depth, ...colors }, content, children: [] }]
     }
@@ -187,11 +193,27 @@ function parseNode(node: RootContent): Block[] {
 }
 
 function rawBlock(node: RootContent): Block {
-  return {
-    type: 'raw',
-    props: { markdown: stringifyMarkdown([node]).replace(/\n+$/, '') },
-    children: []
+  return { type: 'raw', props: { markdown: sourceOf(node) }, children: [] }
+}
+
+/** The node's original text, minus the container indentation or `>` on continuation lines. */
+function sourceOf(node: Node): string {
+  const start = node.position?.start
+  const end = node.position?.end
+  if (start?.offset === undefined || end?.offset === undefined) {
+    return stringifyMarkdown([node as RootContent]).replace(/\n+$/, '')
   }
+  const indent = start.column - 1
+  return source
+    .slice(start.offset, end.offset)
+    .split('\n')
+    .map((line, i) => {
+      if (i === 0) return line
+      let cut = 0
+      while (cut < indent && cut < line.length && ' \t>'.includes(line[cut])) cut++
+      return line.slice(cut)
+    })
+    .join('\n')
 }
 
 function parseParagraph(node: Paragraph): Block {
@@ -210,23 +232,48 @@ function parseParagraph(node: Paragraph): Block {
     const name = kids[0].children.map((c) => ('value' in c ? c.value : '')).join('')
     return { type: 'file', props: { url: kids[0].url, name }, children: [] }
   }
-  if (hasUnsupportedPhrasing(kids)) return rawBlock(node)
   if (kids.length > 0 && kids.every((k) => k.type === 'html')) {
     const media = parseMediaHtml(kids.map((k) => (k as { value: string }).value).join(''))
     if (media) return media
   }
+  if (hasUnsupportedPhrasing(kids)) return rawBlock(node)
   const { content, colors } = normalizeEmpty(phrasingToInline(kids))
   return { type: 'paragraph', props: { ...colors }, content, children: [] }
 }
 
-const UNSUPPORTED_PHRASING = new Set(['footnoteReference', 'linkReference', 'imageReference'])
+const UNSUPPORTED_PHRASING = new Set([
+  'footnoteReference',
+  'linkReference',
+  'imageReference',
+  // Inline images have no block equivalent; a paragraph that is only an image is handled earlier.
+  'image'
+])
+const LINK_TEXT = new Set(['text', 'strong', 'emphasis', 'delete', 'inlineCode', 'break', 'html'])
+const KNOWN_INLINE_HTML = [
+  /^<\/?u>$/i,
+  /^<span\b[^>]*\bdata-(?:color|bg)=/i,
+  /^<\/span>$/i,
+  /^<br\s*\/?>$/i
+]
 
-function hasUnsupportedPhrasing(nodes: PhrasingContent[]): boolean {
-  return nodes.some(
-    (n) =>
-      UNSUPPORTED_PHRASING.has(n.type) ||
-      ('children' in n && hasUnsupportedPhrasing(n.children as PhrasingContent[]))
-  )
+/**
+ * True when the phrasing holds Markdown the editor cannot represent; such blocks are kept as
+ * raw text instead of being rewritten lossily.
+ */
+function hasUnsupportedPhrasing(nodes: PhrasingContent[], inLink = false): boolean {
+  return nodes.some((n) => {
+    if (UNSUPPORTED_PHRASING.has(n.type)) return true
+    if (inLink && !LINK_TEXT.has(n.type)) return true
+    if (n.type === 'html') {
+      return !KNOWN_INLINE_HTML.some((re) => re.test(n.value)) && !parseBlockColorComment(n.value)
+    }
+    // Wikilinks from other apps; text typed in the editor is written escaped (`\[[`).
+    if (n.type === 'text' && /(^|[^\\])\[\[/.test(sourceOf(n))) return true
+    return (
+      'children' in n &&
+      hasUnsupportedPhrasing(n.children as PhrasingContent[], inLink || n.type === 'link')
+    )
+  })
 }
 
 function parseMediaHtml(value: string): Block | null {
@@ -254,6 +301,9 @@ function parseMediaHtml(value: string): Block | null {
 }
 
 function parseList(list: List): Block[] {
+  const lead = (item: ListItem): PhrasingContent[] =>
+    item.children[0]?.type === 'paragraph' ? item.children[0].children : []
+  if (list.children.some((item) => hasUnsupportedPhrasing(lead(item)))) return [rawBlock(list)]
   const out: Block[] = []
   list.children.forEach((item, index) => out.push(parseListItem(list, item, index)))
   return out
@@ -289,6 +339,7 @@ function parseListItem(list: List, item: ListItem, index: number): Block {
 
 function parseBlockquote(node: Blockquote): Block {
   const [first, ...rest] = node.children
+  if (first?.type === 'paragraph' && hasUnsupportedPhrasing(first.children)) return rawBlock(node)
   if (first?.type === 'paragraph') {
     const lead = first.children[0]
     if (lead?.type === 'text') {
@@ -320,6 +371,9 @@ function parseBlockquote(node: Blockquote): Block {
 }
 
 function parseTable(node: Table): Block {
+  if (node.children.some((row) => row.children.some((c) => hasUnsupportedPhrasing(c.children)))) {
+    return rawBlock(node)
+  }
   const width = Math.max(...node.children.map((r) => r.children.length))
   const content: TableContent = {
     type: 'tableContent',

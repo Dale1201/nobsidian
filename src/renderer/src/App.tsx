@@ -12,6 +12,7 @@ export function App(): React.JSX.Element | null {
   const workspace = useApp((s) => s.workspace)
   const settings = useApp((s) => s.settings)
   const theme = useEffectiveTheme(settings?.theme)
+  const error = useApp((s) => s.error)
 
   useEffect(() => {
     void useApp.getState().init()
@@ -49,6 +50,11 @@ export function App(): React.JSX.Element | null {
           {!settings?.sidebarCollapsed && <Sidebar />}
           <PageView theme={theme} />
         </>
+      )}
+      {error && (
+        <div className="toast" role="alert">
+          {error}
+        </div>
       )}
     </div>
   )
