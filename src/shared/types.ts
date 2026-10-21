@@ -22,6 +22,34 @@ export interface PageDoc {
   path: string
   meta: PageMeta
   blocks: Block[]
+  /** Bumped when the file changes other than through the editor's own saves. */
+  revision: number
+  /** The frontmatter is not valid YAML, so it is shown as text. */
+  frontmatterError?: boolean
+}
+
+export type WriteResult =
+  | { ok: true; revision: number }
+  /** `conflict`: the file changed since the editor loaded it. `gone`: the page was deleted. */
+  | { ok: false; reason: 'conflict' | 'gone' }
+
+/** A watcher event, with a workspace-relative posix path. */
+export interface FileChange {
+  kind: 'add' | 'addDir' | 'change' | 'unlink' | 'unlinkDir'
+  path: string
+}
+
+export interface TrashItem {
+  /** Folder name under `.nobsidian/trash/`. */
+  entry: string
+  pageId: string
+  title: string
+  icon?: string
+  /** Title of the original parent if it still exists; null for top-level pages or a missing parent. */
+  parentTitle: string | null
+  deletedAt: string
+  /** The page plus its sub-pages. */
+  pageCount: number
 }
 
 export interface PageMetaPatch {

@@ -4,6 +4,7 @@ import { writeFileAtomic } from './fs-utils'
 
 export const APP_DIR = '.nobsidian'
 export const ROOT_ORDER_KEY = 'root'
+export const STATE_FILE = 'workspace.json'
 
 export interface WorkspaceState {
   version: 1
@@ -16,7 +17,7 @@ const empty = (): WorkspaceState => ({ version: 1, order: {}, favorites: [] })
 
 export async function loadState(root: string): Promise<WorkspaceState> {
   try {
-    const raw = JSON.parse(await readFile(join(root, APP_DIR, 'workspace.json'), 'utf8'))
+    const raw = JSON.parse(await readFile(join(root, APP_DIR, STATE_FILE), 'utf8'))
     return {
       version: 1,
       order: typeof raw.order === 'object' && raw.order ? raw.order : {},
@@ -27,10 +28,11 @@ export async function loadState(root: string): Promise<WorkspaceState> {
   }
 }
 
+export function serializeState(state: WorkspaceState): string {
+  return JSON.stringify(state, null, 2) + '\n'
+}
+
 export async function saveState(root: string, state: WorkspaceState): Promise<void> {
   await mkdir(join(root, APP_DIR), { recursive: true })
-  await writeFileAtomic(
-    join(root, APP_DIR, 'workspace.json'),
-    JSON.stringify(state, null, 2) + '\n'
-  )
+  await writeFileAtomic(join(root, APP_DIR, STATE_FILE), serializeState(state))
 }

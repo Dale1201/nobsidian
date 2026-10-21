@@ -30,7 +30,7 @@ describe('Workspace scanning', () => {
     await writeFile(join(root, 'Projects', 'Website.md'), 'Hello\n')
     await mkdir(join(root, 'Orphan Folder'))
     await writeFile(join(root, 'Orphan Folder', 'Child.md'), '')
-    const ws = await Workspace.open(root)
+    const ws = await Workspace.open(root, { settleMs: 0 })
     const tree = ws.tree()
     expect(tree.map((n) => n.title)).toEqual(['Orphan Folder', 'Projects'])
     expect(tree[1].children.map((n) => n.path)).toEqual(['Projects/Website.md'])
@@ -47,7 +47,7 @@ describe('Workspace scanning', () => {
     await mkdir(join(root, 'attachments'))
     await writeFile(join(root, 'attachments', 'note.md'), 'not a page')
     await mkdir(join(root, '.nobsidian'))
-    const ws = await Workspace.open(root)
+    const ws = await Workspace.open(root, { settleMs: 0 })
     expect(ws.tree()).toEqual([])
   })
 
@@ -55,7 +55,7 @@ describe('Workspace scanning', () => {
     const same = '---\nid: 11111111-1111-1111-1111-111111111111\n---\n'
     await writeFile(join(root, 'A.md'), same)
     await writeFile(join(root, 'B.md'), same)
-    const ws = await Workspace.open(root)
+    const ws = await Workspace.open(root, { settleMs: 0 })
     const ids = ws.tree().map((n) => n.id)
     expect(new Set(ids).size).toBe(2)
   })
@@ -63,7 +63,7 @@ describe('Workspace scanning', () => {
 
 describe('Workspace page operations', () => {
   it('creates, writes and reads pages', async () => {
-    const ws = await Workspace.open(root)
+    const ws = await Workspace.open(root, { settleMs: 0 })
     const a = await ws.createPage(null)
     const b = await ws.createPage(null)
     expect([a.path, b.path]).toEqual(['Untitled.md', 'Untitled (2).md'])
@@ -75,7 +75,7 @@ describe('Workspace page operations', () => {
   })
 
   it('renames a page with its children and rewrites links', async () => {
-    const ws = await Workspace.open(root)
+    const ws = await Workspace.open(root, { settleMs: 0 })
     const parent = await ws.createPage(null)
     const child = await ws.createPage(parent.id)
     const other = await ws.createPage(null)
@@ -96,7 +96,7 @@ describe('Workspace page operations', () => {
   })
 
   it('moves a page and keeps its relative links working', async () => {
-    const ws = await Workspace.open(root)
+    const ws = await Workspace.open(root, { settleMs: 0 })
     const target = await ws.createPage(null)
     await ws.renamePage(target.id, 'Target')
     const mover = await ws.createPage(null)
@@ -115,31 +115,31 @@ describe('Workspace page operations', () => {
   })
 
   it('never names a root page like the attachments folder', async () => {
-    const ws = await Workspace.open(root)
+    const ws = await Workspace.open(root, { settleMs: 0 })
     const p = await ws.createPage(null)
     await ws.renamePage(p.id, 'Attachments')
     expect(ws.tree()[0]).toMatchObject({ title: 'Attachments', path: 'Attachments (2).md' })
   })
 
   it('refuses to move a page into its own descendant', async () => {
-    const ws = await Workspace.open(root)
+    const ws = await Workspace.open(root, { settleMs: 0 })
     const a = await ws.createPage(null)
     const b = await ws.createPage(a.id)
     await expect(ws.movePage(a.id, b.id, 0)).rejects.toThrow('inside itself')
   })
 
   it('reorders siblings and persists the order', async () => {
-    const ws = await Workspace.open(root)
+    const ws = await Workspace.open(root, { settleMs: 0 })
     const a = await ws.createPage(null)
     const b = await ws.createPage(null)
     await ws.movePage(b.id, null, 0)
     expect(ws.tree().map((n) => n.id)).toEqual([b.id, a.id])
-    const reopened = await Workspace.open(root)
+    const reopened = await Workspace.open(root, { settleMs: 0 })
     expect(reopened.tree().map((n) => n.id)).toEqual([b.id, a.id])
   })
 
   it('trashes a page with its children and keeps links serializable', async () => {
-    const ws = await Workspace.open(root)
+    const ws = await Workspace.open(root, { settleMs: 0 })
     const a = await ws.createPage(null)
     await ws.createPage(a.id)
     const keep = await ws.createPage(null)
@@ -162,7 +162,7 @@ describe('Workspace page operations', () => {
   })
 
   it('updates icon, cover and full width in frontmatter', async () => {
-    const ws = await Workspace.open(root)
+    const ws = await Workspace.open(root, { settleMs: 0 })
     const p = await ws.createPage(null)
     const cover = await ws.saveAttachment('cover.jpg', new Uint8Array([9]))
     await ws.updateMeta(p.id, { icon: '🚀', cover, coverPosition: 30, fullWidth: true })
@@ -175,7 +175,7 @@ describe('Workspace page operations', () => {
   })
 
   it('serializes concurrent writes', async () => {
-    const ws = await Workspace.open(root)
+    const ws = await Workspace.open(root, { settleMs: 0 })
     const p = await ws.createPage(null)
     await Promise.all([
       ws.writePage(p.id, [text('one')]),
@@ -186,7 +186,7 @@ describe('Workspace page operations', () => {
   })
 
   it('refuses asset paths outside the workspace', async () => {
-    const ws = await Workspace.open(root)
+    const ws = await Workspace.open(root, { settleMs: 0 })
     expect(ws.resolveAsset('/../../etc/passwd')).toBe(join(root, 'etc', 'passwd'))
     expect(ws.resolveAsset('/.nobsidian/workspace.json')).toBeNull()
   })
@@ -197,7 +197,7 @@ describe('Workspace keeps existing notes intact', () => {
     await writeFile(join(root, 'Notes.md'), 'important content\n')
     await mkdir(join(root, 'notes'))
     await writeFile(join(root, 'notes', 'Child.md'), 'child\n')
-    const ws = await Workspace.open(root)
+    const ws = await Workspace.open(root, { settleMs: 0 })
     expect(await read('Notes.md')).toContain('important content')
     expect(ws.tree()).toHaveLength(1)
     expect(ws.tree()[0].children.map((c) => c.title)).toEqual(['Child'])
@@ -209,7 +209,7 @@ describe('Workspace keeps existing notes intact', () => {
     await writeFile(join(root, 'Plan.md'), body)
     await writeFile(join(root, 'Meta.md'), '---\n# a comment\ntags: [x, y]\n---\nBody *text*\n')
     await writeFile(join(root, 'Bom.md'), '\uFEFF---\nid: abc\ntitle: T\n---\n\nHello\n')
-    const ws = await Workspace.open(root)
+    const ws = await Workspace.open(root, { settleMs: 0 })
     const plan = await read('Plan.md')
     const front = /^---\nid: [0-9a-f-]{36}\n---\n\n/
     expect(plan).toMatch(front)
@@ -222,7 +222,7 @@ describe('Workspace keeps existing notes intact', () => {
   })
 
   it('reads a page only after queued writes have landed', async () => {
-    const ws = await Workspace.open(root)
+    const ws = await Workspace.open(root, { settleMs: 0 })
     const p = await ws.createPage(null)
     const other = await ws.createPage(null)
     void ws.renamePage(other.id, 'Renamed')
@@ -231,7 +231,7 @@ describe('Workspace keeps existing notes intact', () => {
   })
 
   it('keeps image icons working after a move', async () => {
-    const ws = await Workspace.open(root)
+    const ws = await Workspace.open(root, { settleMs: 0 })
     const a = await ws.createPage(null)
     await ws.renamePage(a.id, 'A')
     const b = await ws.createPage(null)
@@ -244,7 +244,7 @@ describe('Workspace keeps existing notes intact', () => {
   })
 
   it('renames without reading pages that do not link to the renamed page', async () => {
-    const ws = await Workspace.open(root)
+    const ws = await Workspace.open(root, { settleMs: 0 })
     const p = await ws.createPage(null)
     const other = await ws.createPage(null)
     await ws.writePage(other.id, [text('unrelated')])

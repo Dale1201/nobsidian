@@ -59,7 +59,9 @@ export function registerHandlers(ctx: AppContext): void {
   })
   handle('tree:get', () => snapshot(ws()))
   handle('page:read', ({ id }) => ws().readPage(id))
-  handle('page:write', ({ id, blocks }) => ws().writePage(id, blocks))
+  handle('page:write', async ({ id, blocks }) => {
+    await ws().writePage(id, blocks)
+  })
   handle(
     'page:meta',
     mutate((w, { id, patch }) => w.updateMeta(id, patch))

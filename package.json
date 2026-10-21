@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "@electron-toolkit/utils": "^4.0.0",
+    "chokidar": "6.0.0",
     "minisearch": "^7.2.0",
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
