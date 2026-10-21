@@ -3,7 +3,7 @@ import { realpathSync } from 'node:fs'
 import { relative, sep } from 'node:path'
 import type { FileChange } from '../../shared/types'
 import { APP_DIR, STATE_FILE } from './state'
-import { ATTACHMENTS_DIR } from './workspace'
+import { ATTACHMENTS_DIR } from './core'
 
 const FILE_EVENTS = new Set(['add', 'addDir', 'change', 'unlink', 'unlinkDir'])
 
