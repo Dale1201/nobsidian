@@ -64,14 +64,23 @@ test('a missing notes folder is reported, not recreated', async () => {
 })
 
 test('remembers the window size', async ({ nb }) => {
-  await nb.app.evaluate(({ BrowserWindow }) =>
-    BrowserWindow.getAllWindows()[0].setBounds({ x: 40, y: 60, width: 1000, height: 700 })
-  )
+  // macOS clamps windows to the screen, so pick a size that fits whatever display runs the test.
+  const set = await nb.app.evaluate(({ BrowserWindow, screen }) => {
+    const area = screen.getPrimaryDisplay().workArea
+    const win = BrowserWindow.getAllWindows()[0]
+    win.setBounds({
+      x: area.x + 20,
+      y: area.y + 20,
+      width: Math.min(1000, area.width - 40),
+      height: Math.min(640, area.height - 40)
+    })
+    return win.getBounds()
+  })
   await nb.relaunch()
   const bounds = await nb.app.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows()[0].getBounds()
   )
-  expect(bounds).toMatchObject({ width: 1000, height: 700 })
+  expect(bounds).toMatchObject({ width: set.width, height: set.height })
 })
 
 test('writing a page saves Markdown to disk', async ({ nb }) => {
