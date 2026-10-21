@@ -98,6 +98,7 @@ export type PageLinkBlock = WithoutContent<'pageLink', { href: string }>
 export type RawBlock = WithoutContent<'raw', { markdown: string }>
 export type ColumnListBlock = WithoutContent<'columnList', Record<string, never>>
 export type ColumnBlock = WithoutContent<'column', { width: number }>
+export type TocBlock = WithoutContent<'toc', Record<string, never>>
 
 export type Block =
   | ParagraphBlock
@@ -120,6 +121,7 @@ export type Block =
   | RawBlock
   | ColumnListBlock
   | ColumnBlock
+  | TocBlock
 
 export type BlockType = Block['type']
 

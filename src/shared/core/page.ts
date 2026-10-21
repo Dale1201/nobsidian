@@ -17,6 +17,8 @@ export interface PageMeta {
 export interface ParsedPage {
   meta: PageMeta
   blocks: Block[]
+  /** The file starts with a frontmatter block that is not valid YAML; it is kept as a raw block. */
+  frontmatterError?: boolean
 }
 
 const FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/
@@ -63,7 +65,30 @@ export function metaFromData(data: Record<string, unknown>): PageMeta {
 
 export function parsePage(text: string): ParsedPage {
   const { data, body } = splitFrontmatter(text)
-  return { meta: data ? metaFromData(data) : { extra: {} }, blocks: markdownToBlocks(body) }
+  const meta = data ? metaFromData(data) : { extra: {} }
+  // Broken frontmatter is either the whole header, or sits below the id header the app added.
+  const broken = FRONTMATTER.exec(body)
+  if (broken && !isYamlMap(broken[1])) {
+    const rest = body.slice(broken[0].length).replace(/^\r?\n/, '')
+    return {
+      meta,
+      blocks: [
+        { type: 'raw', props: { markdown: broken[0].replace(/\r?\n$/, '') }, children: [] },
+        ...markdownToBlocks(rest)
+      ],
+      frontmatterError: true
+    }
+  }
+  return { meta, blocks: markdownToBlocks(body) }
+}
+
+function isYamlMap(yaml: string): boolean {
+  try {
+    const data = parseYaml(yaml) ?? {}
+    return typeof data === 'object' && !Array.isArray(data)
+  } catch {
+    return false
+  }
 }
 
 /**

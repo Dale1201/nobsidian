@@ -30,3 +30,6 @@ export interface PageMetaPatch {
   coverPosition?: number | null
   fullWidth?: boolean
 }
+
+/** Start (inclusive) and end (exclusive) offsets of a highlighted span. */
+export type TextRange = [number, number]

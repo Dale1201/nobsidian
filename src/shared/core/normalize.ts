@@ -39,7 +39,8 @@ const KEEP_PROPS: Record<string, string[]> = {
   pageLink: ['href'],
   raw: ['markdown'],
   columnList: [],
-  column: ['width']
+  column: ['width'],
+  toc: []
 }
 
 function normalizeBlock(block: Block): Block {

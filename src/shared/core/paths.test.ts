@@ -45,10 +45,22 @@ describe('page files', () => {
     expect(serializePage(page.meta, page.blocks)).toBe(text)
   })
 
-  it('keeps invalid frontmatter as body text', () => {
+  it('keeps invalid frontmatter as a raw block, flagged, byte for byte', () => {
     const page = parsePage('---\nid: [oops\n---\nBody\n')
     expect(page.meta).toEqual({ extra: {} })
-    expect(page.blocks.length).toBeGreaterThan(0)
+    expect(page.frontmatterError).toBe(true)
+    expect(page.blocks[0]).toEqual({
+      type: 'raw',
+      props: { markdown: '---\nid: [oops\n---' },
+      children: []
+    })
+    // Below the id header the app adds when it first sees the file.
+    const withId = '---\nid: abc\n---\n\n---\ntitle: [oops\n---\n\nBody\n'
+    const again = parsePage(withId)
+    expect(again.meta.id).toBe('abc')
+    expect(again.frontmatterError).toBe(true)
+    expect(serializePage(again.meta, again.blocks)).toBe(withId)
+    expect(parsePage('---\nid: a\n---\n\nBody\n').frontmatterError).toBeUndefined()
   })
 
   it('reads files saved with Windows line endings', () => {

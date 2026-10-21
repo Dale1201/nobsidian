@@ -41,6 +41,7 @@ describe('canonical markdown survives a round trip', () => {
     columns:
       '<div data-columns>\n\n<div data-column>\n\nLeft\n\n</div>\n\n<div data-column data-width="2">\n\nRight\n\n</div>\n\n</div>\n',
     paragraphChildren: 'Parent\n\n<div data-children>\n\nChild\n\n</div>\n',
+    toc: '# Intro\n\n<nav data-toc></nav>\n\n## Part\n',
     raw: '<section>custom</section>\n',
     footnote: 'Text[^1]\n\n[^1]: The note\n'
   }
@@ -64,6 +65,12 @@ describe('markdownToBlocks structure', () => {
         ],
         children: []
       }
+    ])
+  })
+
+  it('parses a table of contents marker into a toc block', () => {
+    expect(markdownToBlocks('<nav data-toc></nav>\n')).toEqual([
+      { type: 'toc', props: {}, children: [] }
     ])
   })
 

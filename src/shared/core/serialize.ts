@@ -181,6 +181,8 @@ function blockToFlow(block: Block): RootContent[] {
       return [{ type: 'math', value: block.props.latex }, ...childrenContainer(block.children)]
     case 'divider':
       return [{ type: 'thematicBreak' }, ...childrenContainer(block.children)]
+    case 'toc':
+      return [html('<nav data-toc></nav>'), ...childrenContainer(block.children)]
     case 'table':
       return [tableNode(block.content), ...childrenContainer(block.children)]
     case 'image': {

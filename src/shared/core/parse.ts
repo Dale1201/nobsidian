@@ -24,6 +24,7 @@ export function markdownToBlocks(markdown: string): Block[] {
 const NBSP = ' '
 const DETAILS_OPEN = /^<details(?: data-heading="([1-6])")?>\n<summary>([\s\S]*)<\/summary>$/
 const DIV_OPEN = /^<div data-(columns|column|children)(?: data-width="([0-9.]+)")?>$/
+const TOC = /^<nav data-toc><\/nav>$/
 const CALLOUT_MARKER = /^\[!callout((?::[a-z_]+)*)\][ \t]*([^\n]*)\n?/
 
 function parseFlow(nodes: RootContent[]): Block[] {
@@ -181,6 +182,7 @@ function parseNode(node: RootContent): Block[] {
     case 'table':
       return [parseTable(node)]
     case 'html': {
+      if (TOC.test(node.value.trim())) return [{ type: 'toc', props: {}, children: [] }]
       const media = parseMediaHtml(node.value)
       if (media) return [media]
       const colors = parseBlockColorComment(node.value)
