@@ -31,8 +31,9 @@ export function PageEditor({
     timer.current = null
     const blocks = pending.current
     pending.current = null
-    if (blocks) await api.invoke('page:write', { id: doc.id, blocks })
-  }, [doc.id])
+    if (blocks)
+      await api.invoke('page:write', { id: doc.id, blocks, revision: doc.revision, force: true })
+  }, [doc.id, doc.revision])
 
   useEffect(() => {
     const unregister = registerFlusher(flush)

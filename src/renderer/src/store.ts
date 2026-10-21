@@ -37,11 +37,18 @@ interface AppState {
   renamePage: (id: string, title: string) => Promise<void>
   movePage: (id: string, parentId: string | null, index: number) => Promise<void>
   trashPage: (id: string) => Promise<void>
+  workspaceMissing: () => void
   toggleFavorite: (id: string) => Promise<void>
   updateSettings: (patch: Partial<Settings>) => Promise<void>
   setExpanded: (id: string, open: boolean) => Promise<void>
   setRenaming: (id: string | null) => void
   reportError: (action: string, err: unknown) => Promise<void>
+}
+
+function errorReason(err: unknown): string {
+  return err instanceof Error
+    ? err.message.replace(/^Error invoking remote method '[^']+': /, '')
+    : String(err)
 }
 
 export const useApp = create<AppState>((set, get) => ({
@@ -72,7 +79,16 @@ export const useApp = create<AppState>((set, get) => ({
   },
 
   chooseWorkspace: async () => {
-    const workspace = await api.invoke('workspace:choose', undefined)
+    // Pending edits must land in the workspace they belong to.
+    await flushAll()
+    let workspace: WorkspaceInfo | null
+    try {
+      workspace = await api.invoke('workspace:choose', undefined)
+    } catch (e) {
+      set({ error: `Couldn't open that folder: ${errorReason(e)}` })
+      setTimeout(() => set({ error: null }), 6000)
+      return
+    }
     if (!workspace) return
     set({ workspace, currentId: null, history: [], historyIndex: -1 })
     get().applySnapshot(await api.invoke('tree:get', undefined))
@@ -139,6 +155,8 @@ export const useApp = create<AppState>((set, get) => ({
     await api.invoke('page:trash', { id }).catch((e) => get().reportError('delete', e))
   },
 
+  workspaceMissing: () => set({ workspace: null, currentId: null, tree: [] }),
+
   toggleFavorite: async (id) => {
     await api
       .invoke('page:favorite', { id, favorite: !get().favorites.includes(id) })
@@ -165,11 +183,7 @@ export const useApp = create<AppState>((set, get) => ({
 
   /** Shows what failed and re-syncs the sidebar with what is actually on disk. */
   reportError: async (action, err) => {
-    const reason =
-      err instanceof Error
-        ? err.message.replace(/^Error invoking remote method '[^']+': /, '')
-        : String(err)
-    set({ error: `Couldn't ${action} the page: ${reason}` })
+    set({ error: `Couldn't ${action} the page: ${errorReason(err)}` })
     setTimeout(() => set({ error: null }), 6000)
     get().applySnapshot(await api.invoke('tree:get', undefined))
   }

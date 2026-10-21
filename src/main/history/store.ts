@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import type { HistoryVersion } from '../../shared/types'
 import { PAGE_ID } from '../../shared/core/page'
 import { APP_DIR } from '../workspace/state'
-import { writeFileAtomic } from '../workspace/fs-utils'
+import { exists, writeFileAtomic } from '../workspace/fs-utils'
 
 /** What a snapshot needs besides its text to be restored after renames and moves. */
 export interface SnapshotMeta {
@@ -39,6 +39,7 @@ export class HistoryStore {
   async save(pageId: string, text: string, meta: SnapshotMeta): Promise<HistoryVersion | null> {
     if ((await this.latestText(pageId)) === text) return null
     const dir = this.dir(pageId)
+    if (!(await exists(this.root))) throw new Error(`Folder not found: ${this.root}`)
     await mkdir(dir, { recursive: true })
     const existing = new Set(await this.versionIds(pageId))
     let at = this.now().getTime()

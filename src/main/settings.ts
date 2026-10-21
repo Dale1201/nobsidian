@@ -8,7 +8,9 @@ export const DEFAULT_SETTINGS: Settings = {
   sidebarWidth: 240,
   sidebarCollapsed: false,
   expanded: {},
-  lastPage: {}
+  lastPage: {},
+  recent: {},
+  lastColor: { kind: 'background', color: 'yellow' }
 }
 
 export class SettingsStore {

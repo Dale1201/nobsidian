@@ -2,10 +2,7 @@ import { app, Menu, type BrowserWindow, type MenuItemConstructorOptions } from '
 import type { MenuCommand } from '../shared/ipc'
 import { send } from './ipc'
 
-export function buildMenu(
-  getWindow: () => BrowserWindow | null,
-  chooseWorkspace: () => void
-): Menu {
+export function buildMenu(getWindow: () => BrowserWindow | null): Menu {
   const command = (cmd: MenuCommand) => (): void => {
     const win = getWindow()
     if (win) send(win.webContents, 'menu:command', cmd)
@@ -16,7 +13,7 @@ export function buildMenu(
       label: 'File',
       submenu: [
         { label: 'New Page', accelerator: 'CmdOrCtrl+N', click: command('new-page') },
-        { label: 'Open Folder…', accelerator: 'CmdOrCtrl+O', click: chooseWorkspace },
+        { label: 'Open Folder…', accelerator: 'CmdOrCtrl+O', click: command('open-folder') },
         { type: 'separator' },
         { role: 'close' }
       ]
@@ -41,6 +38,8 @@ export function buildMenu(
     {
       label: 'Go',
       submenu: [
+        { label: 'Search…', accelerator: 'CmdOrCtrl+P', click: command('search') },
+        { type: 'separator' },
         { label: 'Back', accelerator: 'CmdOrCtrl+[', click: command('back') },
         { label: 'Forward', accelerator: 'CmdOrCtrl+]', click: command('forward') }
       ]

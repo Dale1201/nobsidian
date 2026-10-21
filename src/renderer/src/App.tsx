@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
-import { Sidebar } from './components/Sidebar'
 import { PageView } from './components/PageView'
+import { Sidebar } from './components/Sidebar'
 import { Welcome } from './components/Welcome'
 import { toggledPreference, useEffectiveTheme } from './lib/theme'
 import { flushAll, useApp } from './store'
@@ -20,9 +20,11 @@ export function App(): React.JSX.Element | null {
     const offFlush = api.on('app:flush', () => {
       void flushAll().finally(() => api.invoke('app:flushed', undefined))
     })
+    const offMissing = api.on('workspace:missing', () => useApp.getState().workspaceMissing())
     return () => {
       offTree()
       offFlush()
+      offMissing()
     }
   }, [])
 
@@ -31,6 +33,7 @@ export function App(): React.JSX.Element | null {
       api.on('menu:command', (cmd) => {
         const app = useApp.getState()
         if (cmd === 'new-page') void app.createPage(null)
+        if (cmd === 'open-folder') void app.chooseWorkspace()
         if (cmd === 'back') app.back()
         if (cmd === 'forward') app.forward()
         if (cmd === 'toggle-sidebar')

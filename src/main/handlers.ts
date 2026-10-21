@@ -5,11 +5,15 @@ import type { TreeSnapshot } from '../shared/ipc'
 import type { WorkspaceInfo } from '../shared/types'
 import { handle, send } from './ipc'
 import type { SettingsStore } from './settings'
+import { exists } from './workspace/fs-utils'
+import { watchWorkspace, type WorkspaceWatcher } from './workspace/watcher'
 import { Workspace } from './workspace/workspace'
 
 export interface AppContext {
   settings: SettingsStore
   workspace: Workspace | null
+  watcher: WorkspaceWatcher | null
+  maintainTimer: ReturnType<typeof setTimeout> | null
   window: () => BrowserWindow | null
 }
 
@@ -22,9 +26,51 @@ export function snapshot(ws: Workspace): TreeSnapshot {
 }
 
 export async function openWorkspace(ctx: AppContext, root: string): Promise<WorkspaceInfo> {
-  ctx.workspace = await Workspace.open(root)
+  const ws = await Workspace.open(root)
+  await closeWorkspace(ctx)
+  ctx.workspace = ws
   await ctx.settings.set({ lastWorkspace: root })
-  return workspaceInfo(ctx.workspace)
+  ws.onEvent((event) => {
+    const win = ctx.window()
+    if (!win || ctx.workspace !== ws) return
+    if (event.type === 'tree') send(win.webContents, 'tree:changed', snapshot(ws))
+    else send(win.webContents, 'page:changed', { id: event.id, revision: event.revision })
+  })
+  const lost = async (): Promise<void> => {
+    if (ctx.workspace !== ws || (await exists(root))) return
+    if (ctx.workspace !== ws) return
+    await closeWorkspace(ctx, { checkpoint: false })
+    const win = ctx.window()
+    if (win) send(win.webContents, 'workspace:missing', undefined)
+  }
+  ctx.watcher = watchWorkspace(
+    root,
+    (changes) => {
+      if (changes.some((c) => c.kind === 'unlinkDir' && c.path === '')) void lost()
+      else void ws.reconcile(changes).catch((err) => console.error('Reconcile failed', err))
+    },
+    () => void lost()
+  )
+  void ws.indexContent().catch((err) => console.error('Indexing failed', err))
+  // Housekeeping can wait until the window is up.
+  ctx.maintainTimer = setTimeout(() => {
+    void ws.maintain().catch((err) => console.error('Workspace maintenance failed', err))
+  }, 1000)
+  return workspaceInfo(ws)
+}
+
+export async function closeWorkspace(
+  ctx: AppContext,
+  { checkpoint = true }: { checkpoint?: boolean } = {}
+): Promise<void> {
+  const { watcher, workspace } = ctx
+  if (ctx.maintainTimer) clearTimeout(ctx.maintainTimer)
+  ctx.maintainTimer = null
+  ctx.watcher = null
+  ctx.workspace = null
+  await watcher?.close()
+  if (checkpoint) await workspace?.checkpoint().catch(() => {})
+  workspace?.close()
 }
 
 export function registerHandlers(ctx: AppContext): void {
@@ -37,10 +83,11 @@ export function registerHandlers(ctx: AppContext): void {
     if (win && ctx.workspace) send(win.webContents, 'tree:changed', snapshot(ctx.workspace))
   }
   const mutate =
-    <P>(fn: (w: Workspace, p: P) => Promise<void>) =>
-    async (p: P): Promise<void> => {
-      await fn(ws(), p)
+    <P, R>(fn: (w: Workspace, p: P) => Promise<R>) =>
+    async (p: P): Promise<R> => {
+      const result = await fn(ws(), p)
       changed()
+      return result
     }
 
   handle('workspace:current', () => (ctx.workspace ? workspaceInfo(ctx.workspace) : null))
@@ -59,18 +106,17 @@ export function registerHandlers(ctx: AppContext): void {
   })
   handle('tree:get', () => snapshot(ws()))
   handle('page:read', ({ id }) => ws().readPage(id))
-  handle('page:write', async ({ id, blocks }) => {
-    await ws().writePage(id, blocks)
-  })
+  handle('page:write', ({ id, blocks, revision, force }) =>
+    ws().writePage(id, blocks, { revision, force })
+  )
   handle(
     'page:meta',
     mutate((w, { id, patch }) => w.updateMeta(id, patch))
   )
-  handle('page:create', async ({ parentId, index }) => {
-    const node = await ws().createPage(parentId, index)
-    changed()
-    return node
-  })
+  handle(
+    'page:create',
+    mutate((w, { parentId, index }) => w.createPage(parentId, index))
+  )
   handle(
     'page:rename',
     mutate((w, { id, title }) => w.renamePage(id, title))
@@ -84,9 +130,29 @@ export function registerHandlers(ctx: AppContext): void {
     mutate((w, { id }) => w.trashPage(id))
   )
   handle(
+    'page:duplicate',
+    mutate((w, { id }) => w.duplicatePage(id))
+  )
+  handle(
     'page:favorite',
     mutate((w, { id, favorite }) => w.setFavorite(id, favorite))
   )
+  handle('search:query', ({ query }) => ws().search(query))
+  handle('trash:list', () => ws().listTrash())
+  handle('trash:read', ({ entry }) => ws().readTrash(entry))
+  handle(
+    'trash:restore',
+    mutate((w, { entry }) => w.restoreTrash(entry))
+  )
+  handle('trash:delete', ({ entry }) => ws().deleteTrash(entry))
+  handle('history:list', ({ id }) => ws().listHistory(id))
+  handle('history:read', ({ id, version }) => ws().readHistory(id, version))
+  handle(
+    'history:restore',
+    mutate((w, { id, version }) => w.restoreHistory(id, version))
+  )
+  handle('history:checkpoint', ({ id }) => ws().checkpoint(id))
+  handle('history:draft', ({ id, blocks }) => ws().keepDraft(id, blocks))
   handle('attachment:save', ({ name, data }) => ws().saveAttachment(name, data))
   handle('attachment:chooseImage', async () => {
     const win = ctx.window()

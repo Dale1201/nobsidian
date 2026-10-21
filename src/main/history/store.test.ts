@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { mkdtemp, readdir, rm } from 'node:fs/promises'
+import { mkdtemp, readdir, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { HistoryStore } from './store'
@@ -21,6 +21,13 @@ const files = (id: string): Promise<string[]> =>
   readdir(join(root, '.nobsidian', 'history', id)).then((f) => f.sort())
 
 describe('HistoryStore', () => {
+  it('never recreates a workspace folder that has gone', async () => {
+    const h = store()
+    await rm(root, { recursive: true, force: true })
+    await expect(h.save('p', 'x', meta)).rejects.toThrow('Folder not found')
+    expect(await stat(root).catch(() => null)).toBeNull()
+  })
+
   it('saves snapshots with a sidecar, newest first, skipping unchanged text', async () => {
     const h = store()
     expect(await h.save('p', 'one', meta)).toEqual({

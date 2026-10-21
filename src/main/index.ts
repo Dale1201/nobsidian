@@ -1,7 +1,6 @@
 import {
   app,
   BrowserWindow,
-  dialog,
   ipcMain,
   Menu,
   nativeTheme,
@@ -37,6 +36,8 @@ app.on('before-quit', () => {
 const ctx: AppContext = {
   settings: new SettingsStore(join(app.getPath('userData'), 'settings.json')),
   workspace: null,
+  watcher: null,
+  maintainTimer: null,
   window: () => mainWindow
 }
 
@@ -97,7 +98,10 @@ function createWindow(): void {
     const finish = (): void => {
       if (flushed) return
       flushed = true
-      void saving.then(() => (quitting ? app.quit() : win.close()))
+      void saving
+        .then(() => ctx.workspace?.checkpoint())
+        .catch(() => {})
+        .then(() => (quitting ? app.quit() : win.close()))
     }
     ipcMain.removeHandler('app:flushed')
     ipcMain.handle('app:flushed', () => finish())
@@ -111,17 +115,6 @@ function createWindow(): void {
   if (is.dev && process.env.ELECTRON_RENDERER_URL)
     void win.loadURL(process.env.ELECTRON_RENDERER_URL)
   else void win.loadFile(join(__dirname, '../renderer/index.html'))
-}
-
-async function chooseWorkspaceFromMenu(): Promise<void> {
-  const win = mainWindow
-  if (!win) return
-  const result = await dialog.showOpenDialog(win, {
-    properties: ['openDirectory', 'createDirectory']
-  })
-  if (result.canceled || !result.filePaths[0]) return
-  await openWorkspace(ctx, result.filePaths[0])
-  win.webContents.reload()
 }
 
 app.whenReady().then(async () => {
@@ -142,12 +135,7 @@ app.whenReady().then(async () => {
   })
 
   registerHandlers(ctx)
-  Menu.setApplicationMenu(
-    buildMenu(
-      () => mainWindow,
-      () => void chooseWorkspaceFromMenu()
-    )
-  )
+  Menu.setApplicationMenu(buildMenu(() => mainWindow))
   createWindow()
 
   app.on('activate', () => {

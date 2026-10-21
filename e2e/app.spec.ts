@@ -1,30 +1,11 @@
-import { readFile, readdir, writeFile } from 'node:fs/promises'
+import { readdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { _electron as electron, type Page } from '@playwright/test'
+import { _electron as electron } from '@playwright/test'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { expect, test } from './fixtures'
 
-const editor = '.bn-editor'
-
-/** Waits until the freshly created page is showing, so typing can't land in the previous one. */
-async function typeNewPageTitle(page: Page, title: string): Promise<void> {
-  const heading = page.getByTestId('page-title')
-  await expect(heading).toHaveText('')
-  await expect(heading).toBeFocused()
-  await page.keyboard.type(title)
-}
-
-async function waitForFile(path: string, match: RegExp | string): Promise<string> {
-  let text = ''
-  await expect
-    .poll(async () => {
-      text = await readFile(path, 'utf8').catch(() => '')
-      return typeof match === 'string' ? text.includes(match) : match.test(text)
-    })
-    .toBe(true)
-  return text
-}
+import { editor, newPage, typeNewPageTitle, waitForFile } from './helpers'
 
 test('first run asks for a folder and creates the first page', async () => {
   const userData = await mkdtemp(join(tmpdir(), 'nobsidian-e2e-user-'))
@@ -61,6 +42,25 @@ test('a missing notes folder is reported, not recreated', async () => {
   await expect(page.getByRole('button', { name: 'Locate folder' })).toBeVisible()
   await expect(readdir(gone)).rejects.toThrow()
   await app.close()
+})
+
+test('a folder that cannot be opened keeps the current notes', async ({ nb }) => {
+  const { page, app } = nb
+  await newPage(page, 'Still here')
+  const notAFolder = join(nb.userData, 'not-a-folder.txt')
+  await writeFile(notAFolder, 'plain file')
+  await app.evaluate(({ dialog }, file) => {
+    dialog.showOpenDialog = (async () => ({
+      canceled: false,
+      filePaths: [file]
+    })) as typeof dialog.showOpenDialog
+  }, notAFolder)
+  await page.locator('.sidebar-workspace').click()
+  await page.getByText('Open another folder…').click()
+  await expect(page.getByRole('alert')).toContainText("Couldn't open that folder")
+  await page.getByRole('button', { name: 'New page' }).first().click()
+  await expect(page.getByTestId('page-title')).toBeFocused()
+  await expect(page.getByTestId('sidebar-row-Still here')).toBeVisible()
 })
 
 test('remembers the window size', async ({ nb }) => {
