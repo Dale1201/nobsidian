@@ -33,3 +33,10 @@ export interface PageMetaPatch {
 
 /** Start (inclusive) and end (exclusive) offsets of a highlighted span. */
 export type TextRange = [number, number]
+
+export interface SearchHit {
+  id: string
+  titleRanges: TextRange[]
+  /** One line of matching content, or null when only the title matched. */
+  snippet: { text: string; ranges: TextRange[] } | null
+}
