@@ -14,18 +14,23 @@ import {
   LinkToolbar,
   LinkToolbarController,
   SuggestionMenuController,
+  useBlockNoteEditor,
   useComponentsContext,
   useCreateBlockNote,
   useDictionary,
+  useEditorDOMElement,
   type LinkToolbarProps
 } from '@blocknote/react'
 import { locales as multiColumnLocales, multiColumnDropCursor } from '@blocknote/xl-multi-column'
-import { createContext, useContext } from 'react'
+import { createContext, useContext, useEffect } from 'react'
+import { AppColorStyleButton } from './ColorButton'
+import { ColorPickContext, type PickedColor } from './colors'
 import { AppCreateLinkButton, AppEditLinkButton } from './LinkButtons'
 import { isValidLink, linkHrefFromEvent } from './links'
 import {
   PageLinkContext,
   schema,
+  type AppSchema,
   type AppBlock,
   type AppPartialBlock,
   type PageLinkContextValue
@@ -42,7 +47,12 @@ export type EditorProps = {
   openLink(href: string): void
   pageLink: PageLinkContextValue
   editable?: boolean
+  /** Applied by Cmd+Shift+H. */
+  lastColor?: PickedColor
+  onPickColor?(picked: PickedColor): void
 }
+
+const DEFAULT_COLOR: PickedColor = { kind: 'background', color: 'yellow' }
 
 const OpenLinkContext = createContext<(href: string) => void>(() => {})
 
@@ -53,7 +63,13 @@ function AppFormattingToolbar(): React.JSX.Element {
       {getFormattingToolbarItems()
         .filter((item) => !String(item.key).startsWith('textAlign'))
         .map((item) =>
-          item.key === 'createLinkButton' ? <AppCreateLinkButton key="createLinkButton" /> : item
+          item.key === 'createLinkButton' ? (
+            <AppCreateLinkButton key="createLinkButton" />
+          ) : item.key === 'colorStyleButton' ? (
+            <AppColorStyleButton key="colorStyleButton" />
+          ) : (
+            item
+          )
         )}
     </FormattingToolbar>
   )
@@ -87,6 +103,33 @@ function AppLinkToolbar(props: LinkToolbarProps): React.JSX.Element {
   )
 }
 
+/** Cmd+Shift+H toggles the last color picked in the toolbar on the selection, like Notion. */
+function HighlightShortcut({ color }: { color: PickedColor }): null {
+  const editor = useBlockNoteEditor<
+    AppSchema['blockSchema'],
+    AppSchema['inlineContentSchema'],
+    AppSchema['styleSchema']
+  >()
+  const dom = useEditorDOMElement()
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (!editor.isEditable || event.key.toLowerCase() !== 'h') return
+      if (!event.metaKey || !event.shiftKey || event.ctrlKey || event.altKey) return
+      event.preventDefault()
+      if (event.repeat) return
+      const style =
+        color.kind === 'text' ? { textColor: color.color } : { backgroundColor: color.color }
+      const active = editor.getActiveStyles()
+      const current = color.kind === 'text' ? active.textColor : active.backgroundColor
+      if (current === color.color) editor.removeStyles(style)
+      else editor.addStyles(style)
+    }
+    dom?.addEventListener('keydown', onKeyDown)
+    return () => dom?.removeEventListener('keydown', onKeyDown)
+  }, [editor, dom, color])
+  return null
+}
+
 // Mount with `key={pageId}`: the editor is created once from initialBlocks.
 export function Editor(props: EditorProps): React.JSX.Element {
   const editor = useCreateBlockNote({
@@ -112,24 +155,27 @@ export function Editor(props: EditorProps): React.JSX.Element {
   return (
     <PageLinkContext.Provider value={props.pageLink}>
       <OpenLinkContext.Provider value={props.openLink}>
-        <BlockNoteView
-          editor={editor}
-          theme={props.theme}
-          editable={props.editable !== false}
-          slashMenu={false}
-          formattingToolbar={false}
-          linkToolbar={false}
-          onChange={(ed) => props.onChange(ed.document)}
-        >
-          <SuggestionMenuController
-            triggerCharacter="/"
-            getItems={(query) =>
-              querySlashItems(editor, { createSubPage: props.createSubPage }, query)
-            }
-          />
-          <FormattingToolbarController formattingToolbar={AppFormattingToolbar} />
-          <LinkToolbarController linkToolbar={AppLinkToolbar} />
-        </BlockNoteView>
+        <ColorPickContext.Provider value={props.onPickColor ?? (() => {})}>
+          <BlockNoteView
+            editor={editor}
+            theme={props.theme}
+            editable={props.editable !== false}
+            slashMenu={false}
+            formattingToolbar={false}
+            linkToolbar={false}
+            onChange={(ed) => props.onChange(ed.document)}
+          >
+            <SuggestionMenuController
+              triggerCharacter="/"
+              getItems={(query) =>
+                querySlashItems(editor, { createSubPage: props.createSubPage }, query)
+              }
+            />
+            <FormattingToolbarController formattingToolbar={AppFormattingToolbar} />
+            <LinkToolbarController linkToolbar={AppLinkToolbar} />
+            <HighlightShortcut color={props.lastColor ?? DEFAULT_COLOR} />
+          </BlockNoteView>
+        </ColorPickContext.Provider>
       </OpenLinkContext.Provider>
     </PageLinkContext.Provider>
   )

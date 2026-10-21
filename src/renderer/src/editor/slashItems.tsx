@@ -5,6 +5,7 @@ import {
 } from '@blocknote/core'
 import { getDefaultReactSlashMenuItems, type DefaultReactSuggestionItem } from '@blocknote/react'
 import { getMultiColumnSlashMenuItems } from '@blocknote/xl-multi-column'
+import { TocIcon } from '../components/icons'
 import type { AppEditor, AppPartialBlock } from './schema'
 
 // The React items carry core's `key` at runtime, but their type omits it.
@@ -85,6 +86,16 @@ export function getSlashItems(
           type: 'callout',
           props: { backgroundColor: 'gray' }
         })
+      }
+    },
+    {
+      title: 'Table of contents',
+      subtext: 'Show an outline of your page',
+      aliases: ['toc', 'outline', 'contents'],
+      group: 'Advanced',
+      icon: <TocIcon size={18} />,
+      onItemClick: () => {
+        insertOrUpdateBlockForSlashMenu(editor, { type: 'toc' })
       }
     },
     {

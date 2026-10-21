@@ -193,3 +193,22 @@ export const WidthIcon = (p: IconProps): React.JSX.Element => (
     <path d="M3 10h14M6 7l-3 3 3 3M14 7l3 3-3 3" {...stroke} />
   </Svg>
 )
+
+export const DuplicateIcon = (p: IconProps): React.JSX.Element => (
+  <Svg {...p}>
+    <rect x="7" y="7" width="9.25" height="9.25" rx="2" {...stroke} />
+    <path
+      d="M13 4.75A1.75 1.75 0 0 0 11.25 3h-6.5A1.75 1.75 0 0 0 3 4.75v6.5A1.75 1.75 0 0 0 4.75 13"
+      {...stroke}
+    />
+  </Svg>
+)
+
+export const TocIcon = (p: IconProps): React.JSX.Element => (
+  <Svg {...p}>
+    <path d="M7 5h9.5M9.5 10h7M9.5 15h7" {...stroke} />
+    <circle cx="3.75" cy="5" r="1" />
+    <circle cx="6.25" cy="10" r="1" />
+    <circle cx="6.25" cy="15" r="1" />
+  </Svg>
+)

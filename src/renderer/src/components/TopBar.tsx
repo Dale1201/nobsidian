@@ -2,7 +2,15 @@ import { Fragment, useState } from 'react'
 import type { PageDoc } from '@shared/types'
 import { pathTo } from '../lib/tree'
 import { useApp } from '../store'
-import { ClockIcon, DotsIcon, SidebarIcon, StarIcon, TrashIcon, WidthIcon } from './icons'
+import {
+  ClockIcon,
+  DotsIcon,
+  DuplicateIcon,
+  SidebarIcon,
+  StarIcon,
+  TrashIcon,
+  WidthIcon
+} from './icons'
 import { Menu } from './Popover'
 import { PageIconView } from './PageIconView'
 
@@ -78,6 +86,11 @@ export function TopBar({
               onSelect: onToggleFullWidth
             },
             'separator',
+            {
+              label: 'Duplicate',
+              icon: <DuplicateIcon size={16} />,
+              onSelect: () => void app().duplicatePage(currentId)
+            },
             {
               label: 'Page history',
               icon: <ClockIcon size={16} />,

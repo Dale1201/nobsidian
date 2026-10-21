@@ -5,6 +5,7 @@ import { useApp } from '../store'
 import {
   ChevronRightIcon,
   DotsIcon,
+  DuplicateIcon,
   MoveIcon,
   PlusIcon,
   RenameIcon,
@@ -137,6 +138,11 @@ export function SidebarRow({
               onSelect: () => void app().toggleFavorite(node.id)
             },
             'separator',
+            {
+              label: 'Duplicate',
+              icon: <DuplicateIcon size={16} />,
+              onSelect: () => void app().duplicatePage(node.id)
+            },
             {
               label: 'Rename',
               icon: <RenameIcon size={16} />,

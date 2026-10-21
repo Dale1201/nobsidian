@@ -47,6 +47,7 @@ export function PageEditor({
   const failed = useRef(false)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const inFlight = useRef<Promise<void> | null>(null)
+  const lastColor = useApp((s) => s.settings?.lastColor)
   const pageLink = usePageLink()
 
   const keepDraft = useCallback(
@@ -173,6 +174,8 @@ export function PageEditor({
       }}
       openLink={openHref}
       pageLink={pageLink}
+      lastColor={lastColor}
+      onPickColor={(picked) => void useApp.getState().updateSettings({ lastColor: picked })}
     />
   )
 }

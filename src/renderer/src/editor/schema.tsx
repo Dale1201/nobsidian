@@ -7,7 +7,11 @@ import {
   type Block,
   type PartialBlock
 } from '@blocknote/core'
-import { createReactBlockSpec, createReactInlineContentSpec } from '@blocknote/react'
+import {
+  createReactBlockSpec,
+  createReactInlineContentSpec,
+  useEditorChange
+} from '@blocknote/react'
 import { codeBlockOptions } from '@blocknote/code-block'
 import { withMultiColumn } from '@blocknote/xl-multi-column'
 import { createContext, useContext, useState } from 'react'
@@ -104,6 +108,88 @@ export const createPageLink = createReactBlockSpec(
   }
 )
 
+interface TocEntry {
+  id: string
+  level: number
+  text: string
+}
+
+// Structural, so the block spec does not depend on the schema type it is part of.
+interface OutlineBlock {
+  id: string
+  type: string
+  props: { level?: number }
+  content?: unknown
+  children: OutlineBlock[]
+}
+
+type OutlineInline = { type: string; text?: string; content?: { text: string }[] }
+
+function tocEntries(blocks: OutlineBlock[], out: TocEntry[] = []): TocEntry[] {
+  for (const block of blocks) {
+    if (block.type === 'heading' && Array.isArray(block.content)) {
+      const text = (block.content as OutlineInline[])
+        .map((c) => c.text ?? c.content?.map((t) => t.text).join('') ?? '')
+        .join('')
+      out.push({ id: block.id, level: block.props.level ?? 1, text })
+    }
+    tocEntries(block.children, out)
+  }
+  return out
+}
+
+function sameEntries(a: TocEntry[], b: TocEntry[]): boolean {
+  return (
+    a.length === b.length &&
+    a.every((e, i) => e.id === b[i].id && e.text === b[i].text && e.level === b[i].level)
+  )
+}
+
+/** A heading in a collapsed toggle has no box, so scroll to the nearest ancestor that does. */
+function scrollToBlock(root: HTMLElement | undefined, id: string): void {
+  let el = root?.querySelector<HTMLElement>(`[data-id="${id}"]`) ?? null
+  while (el && el.getClientRects().length === 0) {
+    el = el.parentElement?.closest<HTMLElement>('.bn-block-outer') ?? null
+  }
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches
+  el?.scrollIntoView({ block: 'start', behavior: reduced ? 'auto' : 'smooth' })
+}
+
+export const createToc = createReactBlockSpec(
+  {
+    type: 'toc',
+    propSchema: {},
+    content: 'none'
+  },
+  {
+    render: function TocBlock({ editor }) {
+      const [entries, setEntries] = useState(() => tocEntries(editor.document as OutlineBlock[]))
+      useEditorChange(() => {
+        const next = tocEntries(editor.document as OutlineBlock[])
+        setEntries((prev) => (sameEntries(prev, next) ? prev : next))
+      }, editor)
+      if (entries.length === 0) {
+        return <div className="nb-toc-empty">Add headings to create a table of contents.</div>
+      }
+      const top = Math.min(...entries.map((e) => e.level))
+      return (
+        <nav className="nb-toc">
+          {entries.map((entry) => (
+            <button
+              key={entry.id}
+              className="nb-toc-item"
+              style={{ paddingLeft: 6 + (entry.level - top) * 24 }}
+              onClick={() => scrollToBlock(editor.domElement, entry.id)}
+            >
+              <span className="nb-toc-text">{entry.text || 'Untitled'}</span>
+            </button>
+          ))}
+        </nav>
+      )
+    }
+  }
+)
+
 export const createRaw = createReactBlockSpec(
   {
     type: 'raw',
@@ -138,7 +224,8 @@ export const schema = withMultiColumn(
       callout: createCallout(),
       math: createMath(),
       pageLink: createPageLink(),
-      raw: createRaw()
+      raw: createRaw(),
+      toc: createToc()
     },
     inlineContentSpecs: {
       ...defaultInlineContentSpecs,
