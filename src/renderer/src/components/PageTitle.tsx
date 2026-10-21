@@ -31,7 +31,7 @@ export function PageTitle({
     if (ref.current) ref.current.textContent = latest.current
     // A brand-new page starts with the cursor in its title, like Notion.
     if (latest.current === '') ref.current?.focus()
-    const unregister = registerFlusher(commit)
+    const unregister = registerFlusher(() => commit().then(() => true))
     return () => {
       unregister()
       void commit()

@@ -71,7 +71,7 @@ export interface IpcContract {
   'settings:get': [payload: void, result: Settings]
   'settings:set': [payload: Partial<Settings>, result: Settings]
   'shell:openExternal': [payload: { url: string }, result: void]
-  'app:flushed': [payload: void, result: void]
+  'app:flushed': [payload: { saved: boolean }, result: void]
 }
 
 export type IpcChannel = keyof IpcContract

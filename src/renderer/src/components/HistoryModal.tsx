@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { HistoryVersion, PageDoc } from '@shared/types'
-import { versionLabel } from '../lib/time'
+import { versionLabels } from '../lib/time'
 import { flushAll, useApp } from '../store'
 import { CloseIcon } from './icons'
 import { ConfirmDialog, Modal } from './Modal'
@@ -23,6 +23,7 @@ export function HistoryModal({
   const [failed, setFailed] = useState(false)
   const seq = useRef(0)
   const listRef = useRef<HTMLDivElement>(null)
+  const labels = versionLabels(versions?.map((v) => v.at) ?? [])
   const close = (): void => {
     useApp.getState().setOverlay(null)
     queueMicrotask(() =>
@@ -102,7 +103,7 @@ export function HistoryModal({
               className={`history-item ${v.id === selected ? 'selected' : ''}`}
               onClick={() => setSelected(v.id)}
             >
-              {versionLabel(v.at)}
+              {labels[i]}
               {i === 0 && <span className="history-current">Current</span>}
             </button>
           ))}
@@ -119,7 +120,7 @@ export function HistoryModal({
       </div>
       {confirming && selected && versions && (
         <ConfirmDialog
-          title={`Restore the version from ${versionLabel(versions.find((v) => v.id === selected)!.at)}?`}
+          title={`Restore the version from ${labels[versions.findIndex((v) => v.id === selected)]}?`}
           message="The page's current content stays in its history."
           confirmLabel="Restore"
           onConfirm={() => void restore()}

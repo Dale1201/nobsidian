@@ -100,6 +100,7 @@ describe('page files', () => {
     expect(insertId('---\nid: [broken\n---\nBody\n', 'x')).toBe(
       '---\nid: x\n---\n\n---\nid: [broken\n---\nBody\n'
     )
+    expect(insertId('\uFEFFHi\n', 'x')).toBe('\uFEFF---\nid: x\n---\n\nHi\n')
   })
 
   it('ignores an id that is not safe as a folder name, keeping its text', () => {
@@ -107,7 +108,6 @@ describe('page files', () => {
     expect(page.meta.id).toBeUndefined()
     expect(page.meta.extra).toEqual({ id: '../..' })
     expect(insertId('---\nid: ../..\n---\n\nBody\n', 'x')).toBe('---\nid: x\n---\n\nBody\n')
-    expect(insertId('\uFEFFHi\n', 'x')).toBe('\uFEFF---\nid: x\n---\n\nHi\n')
   })
 
   it('handles files without frontmatter', () => {

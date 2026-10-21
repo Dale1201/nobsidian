@@ -1,11 +1,42 @@
 import { chmod, readFile, readdir, rename, rm, unlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import type { Page } from '@playwright/test'
 import { expect, test } from './fixtures'
 import { editor, newPage, waitForFile } from './helpers'
 
 /** The page's id line, so an outside edit keeps the page's identity like a real editor would. */
 async function header(file: string): Promise<string> {
   return /^---\n[\s\S]*?\n---\n/.exec(await readFile(file, 'utf8'))![0]
+}
+
+/** Sets the mode of the history folder and every page's folder in it. */
+async function chmodHistory(workspace: string, mode: number): Promise<void> {
+  const base = join(workspace, '.nobsidian', 'history')
+  for (const name of await readdir(base)) await chmod(join(base, name), mode)
+  await chmod(base, mode)
+}
+
+async function historyTexts(workspace: string, id: string): Promise<string[]> {
+  const dir = join(workspace, '.nobsidian', 'history', id)
+  const names = (await readdir(dir).catch(() => [])).filter((v) => v.endsWith('.md'))
+  return Promise.all(names.map((v) => readFile(join(dir, v), 'utf8')))
+}
+
+/** A page with unsaved edits under the conflict banner; returns the page file and its id. */
+async function conflicted(nb: { page: Page; workspace: string }): Promise<[string, string]> {
+  const { page, workspace } = nb
+  await newPage(page, 'Shared')
+  await page.keyboard.type('Base')
+  const file = join(workspace, 'Shared.md')
+  await waitForFile(file, 'Base')
+  const head = await header(file)
+  await page.keyboard.type(' plus mine')
+  await writeFile(file, `${head}\nTheirs\n`)
+  await expect(page.getByRole('status')).toContainText('This page was changed outside Nobsidian.')
+  // The app's own text it replaced goes to history first; wait for it before breaking history.
+  const id = /id: (\S+)/.exec(head)![1]
+  await expect.poll(async () => (await historyTexts(workspace, id)).length).toBe(1)
+  return [file, id]
 }
 
 test('an outside edit reloads the open page when nothing is unsaved', async ({ nb }) => {
@@ -149,6 +180,53 @@ test('leaving a page during a conflict keeps the outside version and the edits i
     .toBe(true)
   expect(await readFile(file, 'utf8')).toContain('Theirs')
   expect(await readFile(file, 'utf8')).not.toContain('plus mine')
+})
+
+test('Reload keeps the edits and the banner when they cannot be kept in history', async ({
+  nb
+}) => {
+  const { page, workspace } = nb
+  const [file, id] = await conflicted(nb)
+  const banner = page.getByRole('status')
+  try {
+    await chmodHistory(workspace, 0o555)
+    await banner.getByRole('button', { name: 'Reload' }).click()
+    await expect(page.getByRole('alert')).toContainText("Couldn't save the page")
+    await expect(banner).toBeVisible()
+    await expect(page.locator(editor)).toHaveText('Base plus mine')
+    expect(await readFile(file, 'utf8')).toContain('Theirs')
+  } finally {
+    await chmodHistory(workspace, 0o755)
+  }
+  await banner.getByRole('button', { name: 'Reload' }).click()
+  await expect(page.locator(editor)).toHaveText('Theirs')
+  await expect(banner).toHaveCount(0)
+  expect((await historyTexts(workspace, id)).some((t) => t.includes('Base plus mine'))).toBe(true)
+})
+
+test('quitting holds when the edits cannot be kept, and asks first', async ({ nb }) => {
+  const { app, page, workspace } = nb
+  await conflicted(nb)
+  try {
+    await chmodHistory(workspace, 0o555)
+    await app.evaluate(({ app, dialog }) => {
+      const asked: string[] = []
+      ;(globalThis as { asked?: string[] }).asked = asked
+      dialog.showMessageBox = (async (_win: unknown, options: Electron.MessageBoxOptions) => {
+        asked.push(options.message)
+        return { response: 0, checkboxChecked: false }
+      }) as typeof dialog.showMessageBox
+      app.quit()
+    })
+    await expect(page.getByRole('alert')).toContainText("Couldn't save the page")
+    await expect
+      .poll(() => app.evaluate(() => (globalThis as { asked?: string[] }).asked))
+      .toEqual(["Some edits couldn't be saved."])
+    await expect(page.getByRole('status')).toBeVisible()
+    await expect(page.locator(editor)).toHaveText('Base plus mine')
+  } finally {
+    await chmodHistory(workspace, 0o755)
+  }
 })
 
 test('pages added, renamed and deleted in Finder show up in the sidebar', async ({ nb }) => {

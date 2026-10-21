@@ -131,7 +131,10 @@ export function PageEditor({
   )
 
   useEffect(() => {
-    const flush = (): Promise<void> => save('leave')
+    const flush = async (): Promise<boolean> => {
+      await save('leave')
+      return pending.current === null
+    }
     const unregister = registerFlusher(flush)
     return () => {
       unregister()

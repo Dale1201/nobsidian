@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { timeAgo, versionLabel } from './time'
+import { timeAgo, versionLabel, versionLabels } from './time'
 
 const now = new Date(2026, 9, 21, 15, 0)
 const at = (...args: [number, number, number, number, number]): string =>
@@ -11,6 +11,26 @@ describe('versionLabel', () => {
     expect(versionLabel(at(2026, 9, 20, 9, 12), now)).toBe('Yesterday, 9:12 AM')
     expect(versionLabel(at(2026, 9, 12, 9, 12), now)).toBe('Oct 12, 9:12 AM')
     expect(versionLabel(at(2025, 11, 31, 23, 59), now)).toBe('Dec 31, 2025, 11:59 PM')
+  })
+})
+
+describe('versionLabels', () => {
+  it('adds seconds only where a label would read the same as its neighbor', () => {
+    const labels = versionLabels(
+      [
+        at(2026, 9, 21, 14, 3),
+        new Date(2026, 9, 21, 13, 16, 42).toISOString(),
+        new Date(2026, 9, 21, 13, 16, 5).toISOString(),
+        at(2026, 9, 20, 9, 12)
+      ],
+      now
+    )
+    expect(labels).toEqual([
+      'Today, 2:03 PM',
+      'Today, 1:16:42 PM',
+      'Today, 1:16:05 PM',
+      'Yesterday, 9:12 AM'
+    ])
   })
 })
 

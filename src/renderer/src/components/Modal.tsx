@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import { useApp } from '../store'
 
 const FOCUSABLE = 'button, [href], input, textarea, select, [tabindex]:not([tabindex="-1"])'
 
@@ -93,7 +94,7 @@ export function Modal({
   )
 }
 
-/** A small "are you sure" dialog with a destructive or primary confirm button. */
+/** A small "are you sure" dialog; a destructive one starts on Cancel, as on macOS. */
 export function ConfirmDialog({
   title,
   message,
@@ -109,6 +110,10 @@ export function ConfirmDialog({
   onConfirm: () => void
   onClose: () => void
 }): React.JSX.Element {
+  useEffect(() => {
+    useApp.setState((s) => ({ confirms: s.confirms + 1 }))
+    return () => useApp.setState((s) => ({ confirms: s.confirms - 1 }))
+  }, [])
   return (
     <Modal onClose={onClose} className="confirm" label={title}>
       <div className="confirm-title">{title}</div>
@@ -116,7 +121,7 @@ export function ConfirmDialog({
       <div className="confirm-actions">
         <button
           className={danger ? 'button-danger' : 'button-primary'}
-          autoFocus
+          autoFocus={!danger}
           onClick={() => {
             onClose()
             onConfirm()
@@ -124,7 +129,7 @@ export function ConfirmDialog({
         >
           {confirmLabel}
         </button>
-        <button className="button-secondary" onClick={onClose}>
+        <button className="button-secondary" autoFocus={danger} onClick={onClose}>
           Cancel
         </button>
       </div>

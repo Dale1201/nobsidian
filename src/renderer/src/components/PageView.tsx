@@ -52,7 +52,12 @@ export function PageView({ theme }: { theme: 'light' | 'dark' }): React.JSX.Elem
   const reload = useCallback(async (): Promise<void> => {
     const id = docRef.current?.id
     if (!id) return
-    const fresh = await api.invoke('page:read', { id })
+    let fresh: PageDoc
+    try {
+      fresh = await api.invoke('page:read', { id })
+    } catch (e) {
+      return useApp.getState().reportError('reload', e)
+    }
     if (docRef.current?.id !== id || useApp.getState().currentId !== id) return
     // Typing that started while the page was being read is not thrown away.
     if (editorRef.current?.hasUnsaved()) return setConflict(true)
@@ -83,8 +88,12 @@ export function PageView({ theme }: { theme: 'light' | 'dark' }): React.JSX.Elem
 
   const updateMeta = (patch: PageMetaPatch): void => {
     if (!doc) return
+    const before = doc
     setDoc(applyPatch(doc, patch))
-    void api.invoke('page:meta', { id: doc.id, patch })
+    api.invoke('page:meta', { id: doc.id, patch }).catch((e) => {
+      setDoc((d) => (d?.id === before.id ? { ...d, meta: before.meta } : d))
+      void useApp.getState().reportError('update', e)
+    })
   }
 
   const ready = doc && doc.id === currentId && node

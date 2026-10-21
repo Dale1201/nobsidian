@@ -10,6 +10,11 @@ import { flushAll, useApp } from './store'
 
 const api = window.api
 
+function canSearch(): boolean {
+  const { workspace, overlay, confirms } = useApp.getState()
+  return workspace !== null && overlay === null && confirms === 0
+}
+
 export function App(): React.JSX.Element | null {
   const ready = useApp((s) => s.ready)
   const workspace = useApp((s) => s.workspace)
@@ -23,13 +28,15 @@ export function App(): React.JSX.Element | null {
     void useApp.getState().init()
     const offTree = api.on('tree:changed', (snapshot) => useApp.getState().applySnapshot(snapshot))
     const offFlush = api.on('app:flush', () => {
-      void flushAll().finally(() => api.invoke('app:flushed', undefined))
+      void flushAll()
+        .catch(() => false)
+        .then((saved) => api.invoke('app:flushed', { saved }))
     })
     const offMissing = api.on('workspace:missing', () => useApp.getState().workspaceMissing())
     // Cmd+K opens search unless the editor used it to add a link to selected text.
     const onKey = (e: KeyboardEvent): void => {
       if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.key.toLowerCase() !== 'k') return
-      if (e.defaultPrevented || !useApp.getState().workspace || useApp.getState().overlay) return
+      if (e.defaultPrevented || !canSearch()) return
       e.preventDefault()
       useApp.getState().setOverlay({ kind: 'search' })
     }
@@ -48,7 +55,7 @@ export function App(): React.JSX.Element | null {
         const app = useApp.getState()
         if (cmd === 'new-page') void app.createPage(null)
         if (cmd === 'open-folder') void app.chooseWorkspace()
-        if (cmd === 'search' && app.workspace && !app.overlay) app.setOverlay({ kind: 'search' })
+        if (cmd === 'search' && canSearch()) app.setOverlay({ kind: 'search' })
         if (cmd === 'back') app.back()
         if (cmd === 'forward') app.forward()
         if (cmd === 'toggle-sidebar')

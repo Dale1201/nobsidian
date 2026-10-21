@@ -6,13 +6,21 @@ import { findNode, firstPageId } from './lib/tree'
 const api = window.api
 
 // Editors register a flush so pending autosaves land before destructive actions and quit.
-const flushers = new Set<() => Promise<void>>()
-export function registerFlusher(fn: () => Promise<void>): () => void {
+// A flush resolves false when edits are still unsaved afterwards.
+const flushers = new Set<() => Promise<boolean>>()
+export function registerFlusher(fn: () => Promise<boolean>): () => void {
   flushers.add(fn)
   return () => flushers.delete(fn)
 }
-export async function flushAll(): Promise<void> {
-  await Promise.all([...flushers].map((fn) => fn()))
+export async function flushAll(): Promise<boolean> {
+  return (await Promise.all([...flushers].map((fn) => fn()))).every(Boolean)
+}
+
+let errorTimer: ReturnType<typeof setTimeout> | undefined
+function showError(message: string): void {
+  clearTimeout(errorTimer)
+  useApp.setState({ error: message })
+  errorTimer = setTimeout(() => useApp.setState({ error: null }), 6000)
 }
 
 export type Overlay =
@@ -32,6 +40,8 @@ interface AppState {
   overlay: Overlay | null
   /** Trash entry whose page is shown read-only instead of the current page. */
   trashEntry: string | null
+  /** Open confirm dialogs; while any is open, nothing else opens over it. */
+  confirms: number
 
   init: () => Promise<void>
   chooseWorkspace: () => Promise<void>
@@ -58,7 +68,7 @@ interface AppState {
 
 function errorReason(err: unknown): string {
   return err instanceof Error
-    ? err.message.replace(/^Error invoking remote method '[^']+': /, '')
+    ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
     : String(err)
 }
 
@@ -75,6 +85,7 @@ export const useApp = create<AppState>((set, get) => ({
   error: null,
   overlay: null,
   trashEntry: null,
+  confirms: 0,
 
   init: async () => {
     const [settings, workspace] = await Promise.all([
@@ -93,13 +104,12 @@ export const useApp = create<AppState>((set, get) => ({
 
   chooseWorkspace: async () => {
     // Pending edits must land in the workspace they belong to.
-    await flushAll()
+    if (!(await flushAll())) return
     let workspace: WorkspaceInfo | null
     try {
       workspace = await api.invoke('workspace:choose', undefined)
     } catch (e) {
-      set({ error: `Couldn't open that folder: ${errorReason(e)}` })
-      setTimeout(() => set({ error: null }), 6000)
+      showError(`Couldn't open that folder: ${errorReason(e)}`)
       return
     }
     if (!workspace) return
@@ -178,12 +188,12 @@ export const useApp = create<AppState>((set, get) => ({
   },
 
   trashPage: async (id) => {
-    await flushAll()
+    if (!(await flushAll())) return
     await api.invoke('page:trash', { id }).catch((e) => get().reportError('delete', e))
   },
 
   duplicatePage: async (id) => {
-    await flushAll()
+    if (!(await flushAll())) return
     try {
       const node = await api.invoke('page:duplicate', { id })
       get().openPage(node.id)
@@ -216,7 +226,14 @@ export const useApp = create<AppState>((set, get) => ({
   setOverlay: (overlay) => set({ overlay }),
 
   workspaceMissing: () =>
-    set({ workspace: null, currentId: null, trashEntry: null, overlay: null, tree: [] }),
+    set({
+      workspace: null,
+      currentId: null,
+      trashEntry: null,
+      overlay: null,
+      tree: [],
+      favorites: []
+    }),
 
   toggleFavorite: async (id) => {
     await api
@@ -244,8 +261,8 @@ export const useApp = create<AppState>((set, get) => ({
 
   /** Shows what failed and re-syncs the sidebar with what is actually on disk. */
   reportError: async (action, err) => {
-    set({ error: `Couldn't ${action} the page: ${errorReason(err)}` })
-    setTimeout(() => set({ error: null }), 6000)
-    get().applySnapshot(await api.invoke('tree:get', undefined))
+    showError(`Couldn't ${action} the page: ${errorReason(err)}`)
+    const snapshot = await api.invoke('tree:get', undefined).catch(() => null)
+    if (snapshot) get().applySnapshot(snapshot)
   }
 }))

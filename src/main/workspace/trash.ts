@@ -13,7 +13,8 @@ export interface TrashMeta {
   deletedAt: string
   /** Position among its siblings, so a restore puts it back in place. */
   index?: number
-  favorite?: boolean
+  /** Ids of the pages in the entry that were in Favorites. */
+  favorites?: string[]
   /** Workspace path of each page the trashed pages link to -> its id, as of the delete. */
   links?: Record<string, string>
 }
@@ -57,14 +58,14 @@ export class Trash {
     return entry
   }
 
-  /** Newest first; unreadable entries are skipped, and ones left by an interrupted delete removed. */
+  /** Newest first; unreadable entries are skipped, and empty ones left by an interrupted delete removed. */
   async list(): Promise<TrashEntry[]> {
     const names = await readdir(this.base()).catch(() => [] as string[])
     const entries: TrashEntry[] = []
     for (const name of names) {
       const entry = await this.get(name).catch(() => null)
       if (!entry) continue
-      if (await exists(entry.file)) entries.push(entry)
+      if ((await exists(entry.file)) || (await exists(entry.folder))) entries.push(entry)
       else await this.remove(entry)
     }
     return entries.sort((a, b) => b.meta.deletedAt.localeCompare(a.meta.deletedAt))

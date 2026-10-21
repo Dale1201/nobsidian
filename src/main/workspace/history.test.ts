@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { mkdtemp, readFile, readdir, rm, unlink, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, readdir, rm, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Block } from '../../shared/core/blocks'
@@ -16,6 +16,7 @@ beforeEach(async () => {
   clock = new Date('2026-10-21T10:00:00.000Z')
 })
 afterEach(async () => {
+  await unlock()
   await rm(root, { recursive: true, force: true })
 })
 
@@ -36,9 +37,22 @@ const link = (id: string): Block => ({
   children: []
 })
 
+const locked: string[] = []
+/** Makes the history folder (and a page's history folder) unwritable, like a full or read-only disk. */
+async function lockHistory(id?: string): Promise<void> {
+  const dirs = [join(root, '.nobsidian', 'history'), ...(id ? [historyDir(id)] : [])]
+  for (const dir of dirs) await mkdir(dir, { recursive: true })
+  for (const dir of dirs) await chmod(dir, 0o555)
+  locked.push(...dirs)
+}
+async function unlock(): Promise<void> {
+  for (const dir of locked.splice(0)) await chmod(dir, 0o755)
+}
+const historyDir = (id: string): string => join(root, '.nobsidian', 'history', id)
+
 /** Snapshot files of a page, newest first, as stored. */
 async function snapshots(id: string): Promise<string[]> {
-  const dir = join(root, '.nobsidian', 'history', id)
+  const dir = historyDir(id)
   const names = (await readdir(dir).catch(() => [] as string[])).filter((n) => n.endsWith('.md'))
   return Promise.all(
     names
@@ -57,6 +71,17 @@ describe('Page history', () => {
     const id = ws.tree()[0].id
     await ws.writePage(id, [text('Mine')])
     expect(await snapshots(id)).toEqual([`---\nid: ${id}\n---\n\nWritten  elsewhere *loosely*\n`])
+  })
+
+  it('keeps a page written elsewhere before a rename rewrites the links in it', async () => {
+    const other = '---\nid: other1\n---\n\nSome _emph_ text.\n\nSee [the target](Target.md).\n'
+    await writeFile(join(root, 'Other.md'), other)
+    await writeFile(join(root, 'Target.md'), '---\nid: target1\n---\n\nT\n')
+    const ws = await open()
+    await ws.renamePage('target1', 'Renamed')
+    expect(await read('Other.md')).toContain('*emph*')
+    expect(await read('Other.md')).toContain('(Renamed.md)')
+    expect(await snapshots('other1')).toEqual([other])
   })
 
   it('snapshots at most every 10 minutes while editing, and when leaving the page', async () => {
@@ -139,5 +164,58 @@ describe('Page history', () => {
       reason: 'gone'
     })
     expect(await snapshots(id)).toEqual([`---\nid: ${id}\ntitle: ""\n---\n\nlast words\n`])
+  })
+})
+
+describe('When history cannot be saved', () => {
+  it('reports a draft that did not reach history instead of resolving', async () => {
+    const ws = await open()
+    const { id } = await ws.createPage(null)
+    await lockHistory()
+    await expect(ws.keepDraft(id, [text('unsaved words')])).rejects.toThrow()
+    await unlock()
+    expect(await snapshots(id)).toEqual([])
+  })
+
+  it('reports the edits to a page deleted outside when they did not reach history', async () => {
+    const ws = await open()
+    const { id, path } = await ws.createPage(null)
+    await unlink(join(root, path))
+    await lockHistory()
+    await expect(ws.writePage(id, [text('last words')], { revision: 0 })).rejects.toThrow()
+  })
+
+  it('refuses Keep mine rather than overwrite outside text it could not keep', async () => {
+    const ws = await open()
+    const { id, path } = await ws.createPage(null)
+    await ws.writePage(id, [text('Base')])
+    const head = /^---\n[\s\S]*?\n---\n/.exec(await read(path))![0]
+    await writeFile(join(root, path), `${head}\nTheir important outside text\n`)
+    await ws.reconcile([{ kind: 'change', path }])
+    await lockHistory(id)
+    await expect(ws.writePage(id, [text('Mine')], { revision: 0, force: true })).rejects.toThrow()
+    expect(await read(path)).toContain('Their important outside text')
+  })
+
+  it('still saves over its own text, so broken history does not stop editing', async () => {
+    const ws = await open()
+    const { id, path } = await ws.createPage(null)
+    await ws.writePage(id, [text('one')])
+    await lockHistory(id)
+    later(11)
+    expect(await ws.writePage(id, [text('two')])).toEqual({ ok: true, revision: 0 })
+    expect(await read(path)).toContain('two')
+  })
+
+  it('refuses a restore when the current content cannot be kept first', async () => {
+    const ws = await open()
+    const { id, path } = await ws.createPage(null)
+    await ws.writePage(id, [text('old')])
+    const [old] = await ws.listHistory(id)
+    later(1)
+    await ws.writePage(id, [text('new')])
+    await lockHistory(id)
+    await expect(ws.restoreHistory(id, old.id)).rejects.toThrow()
+    expect(await read(path)).toContain('new')
   })
 })

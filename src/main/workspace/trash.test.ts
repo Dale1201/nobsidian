@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, readdir, rm, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Block } from '../../shared/core/blocks'
@@ -130,6 +130,22 @@ describe('Trash', () => {
     expect(ws.favorites()).toEqual([b])
   })
 
+  it('puts sub-pages that were in Favorites back there too', async () => {
+    const ws = await open()
+    const a = await page(ws, null, 'A')
+    const child = await page(ws, a, 'Child')
+    const grandchild = await page(ws, child, 'Grandchild')
+    const other = await page(ws, null, 'Other')
+    await ws.setFavorite(grandchild, true)
+    await ws.setFavorite(other, true)
+    await ws.setFavorite(a, true)
+    await ws.trashPage(a)
+    expect(ws.favorites()).toEqual([other])
+    const [item] = await ws.listTrash()
+    await ws.restoreTrash(item.entry)
+    expect(ws.favorites()).toEqual([other, a, grandchild])
+  })
+
   it('leaves links to a newer page with the same name alone', async () => {
     const ws = await open()
     const old = await page(ws, null, 'Ideas')
@@ -191,6 +207,21 @@ describe('Trash', () => {
     const ws = await open()
     expect(await ws.listTrash()).toEqual([])
     expect(await readdir(join(root, '.nobsidian', 'trash'))).toEqual([])
+  })
+
+  it('keeps an entry whose page file is gone but whose sub-pages are still there', async () => {
+    const ws = await open()
+    const a = await page(ws, null, 'A')
+    const child = await page(ws, a, 'Child')
+    await ws.writePage(child, [text('Child content')])
+    await ws.trashPage(a)
+    const [item] = await ws.listTrash()
+    await unlink(join(root, '.nobsidian', 'trash', item.entry, 'A.md'))
+    expect((await ws.listTrash()).map((i) => [i.title, i.pageCount])).toEqual([['A', 2]])
+    await ws.restoreTrash(item.entry)
+    const restored = ws.tree().find((n) => n.title === 'A')!
+    expect(restored.children.map((n) => n.id)).toEqual([child])
+    expect(await read('A/Child.md')).toContain('Child content')
   })
 
   it('deletes forever, removing the history of every page in the entry', async () => {

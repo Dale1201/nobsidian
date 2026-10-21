@@ -30,7 +30,8 @@ export function SidebarRow({
   draggable?: boolean
   expandable?: boolean
 }): React.JSX.Element {
-  const currentId = useApp((s) => s.currentId)
+  // A trashed page on screen is not in the sidebar, so no row is the current one.
+  const currentId = useApp((s) => (s.trashEntry ? null : s.currentId))
   const expandedIds = useApp((s) => (s.workspace && s.settings?.expanded[s.workspace.root]) || NONE)
   const favorites = useApp((s) => s.favorites)
   const renamingId = useApp((s) => s.renamingId)

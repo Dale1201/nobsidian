@@ -478,7 +478,7 @@ export class Workspace {
     const now = this.now().getTime()
     const due = now - (this.lastSnapshot.get(r.id) ?? 0) >= SNAPSHOT_INTERVAL_MS
     if (oldText !== undefined && (this.owned.has(r.id) || due)) {
-      await this.snapshot(r.id, oldText, oldPath)
+      await this.snapshotQuietly(r.id, oldText, oldPath)
       this.lastSnapshot.set(r.id, now)
     }
     this.owned.delete(r.id)
@@ -653,26 +653,48 @@ export class Workspace {
   /** Writes content the user made, keeping history: the text it replaces and a periodic copy. */
   private async writeOwn(r: PageRecord, disk: string, text: string): Promise<void> {
     const now = this.now().getTime()
-    this.stubs.delete(r.path)
     if (!this.owned.has(r.id)) {
+      // Text the app did not write may exist nowhere else, so it is never replaced without a copy.
       await this.snapshot(r.id, disk, r.path)
       this.owned.add(r.id)
       this.lastSnapshot.set(r.id, now)
     }
+    this.stubs.delete(r.path)
     await this.writeText(r.path, text)
     if (now - (this.lastSnapshot.get(r.id) ?? 0) >= SNAPSHOT_INTERVAL_MS) {
-      await this.snapshot(r.id, text, r.path)
+      await this.snapshotQuietly(r.id, text, r.path)
       this.lastSnapshot.set(r.id, now)
     }
   }
 
+  /** Rewrites links or the title field, keeping the text first if the app has not written it yet. */
+  private async rewrite(r: PageRecord, disk: string, text: string): Promise<void> {
+    if (!this.owned.has(r.id)) {
+      await this.snapshotQuietly(r.id, disk, r.path)
+      this.owned.add(r.id)
+      this.lastSnapshot.set(r.id, this.now().getTime())
+    }
+    await this.writeText(r.path, text)
+  }
+
   // ---------- history ----------
 
+  /** For a copy that may be the only one left; fails when it cannot be saved. */
   private async snapshot(id: string, text: string, path: string): Promise<void> {
     // An empty page has nothing worth restoring.
     if (splitFrontmatter(text).body.trim() === '') return
     try {
       await this.history.save(id, text, this.snapshotMeta(path, text))
+    } catch (err) {
+      const reason = (err as NodeJS.ErrnoException).code ?? (err as Error).message
+      throw new Error(`couldn't keep a copy in its history (${reason})`, { cause: err })
+    }
+  }
+
+  /** For checkpoints and copies whose loss loses no content: a failure is only logged. */
+  private async snapshotQuietly(id: string, text: string, path: string): Promise<void> {
+    try {
+      await this.snapshot(id, text, path)
     } catch (err) {
       console.error(`Could not save history for ${path}`, err)
     }
@@ -706,7 +728,7 @@ export class Workspace {
         const r = this.pages.get(pageId)
         const text = r && this.texts.get(r.path)
         if (!r || text === undefined || !this.owned.has(pageId)) continue
-        await this.snapshot(pageId, text, r.path)
+        await this.snapshotQuietly(pageId, text, r.path)
         this.lastSnapshot.set(pageId, this.now().getTime())
       }
     })
@@ -913,7 +935,7 @@ export class Workspace {
         originalPath: r.path,
         parentId: r.parentId,
         index: this.childrenOf(r.parentId).indexOf(r),
-        favorite: this.state.favorites.includes(id),
+        favorites: this.state.favorites.filter((f) => removed.some((d) => d.id === f)),
         links
       })
       for (const d of removed) {
@@ -955,7 +977,9 @@ export class Workspace {
   readTrash(entry: string): Promise<PageDoc> {
     return this.run(async () => {
       const e = await this.trash.get(entry)
-      const doc = this.toDoc(e.meta.originalPath, await readFile(e.file, 'utf8'))
+      // An entry whose page file was lost still holds its sub-pages.
+      const text = await readFile(e.file, 'utf8').catch(() => '')
+      const doc = this.toDoc(e.meta.originalPath, text)
       return { ...doc, id: e.meta.id, title: e.meta.title }
     })
   }
@@ -969,7 +993,7 @@ export class Workspace {
       await mkdir(this.abs(dir), { recursive: true })
       const stem = await this.pageStem(dir, e.meta.title)
       const path = joinPath(dir, `${stem}.md`)
-      await rename(e.file, this.abs(path))
+      if (await exists(e.file)) await rename(e.file, this.abs(path))
       if (await exists(e.folder)) await rename(e.folder, this.abs(childDirOf(path)))
       await this.trash.remove(e)
       await this.rescanChanges()
@@ -990,7 +1014,11 @@ export class Workspace {
       await this.syncTitleField(r)
       const sameParent = (parent?.id ?? null) === e.meta.parentId
       this.insertOrder(parent?.id ?? null, r.id, sameParent ? e.meta.index : undefined)
-      if (e.meta.favorite && !this.state.favorites.includes(r.id)) this.state.favorites.push(r.id)
+      for (const d of restored) {
+        const was = d === r ? e.meta.id : d.id
+        const favorite = e.meta.favorites?.includes(was) && !this.state.favorites.includes(d.id)
+        if (favorite) this.state.favorites.push(d.id)
+      }
       await this.persist()
       return r.id
     })
@@ -1048,10 +1076,11 @@ export class Workspace {
 
   /** Stores the exact title in frontmatter only when the filename cannot carry it. */
   private async syncTitleField(r: PageRecord): Promise<void> {
-    const { meta, blocks } = parsePage(await this.readCurrent(r))
+    const disk = await this.readCurrent(r)
+    const { meta, blocks } = parsePage(disk)
     const title = stemOf(r.path) === r.title ? undefined : r.title
     if (meta.title === title) return
-    await this.writeText(r.path, serializePage({ ...meta, id: r.id, title }, blocks))
+    await this.rewrite(r, disk, serializePage({ ...meta, id: r.id, title }, blocks))
   }
 
   /** Moves a page file (and its child folder) to `dir/stem.md`, then fixes links everywhere. */
@@ -1127,7 +1156,8 @@ export class Workspace {
     oldFile: string,
     destOf: (target: string) => string
   ): Promise<void> {
-    const { meta, blocks } = parsePage(await this.readCurrent(rec))
+    const disk = await this.readCurrent(rec)
+    const { meta, blocks } = parsePage(disk)
     let changed = false
     const remap = (href: string): string => {
       if (isExternalHref(href)) return href
@@ -1140,7 +1170,7 @@ export class Workspace {
     const nextMeta = { ...meta }
     if (meta.cover) nextMeta.cover = remap(meta.cover)
     if (meta.icon?.includes('/')) nextMeta.icon = remap(meta.icon)
-    if (changed) await this.writeText(rec.path, serializePage(nextMeta, nextBlocks))
+    if (changed) await this.rewrite(rec, disk, serializePage(nextMeta, nextBlocks))
   }
 
   // ---------- href translation between disk and editor ----------

@@ -361,7 +361,7 @@ button {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.breadcrumb:hover {
+button.breadcrumb:hover {
   background: var(--hover);
 }
 .breadcrumb-sep {
@@ -743,11 +743,13 @@ button {
   font-size: 14px;
   font-weight: 500;
   line-height: 1.4;
+  text-wrap: balance;
 }
 .confirm-message {
   font-size: 13px;
   color: var(--text-secondary);
   margin-top: 6px;
+  text-wrap: balance;
 }
 .confirm-actions {
   display: flex;
@@ -872,6 +874,11 @@ button {
 .trash-item .icon-button {
   width: 26px;
   height: 26px;
+  opacity: 0;
+}
+.trash-item:hover .icon-button,
+.trash-item:focus-within .icon-button {
+  opacity: 1;
 }
 .trash-empty {
   padding: 24px 8px;

@@ -1,6 +1,7 @@
 import {
   app,
   BrowserWindow,
+  dialog,
   ipcMain,
   Menu,
   nativeTheme,
@@ -91,22 +92,33 @@ function createWindow(): void {
   // Give the renderer a moment to write pending edits before the window goes away.
   // Cancelling the close also cancels an app quit, so the quit is re-issued afterwards.
   let flushed = false
+  let closing = false
   win.on('close', (event) => {
     if (flushed) return
     event.preventDefault()
+    if (closing) return
+    closing = true
     const saving = ctx.settings.set({ windowBounds: win.getNormalBounds() }).catch(() => {})
-    const finish = (): void => {
-      if (flushed) return
+    let answered = false
+    const finish = async (saved: boolean): Promise<void> => {
+      if (answered) return
+      answered = true
+      clearTimeout(timeout)
+      if (!saved && !(await closeAnyway(win, quitting))) {
+        closing = false
+        quitting = false
+        return
+      }
       flushed = true
-      void saving
-        .then(() => ctx.workspace?.checkpoint())
-        .catch(() => {})
-        .then(() => (quitting ? app.quit() : win.close()))
+      await saving
+      await ctx.workspace?.checkpoint().catch(() => {})
+      if (quitting) app.quit()
+      else win.close()
     }
     ipcMain.removeHandler('app:flushed')
-    ipcMain.handle('app:flushed', () => finish())
+    ipcMain.handle('app:flushed', (_event, { saved }: { saved: boolean }) => finish(saved))
     send(win.webContents, 'app:flush', undefined)
-    setTimeout(finish, 2000)
+    const timeout = setTimeout(() => void finish(true), 2000)
   })
   win.on('closed', () => {
     mainWindow = null
@@ -115,6 +127,20 @@ function createWindow(): void {
   if (is.dev && process.env.ELECTRON_RENDERER_URL)
     void win.loadURL(process.env.ELECTRON_RENDERER_URL)
   else void win.loadFile(join(__dirname, '../renderer/index.html'))
+}
+
+/** Asks before closing over edits the renderer could not save; they are still on screen. */
+async function closeAnyway(win: BrowserWindow, quitting: boolean): Promise<boolean> {
+  const verb = quitting ? 'Quit' : 'Close'
+  const { response } = await dialog.showMessageBox(win, {
+    type: 'warning',
+    message: "Some edits couldn't be saved.",
+    detail: `They're still on screen. If you ${verb.toLowerCase()} now, they'll be lost.`,
+    buttons: ['Cancel', `${verb} Anyway`],
+    defaultId: 0,
+    cancelId: 0
+  })
+  return response === 1
 }
 
 app.whenReady().then(async () => {
