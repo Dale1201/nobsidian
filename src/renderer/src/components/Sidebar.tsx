@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { findNode } from '../lib/tree'
 import { useApp } from '../store'
-import { ComposeIcon, PlusIcon, SidebarIcon } from './icons'
+import { ComposeIcon, PlusIcon, SearchIcon, SidebarIcon } from './icons'
 import { Menu } from './Popover'
 import { SidebarRow } from './SidebarRow'
 
@@ -64,6 +64,14 @@ export function Sidebar(): React.JSX.Element {
         <span className="sidebar-workspace-badge">{workspace?.name.slice(0, 1).toUpperCase()}</span>
         <span className="sidebar-row-title">{workspace?.name}</span>
       </button>
+      <div className="sidebar-nav">
+        <button className="sidebar-row" onClick={() => app().setOverlay({ kind: 'search' })}>
+          <span className="page-icon">
+            <SearchIcon size={18} />
+          </span>
+          <span className="sidebar-row-title">Search</span>
+        </button>
+      </div>
       <div className="sidebar-scroll">
         {favoriteNodes.length > 0 && (
           <div className="sidebar-section">

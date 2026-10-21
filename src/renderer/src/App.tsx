@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { PageView } from './components/PageView'
+import { SearchModal } from './components/SearchModal'
 import { Sidebar } from './components/Sidebar'
 import { Welcome } from './components/Welcome'
 import { toggledPreference, useEffectiveTheme } from './lib/theme'
@@ -13,6 +14,7 @@ export function App(): React.JSX.Element | null {
   const settings = useApp((s) => s.settings)
   const theme = useEffectiveTheme(settings?.theme)
   const error = useApp((s) => s.error)
+  const overlay = useApp((s) => s.overlay)
 
   useEffect(() => {
     void useApp.getState().init()
@@ -21,10 +23,19 @@ export function App(): React.JSX.Element | null {
       void flushAll().finally(() => api.invoke('app:flushed', undefined))
     })
     const offMissing = api.on('workspace:missing', () => useApp.getState().workspaceMissing())
+    // Cmd+K opens search unless the editor used it to add a link to selected text.
+    const onKey = (e: KeyboardEvent): void => {
+      if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.key.toLowerCase() !== 'k') return
+      if (e.defaultPrevented || !useApp.getState().workspace || useApp.getState().overlay) return
+      e.preventDefault()
+      useApp.getState().setOverlay({ kind: 'search' })
+    }
+    window.addEventListener('keydown', onKey)
     return () => {
       offTree()
       offFlush()
       offMissing()
+      window.removeEventListener('keydown', onKey)
     }
   }, [])
 
@@ -34,6 +45,7 @@ export function App(): React.JSX.Element | null {
         const app = useApp.getState()
         if (cmd === 'new-page') void app.createPage(null)
         if (cmd === 'open-folder') void app.chooseWorkspace()
+        if (cmd === 'search' && app.workspace && !app.overlay) app.setOverlay({ kind: 'search' })
         if (cmd === 'back') app.back()
         if (cmd === 'forward') app.forward()
         if (cmd === 'toggle-sidebar')
@@ -52,6 +64,8 @@ export function App(): React.JSX.Element | null {
         <>
           {!settings?.sidebarCollapsed && <Sidebar />}
           <PageView theme={theme} />
+          {overlay?.kind === 'search' && <SearchModal />}
+          {overlay?.kind === 'move' && <SearchModal moving={overlay.pageId} />}
         </>
       )}
       {error && (

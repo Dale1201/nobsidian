@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Settings, TreeSnapshot } from '@shared/ipc'
+import { RECENT_LIMIT, type Settings, type TreeSnapshot } from '@shared/ipc'
 import type { PageNode, WorkspaceInfo } from '@shared/types'
 import { findNode, firstPageId } from './lib/tree'
 
@@ -15,6 +15,9 @@ export async function flushAll(): Promise<void> {
   await Promise.all([...flushers].map((fn) => fn()))
 }
 
+export type Overlay =
+  { kind: 'search' } | { kind: 'move'; pageId: string } | { kind: 'history'; pageId: string }
+
 interface AppState {
   ready: boolean
   workspace: WorkspaceInfo | null
@@ -26,6 +29,7 @@ interface AppState {
   historyIndex: number
   renamingId: string | null
   error: string | null
+  overlay: Overlay | null
 
   init: () => Promise<void>
   chooseWorkspace: () => Promise<void>
@@ -37,6 +41,7 @@ interface AppState {
   renamePage: (id: string, title: string) => Promise<void>
   movePage: (id: string, parentId: string | null, index: number) => Promise<void>
   trashPage: (id: string) => Promise<void>
+  setOverlay: (overlay: Overlay | null) => void
   workspaceMissing: () => void
   toggleFavorite: (id: string) => Promise<void>
   updateSettings: (patch: Partial<Settings>) => Promise<void>
@@ -62,6 +67,7 @@ export const useApp = create<AppState>((set, get) => ({
   historyIndex: -1,
   renamingId: null,
   error: null,
+  overlay: null,
 
   init: async () => {
     const [settings, workspace] = await Promise.all([
@@ -90,7 +96,7 @@ export const useApp = create<AppState>((set, get) => ({
       return
     }
     if (!workspace) return
-    set({ workspace, currentId: null, history: [], historyIndex: -1 })
+    set({ workspace, currentId: null, history: [], historyIndex: -1, overlay: null })
     get().applySnapshot(await api.invoke('tree:get', undefined))
     const start = firstPageId(get().tree) ?? (await get().createPage(null))
     get().openPage(start)
@@ -112,7 +118,11 @@ export const useApp = create<AppState>((set, get) => ({
     const nextHistory = [...history.slice(0, historyIndex + 1), id]
     set({ currentId: id, history: nextHistory, historyIndex: nextHistory.length - 1 })
     if (workspace && settings) {
-      void get().updateSettings({ lastPage: { ...settings.lastPage, [workspace.root]: id } })
+      const recent = [id, ...(settings.recent[workspace.root] ?? []).filter((r) => r !== id)]
+      void get().updateSettings({
+        lastPage: { ...settings.lastPage, [workspace.root]: id },
+        recent: { ...settings.recent, [workspace.root]: recent.slice(0, RECENT_LIMIT) }
+      })
     }
   },
 
@@ -155,7 +165,9 @@ export const useApp = create<AppState>((set, get) => ({
     await api.invoke('page:trash', { id }).catch((e) => get().reportError('delete', e))
   },
 
-  workspaceMissing: () => set({ workspace: null, currentId: null, tree: [] }),
+  setOverlay: (overlay) => set({ overlay }),
+
+  workspaceMissing: () => set({ workspace: null, currentId: null, overlay: null, tree: [] }),
 
   toggleFavorite: async (id) => {
     await api

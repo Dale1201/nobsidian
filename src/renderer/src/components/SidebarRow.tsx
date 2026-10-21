@@ -2,7 +2,15 @@ import { useState, type DragEvent } from 'react'
 import type { PageNode } from '@shared/types'
 import { dropTarget, type DropPosition } from '../lib/tree'
 import { useApp } from '../store'
-import { ChevronRightIcon, DotsIcon, PlusIcon, StarIcon, TrashIcon } from './icons'
+import {
+  ChevronRightIcon,
+  DotsIcon,
+  MoveIcon,
+  PlusIcon,
+  RenameIcon,
+  StarIcon,
+  TrashIcon
+} from './icons'
 import { Menu } from './Popover'
 import { PageIconView } from './PageIconView'
 
@@ -128,7 +136,17 @@ export function SidebarRow({
               icon: <StarIcon size={16} filled={isFavorite} />,
               onSelect: () => void app().toggleFavorite(node.id)
             },
-            { label: 'Rename', onSelect: () => app().setRenaming(node.id) },
+            'separator',
+            {
+              label: 'Rename',
+              icon: <RenameIcon size={16} />,
+              onSelect: () => app().setRenaming(node.id)
+            },
+            {
+              label: 'Move to',
+              icon: <MoveIcon size={16} />,
+              onSelect: () => app().setOverlay({ kind: 'move', pageId: node.id })
+            },
             'separator',
             {
               label: 'Delete',

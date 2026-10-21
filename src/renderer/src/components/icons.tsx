@@ -139,3 +139,31 @@ export const TrashIcon = (p: IconProps): React.JSX.Element => (
     />
   </Svg>
 )
+
+const stroke = {
+  fill: 'none',
+  stroke: 'currentColor',
+  strokeWidth: 1.5,
+  strokeLinecap: 'round',
+  strokeLinejoin: 'round'
+} as const
+
+export const SearchIcon = (p: IconProps): React.JSX.Element => (
+  <Svg {...p}>
+    <circle cx="8.75" cy="8.75" r="5" {...stroke} />
+    <path d="m12.5 12.5 4 4" {...stroke} />
+  </Svg>
+)
+
+export const MoveIcon = (p: IconProps): React.JSX.Element => (
+  <Svg {...p}>
+    <path d="M4.25 4.5v4.25a3 3 0 0 0 3 3h9" {...stroke} />
+    <path d="m13 8.25 3.25 3.5L13 15.25" {...stroke} />
+  </Svg>
+)
+
+export const RenameIcon = (p: IconProps): React.JSX.Element => (
+  <Svg {...p}>
+    <path d="M12.75 4.25 15.75 7.25 7.5 15.5H4.5v-3l8.25-8.25Z" {...stroke} />
+  </Svg>
+)
