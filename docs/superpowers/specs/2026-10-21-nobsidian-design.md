@@ -40,6 +40,7 @@ Notion-style databases, AI, mobile, and sync are explicitly out of scope for ver
 - Favorites.
 - Trash with restore.
 - Page history with restore.
+- Table of contents block.
 - Notion workspace import and paste from Notion.
 
 ### Later (not version one)
@@ -48,7 +49,7 @@ Notion-style databases, AI, mobile, and sync are explicitly out of scope for ver
 - Live import from Notion through its API.
 - Databases.
 - Tabs, multiple windows, comments, page templates, per-page fonts and small text.
-- Bookmark cards, table of contents block, backlinks.
+- Bookmark cards, backlinks.
 - Mobile app and built-in sync.
 - Code signing and notarization.
 
@@ -60,7 +61,7 @@ Notion-style databases, AI, mobile, and sync are explicitly out of scope for ver
 │   Sidebar · Editor (BlockNote) · Search      │
 │              │ typed IPC bridge (preload)    │
 │ Main process (owns the disk)                 │
-│   Workspace service · History · Trash        │
+│   Workspace · File watcher · History · Trash │
 │   Search index · Importer (worker thread)    │
 └──────────────────────────────────────────────┘
           src/shared/core: Markdown <-> blocks converter
@@ -177,6 +178,7 @@ Parsing and serializing use unified/remark (`remark-parse`, `remark-gfm`, `remar
 | File | `[report.pdf](attachments/report.pdf "file")` on its own line |
 | Video / audio | `<video src="..." controls></video>` / `<audio src="..." controls></audio>`, caption in `data-caption` |
 | Columns | `<div data-columns>` containing one `<div data-column data-width="0.5">` per column, inner Markdown separated by blank lines |
+| Table of contents | `<nav data-toc></nav>` on its own line; the app renders it from the page's headings, so it never goes stale |
 | Link to sub-page (page block) | `[Website Redesign](Projects/Website%20Redesign.md "page")` on its own line |
 | Inline link to a page | `[Website Redesign](Projects/Website%20Redesign.md)` |
 
@@ -205,14 +207,20 @@ Same structure as Notion's desktop app.
   Tree rows show expand arrow, icon and title; hovering shows `+` (new child page) and `···` (rename, duplicate, move to, delete, add to favorites).
   Pages can be dragged to reorder or nest.
   The sidebar is resizable and collapsible (Cmd+\\).
-- **Top bar:** breadcrumbs, favorite star, page menu (`···`: full width, page history, delete).
+- **Top bar:** breadcrumbs, favorite star, page menu (`···`: full width, duplicate, page history, delete).
+- **Banners** at the top of a page: the page is in Trash (Restore, Delete forever), the page changed outside the app (Reload, Keep mine), or its frontmatter could not be read.
+- **Duplicate** copies the page and all its sub-pages with new ids, names the copy `<title> (1)`, places it directly below the original and opens it.
+  Links between pages inside the copied subtree point to the copies; links to pages outside it still point to the originals.
+  Attachments are shared, not copied; favorites and history are not copied.
+- **Move to** opens the search modal as a picker titled "Move page to", listing every page except the page and its sub-pages, plus "Top level".
+  The page becomes the last child of the chosen parent, and links are rewritten as for drag and drop.
 - **Page:** optional cover (change, reposition, remove), icon (emoji picker or image), large editable title, then the block editor.
   Content column is 708 px wide; "Full width" removes the limit.
 
 ### Editor
 
-BlockNote, with these blocks: paragraph, heading 1-3, bulleted list, numbered list, to-do, toggle, toggle heading 1-3, quote, callout, divider, code (syntax highlighting), math, table, image, file, video, audio, columns, sub-page.
-Built-in BlockNote blocks are used where they exist; callout, math, sub-page, toggle heading (if not built in), and the colored-block wrapper are custom blocks.
+BlockNote, with these blocks: paragraph, heading 1-3, bulleted list, numbered list, to-do, toggle, toggle heading 1-3, quote, callout, divider, code (syntax highlighting), math, table, image, file, video, audio, columns, sub-page, table of contents.
+Built-in BlockNote blocks are used where they exist; callout, math, sub-page, table of contents, toggle heading (if not built in), and the colored-block wrapper are custom blocks.
 Columns use `@blocknote/xl-multi-column`.
 
 - `/` opens the block menu; Markdown shortcuts (`#`, `-`, `1.`, `[]`, `>`, ```` ``` ````, `---`) convert as you type.
@@ -221,6 +229,8 @@ Columns use `@blocknote/xl-multi-column`.
 - Selection toolbar: bold, italic, underline, strike, code, link, text color, highlight.
 - Pasting images or dropping files saves them into `attachments/`.
 - Creating a sub-page from `/page` creates the child file and inserts a page block.
+- `/toc` inserts a table of contents: the page's headings (toggle headings included) indented by level, updating live; clicking one scrolls to it.
+  With no headings it shows the hint "Add headings to create a table of contents."
 
 ### Look
 
@@ -231,6 +241,9 @@ Columns use `@blocknote/xl-multi-column`.
 ### Shortcuts
 
 Cmd+N new page, Cmd+K / Cmd+P search, Cmd+\\ toggle sidebar, Cmd+[ / Cmd+] back and forward, Cmd+Shift+H last-used highlight, Cmd+Shift+L theme, plus the editor's standard formatting shortcuts.
+
+- Cmd+K with text selected in the editor adds a link, as in Notion; otherwise it opens search.
+- Cmd+Shift+H applies the last text color or highlight chosen in the toolbar (yellow highlight until one is chosen), remembered per machine.
 
 ## 7. Notion import and paste
 
@@ -254,7 +267,8 @@ Special cases:
 - Bookmarks and embeds become links.
 - Synced blocks become their content.
 - Page mentions become page links; date and person mentions become plain text.
-- Table of contents, breadcrumb and button blocks are skipped and listed in the report.
+- Table of contents blocks become Nobsidian table of contents blocks.
+- Breadcrumb and button blocks are skipped and listed in the report.
 - A page that fails to convert is skipped and listed; the import continues.
 - Progress is shown in a non-blocking panel; the import can be cancelled, leaving no partial pages behind.
 
@@ -268,46 +282,81 @@ An early spike compares both and picks whichever preserves more; `text/html` is 
 
 ### Page history
 
-- While a page is being edited, a snapshot is taken at most every 10 minutes, plus one when leaving the page or quitting if the content changed since the last snapshot.
-- Snapshots are stored as full Markdown copies in `.nobsidian/history/<page-id>/<ISO-timestamp>.md`.
+- Snapshots are taken by the main process; a snapshot identical to the page's latest one is skipped.
+  They are taken:
+  1. before the app first writes to a page in a session, saving the text on disk (so content written by other tools is kept before the app canonicalizes it);
+  2. while the page is being edited, at most every 10 minutes;
+  3. when leaving the page, and on quit;
+  4. before an external change replaces the page's text: always when the app wrote that text, otherwise at most every 10 minutes;
+  5. before a restore.
+- Opening the History panel first records the page as it is on disk, so the newest version is always the current one, whoever wrote it.
+- Edits that cannot be saved because the page changed outside the app (leaving the page while the conflict banner is up, or choosing "Reload") are kept as a version too.
+- Each version is stored as `.nobsidian/history/<page-id>/<timestamp>.md`, the exact file text, plus `<timestamp>.json` holding the page's path at that time and the page id behind each page link in it.
+  Restoring resolves links through those ids, so they keep working when this page or the linked pages were renamed or moved since.
 - Retention: everything for 30 days; older than that, the latest snapshot of each day is kept indefinitely.
   Pruning runs on startup.
-- The History panel lists versions with a read-only preview and Restore.
-  Restoring snapshots the current content first.
+- The History panel (top bar `···`, "Page history") is a modal like Notion's: a read-only preview on the left, versions on the right labeled "Today 2:03 PM", "Yesterday", "Oct 12" and so on.
+- "Restore version" asks for confirmation, snapshots the current content, then replaces the page's content, icon and cover.
+  The current title and location are kept, so a restore never moves a page.
 
 ### Trash
 
 - Deleting a page moves its file and child folder into `.nobsidian/trash/<timestamp>-<page-id>/`, with a `meta.json` holding the original path, parent id and deletion time.
-- The Trash panel searches, restores (to the original parent, or the root if the parent no longer exists, renaming on conflict), and deletes forever after confirmation.
+- "Trash" at the bottom of the sidebar opens a popover like Notion's: a search box filtering by title, and one row per deleted page (its sub-pages travel with it) showing icon, title, original parent and how long ago it was deleted, with Restore and Delete forever on hover.
+- Clicking a row opens the page read-only under a red banner, "This page is in Trash.", with Restore and Delete forever.
+  Links in that preview to its own deleted sub-pages are shown but cannot be followed.
+- Restore puts the page and its sub-pages back at the original location and position (and back in Favorites if it was there), or at the end of the top level if the parent no longer exists, renaming with ` (2)` on a name conflict.
+  The restored pages' own links are resolved through the page ids recorded at deletion, so pages renamed meanwhile are still found.
+  When the page lands at a different path, other pages' links to its old path are rewritten, unless a newer page now has that path; those links stay with the newer page.
+  The restored page opens.
+- Delete forever asks first ("Permanently delete this page and its N sub-pages? This can't be undone.") and removes the entry and the history of every page in it.
 - Items older than 30 days are purged on startup, like Notion.
 - Links to a trashed page stay as they are and are shown as broken; they work again after restore.
 
 ### Favorites and recents
 
 - The star in the top bar toggles a page in Favorites, shown at the top of the sidebar.
-- The last 20 visited pages are kept per machine and shown in search before typing.
+- The last 20 opened pages are kept per machine and per workspace, and shown in search before typing.
 
 ### Search
 
-- An in-memory full-text index (MiniSearch) over titles and plain-text content is built at startup and updated on every save and external change.
-- Results rank title matches above content matches and show a highlighted snippet.
-- Enter opens the page.
+- Cmd+K, Cmd+P or "Search" at the top of the sidebar opens a centered modal like Notion's.
+  Up and down move through results, Enter opens one, Esc closes.
+- Before typing it lists recent pages, newest first.
+- An in-memory full-text index (MiniSearch) over titles and plain-text content lives in the main process.
+  Titles are searchable as soon as the workspace opens; content is indexed in the background after the window shows.
+  The index is updated on every save and external change.
+- Matching is by prefix, with light typo tolerance for words of 4 or more letters.
+- Every page whose title matches ranks above every page that matches only in content; within each group MiniSearch's score decides.
+- Each result shows icon, title, its parent pages in gray, and a one-line snippet with matches highlighted.
 
 ## 9. External changes and errors
 
-- The main process watches the workspace (chokidar) and ignores events caused by its own writes (tracked by content hash).
-- External create, delete, rename and edit events update the tree, the link index and the search index.
-- If the open page changes on disk and has no unsaved edits, it reloads silently.
-  If it has unsaved edits, a banner offers "Reload" or "Keep mine".
-  In both cases the version being replaced is saved to history first.
-- A page file whose frontmatter is invalid opens with the frontmatter shown as a raw block, and the error is reported in a banner.
+- The main process watches the workspace with chokidar, ignoring dot-files and dot-folders (except `.nobsidian/workspace.json`), `attachments/` and the app's own temporary files.
+- Events are batched for about 150 ms, then reconciled in one pass, with the disk as the source of truth:
+  - An edit to a known page whose text equals the last text the app read or wrote is the app's own write and is ignored.
+    Any other edit updates the text cache, search index, title and icon, and notifies the renderer.
+  - A structural change (file or folder added, removed or renamed) re-walks the tree, skipping files whose modification time and size are unchanged.
+    Pages are matched by their frontmatter id, so a page renamed or moved in Finder keeps its favorite, order and history.
+  - When two files carry the same id (for example a sync tool's "conflicted copy"), the page already known at its path keeps the id and the other gets a fresh one.
+  - New files without an id get one, adding only the `id:` line, once the file has gone a second without changing, so a file another program is still writing is never cut short.
+    A known page whose id line an editor dropped keeps its identity meanwhile, matched by path.
+  - An external change to `workspace.json` (another Mac syncing) reloads favorites and order.
+- Every page the editor loads carries a revision number, bumped whenever the file changes other than through the editor's own saves, and every save sends it back.
+  If the file changed on disk in between, the main process refuses the save, so an autosave can never silently overwrite an external edit.
+- If the open page changes on disk and has no unsaved edits, it reloads silently, keeping the scroll position.
+  If it has unsaved edits (typed, or still being saved), or a save was refused, a banner says "This page was changed outside Nobsidian." with "Reload" and "Keep mine".
+  In both cases the version being replaced is saved to history first, so neither choice loses anything.
+  Leaving the page without choosing keeps the outside version on disk and the unsaved edits in history.
+- If the open page is deleted outside the app, another page opens, and any edits not yet saved go to that page's history.
+- A page file whose frontmatter is invalid opens with the frontmatter shown as a raw block, and a banner says "This page's frontmatter couldn't be read, so it's shown as text."
 - If the workspace folder disappears (unmounted drive, moved), the app shows the welcome screen with the last path and a "Locate folder" action.
 
 ## 10. Testing
 
 - **Unit (Vitest):** converter round-trip invariants for every block, style and color; Notion HTML mapping against a real export fixture; filename sanitization; link rewriting.
-- **Integration (Vitest, temp folders):** workspace service create, rename, move, delete, restore, history snapshots and pruning, external change handling.
-- **End-to-end (Playwright, Electron):** first run and workspace creation; create and nest pages; slash menu and Markdown shortcuts; drag to reorder; search; favorites; trash and restore; page history; import the fixture zip and check pages, images, colors and links; dark mode.
+- **Integration (Vitest, temp folders):** workspace service create, rename, move, duplicate, delete, restore (missing parent, name conflict), delete forever and purge; history snapshot timing, dedupe, pruning and restore after renames; search ranking and snippets; external change handling (edit, add, rename, delete, conflicted copy, own writes ignored, stale save refused).
+- **End-to-end (Playwright, Electron):** first run and workspace creation; create and nest pages; slash menu and Markdown shortcuts; table of contents; drag to reorder; duplicate and move to; search with recents and keyboard; favorites; trash, opening a trashed page, restore and delete forever; page history; edits made outside the app, with and without unsaved edits; the highlight shortcut; import the fixture zip and check pages, images, colors and links; dark mode.
   Screenshot comparisons are checked against reference screenshots of the same content in Notion.
 - **Fixture:** a small Notion test page (not personal notes, since it is committed to the public repo) containing every block type, every color, a sub-page, an image, a file and a small database, exported as HTML.
 
