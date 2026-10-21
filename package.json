@@ -72,5 +72,6 @@
   "license": "GPL-3.0-or-later",
   "engines": {
     "node": ">=22.22"
-  }
+  },
+  "packageManager": "pnpm@10.34.7"
 }

@@ -1,5 +1,7 @@
 # Nobsidian
 
+[![CI](https://github.com/Dale1201/nobsidian/actions/workflows/ci.yml/badge.svg)](https://github.com/Dale1201/nobsidian/actions/workflows/ci.yml)
+
 An open-source, Notion-like note-taking app for macOS.
 Your notes are plain Markdown files in a folder you choose, so they stay yours.
 
@@ -26,6 +28,8 @@ pnpm lint
 pnpm typecheck
 pnpm build:mac    # Apple Silicon .dmg in dist/
 ```
+
+Every pull request runs the type check, lint, unit, end-to-end and packaged-app tests on a macOS runner (`.github/workflows/ci.yml`).
 
 The app is ad-hoc signed rather than signed with an Apple Developer ID, so a downloaded copy needs right-click → Open the first time you launch it.
 
