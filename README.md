@@ -10,9 +10,12 @@ Your notes are plain Markdown files in a folder you choose, so they stay yours.
 - Notion-style block editor: `/` commands, drag handles, toggles, callouts, columns, tables, code, math.
 - Nested pages in a sidebar, with emoji or image icons and page covers.
 - Notion's look, in light and dark mode.
-- Favorites, and deleted pages go to a trash folder instead of disappearing.
+- Quick search (Cmd+K or Cmd+P) across titles and text, with recent pages.
+- Favorites, duplicate, move to, and a table of contents block.
+- Trash with restore, and page history with restore.
+- Edits made in other apps, Finder or a sync folder show up live, without losing yours.
 
-Search, page history, a trash panel and Notion import are coming next.
+Notion import is coming next.
 
 ## Development
 
@@ -36,7 +39,7 @@ The app is ad-hoc signed rather than signed with an Apple Developer ID, so a dow
 ## How notes are stored
 
 Each page is a `.md` file; a page's child pages live in a folder with the same name.
-Images and files go in `attachments/`, and app data (favorites, page order, trash) lives in `.nobsidian/`.
+Images and files go in `attachments/`, and app data (favorites, page order, trash, page history) lives in `.nobsidian/`.
 Notion-only formatting uses small Markdown extensions, described in `docs/superpowers/specs/2026-10-21-nobsidian-design.md`.
 Opening an existing folder only adds an `id` to each note's frontmatter; a note is rewritten in Nobsidian's Markdown style only when you edit it, and anything the editor can't show (raw HTML, wikilinks, footnotes) is kept exactly as written.
 
