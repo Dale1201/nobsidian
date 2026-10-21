@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import type { Block } from '@shared/core/blocks'
 import { RECENT_LIMIT, type Settings, type TreeSnapshot } from '@shared/ipc'
 import type { PageNode, WorkspaceInfo } from '@shared/types'
 import { findNode, firstPageId } from './lib/tree'
@@ -23,6 +24,13 @@ function showError(message: string): void {
   errorTimer = setTimeout(() => useApp.setState({ error: null }), 6000)
 }
 
+/** Edits an editor could not save when it closed, with the state it held them in. */
+export interface Rescue {
+  blocks: Block[]
+  revision: number
+  conflicted: boolean
+}
+
 export type Overlay =
   { kind: 'search' } | { kind: 'move'; pageId: string } | { kind: 'history'; pageId: string }
 
@@ -42,6 +50,8 @@ interface AppState {
   trashEntry: string | null
   /** Open confirm dialogs; while any is open, nothing else opens over it. */
   confirms: number
+  /** Rescued edits by page id, waiting for that page's editor to show them again. */
+  rescued: Record<string, Rescue>
 
   init: () => Promise<void>
   chooseWorkspace: () => Promise<void>
@@ -64,6 +74,8 @@ interface AppState {
   setExpanded: (id: string, open: boolean) => Promise<void>
   setRenaming: (id: string | null) => void
   reportError: (action: string, err: unknown) => Promise<void>
+  rescue: (id: string, rescue: Rescue) => Promise<void>
+  takeRescued: (id: string) => void
 }
 
 function errorReason(err: unknown): string {
@@ -86,6 +98,7 @@ export const useApp = create<AppState>((set, get) => ({
   overlay: null,
   trashEntry: null,
   confirms: 0,
+  rescued: {},
 
   init: async () => {
     const [settings, workspace] = await Promise.all([
@@ -264,5 +277,31 @@ export const useApp = create<AppState>((set, get) => ({
     showError(`Couldn't ${action} the page: ${errorReason(err)}`)
     const snapshot = await api.invoke('tree:get', undefined).catch(() => null)
     if (snapshot) get().applySnapshot(snapshot)
+  },
+
+  /** Opens the page again with the edits, or a new page with them if it was deleted. */
+  rescue: async (id, rescue) => {
+    if (findNode(get().tree, id)) {
+      set({ rescued: { ...get().rescued, [id]: rescue } })
+      return get().openPage(id)
+    }
+    // With the notes folder gone, creating a page would bring back an empty copy of it.
+    if (!get().workspace) return
+    try {
+      const node = await api.invoke('page:create', {
+        parentId: null,
+        title: 'Recovered edits',
+        blocks: rescue.blocks
+      })
+      get().openPage(node.id)
+    } catch (e) {
+      await get().reportError('recover', e)
+    }
+  },
+
+  takeRescued: (id) => {
+    const rescued = { ...get().rescued }
+    delete rescued[id]
+    set({ rescued })
   }
 }))

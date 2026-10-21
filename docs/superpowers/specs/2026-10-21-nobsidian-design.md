@@ -349,6 +349,8 @@ An early spike compares both and picks whichever preserves more; `text/html` is 
   In both cases the version being replaced is saved to history first, so neither choice loses anything.
   Leaving the page without choosing keeps the outside version on disk and the unsaved edits in history.
 - If the open page is deleted outside the app, another page opens, and any edits not yet saved go to that page's history.
+- If edits cannot be saved when their page closes, not even to history (for example the disk is full or read-only), the error is shown and the page opens again with the edits and any conflict banner, as they were.
+  If the page was deleted outside the app, the edits open in a new top-level page titled "Recovered edits" instead.
 - A page file whose frontmatter is invalid opens with the frontmatter shown as a raw block, and a banner says "This page's frontmatter couldn't be read, so it's shown as text."
 - If the workspace folder disappears (unmounted drive, moved), the app shows the welcome screen with the last path and a "Locate folder" action.
 

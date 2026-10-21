@@ -115,7 +115,9 @@ export function registerHandlers(ctx: AppContext): void {
   )
   handle(
     'page:create',
-    mutate((w, { parentId, index }) => w.createPage(parentId, index))
+    mutate((w, { parentId, index, title = '', blocks = [] }) =>
+      w.createPage(parentId, index, { title, blocks })
+    )
   )
   handle(
     'page:rename',

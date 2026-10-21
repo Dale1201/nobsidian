@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, type Ref } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+  type Ref
+} from 'react'
 import type { Block } from '@shared/core/blocks'
 import { pageLinkHref } from '@shared/core/links'
 import { openHref } from '../lib/navigation'
@@ -40,13 +48,16 @@ export function PageEditor({
   onConflict: () => void
   ref?: Ref<PageEditorHandle>
 }): React.JSX.Element {
-  const pending = useRef<Block[] | null>(null)
-  const latest = useRef<Block[] | null>(null)
-  const revision = useRef(doc.revision)
-  const conflicted = useRef(false)
+  // Edits this page's previous editor could not save; this editor carries on with them.
+  const [rescued] = useState(() => useApp.getState().rescued[doc.id])
+  const pending = useRef<Block[] | null>(rescued?.blocks ?? null)
+  const latest = useRef<Block[] | null>(rescued?.blocks ?? null)
+  const revision = useRef(rescued?.revision ?? doc.revision)
+  const conflicted = useRef(rescued?.conflicted ?? false)
   const failed = useRef(false)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const inFlight = useRef<Promise<void> | null>(null)
+  const mounted = useRef(false)
   const lastColor = useApp((s) => s.settings?.lastColor)
   const pageLink = usePageLink()
 
@@ -131,14 +142,33 @@ export function PageEditor({
   )
 
   useEffect(() => {
+    if (!rescued) return
+    useApp.getState().takeRescued(doc.id)
+    if (rescued.conflicted) onConflict()
+    else void save('auto')
+  }, [rescued, doc.id, onConflict, save])
+
+  useEffect(() => {
+    mounted.current = true
     const flush = async (): Promise<boolean> => {
       await save('leave')
       return pending.current === null
     }
     const unregister = registerFlusher(flush)
     return () => {
+      mounted.current = false
       unregister()
-      void flush().then(() => api.invoke('history:checkpoint', { id: doc.id }))
+      void flush().then((saved) => {
+        // Checked after the flush: StrictMode remounts this same editor, which still has the edits.
+        if (!saved && !mounted.current) {
+          void useApp.getState().rescue(doc.id, {
+            blocks: pending.current!,
+            revision: revision.current,
+            conflicted: conflicted.current
+          })
+        }
+        return api.invoke('history:checkpoint', { id: doc.id })
+      })
     }
   }, [save, doc.id])
 
@@ -153,8 +183,12 @@ export function PageEditor({
   )
 
   const initialBlocks = useMemo(
-    () => withEditorLanguages(doc.blocks, editorLanguage) as unknown as AppPartialBlock[],
-    [doc.blocks]
+    () =>
+      withEditorLanguages(
+        rescued?.blocks ?? doc.blocks,
+        editorLanguage
+      ) as unknown as AppPartialBlock[],
+    [rescued, doc.blocks]
   )
 
   return (

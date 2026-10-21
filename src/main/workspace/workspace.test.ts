@@ -74,6 +74,21 @@ describe('Workspace page operations', () => {
     expect(await read('Untitled.md')).toBe(`---\nid: ${a.id}\ntitle: ""\n---\n\nBody\n`)
   })
 
+  it('creates a page with a title and content', async () => {
+    const ws = await Workspace.open(root, { settleMs: 0 })
+    const parent = await ws.createPage(null)
+    const target = await ws.createPage(parent.id)
+    const link: Block = { type: 'pageLink', props: { href: pageLinkHref(target.id) }, children: [] }
+    const p = await ws.createPage(null, undefined, {
+      title: 'Recovered edits',
+      blocks: [text('Kept words'), link]
+    })
+    expect(p.path).toBe('Recovered edits.md')
+    expect(await read(p.path)).toContain('Kept words\n\n[Untitled](Untitled/Untitled.md "page")')
+    expect((await ws.readPage(p.id)).blocks).toEqual([text('Kept words'), link])
+    expect((await ws.search('kept')).map((h) => h.id)).toEqual([p.id])
+  })
+
   it('renames a page with its children and rewrites links', async () => {
     const ws = await Workspace.open(root, { settleMs: 0 })
     const parent = await ws.createPage(null)

@@ -785,22 +785,27 @@ export class Workspace {
 
   // ---------- structure changes ----------
 
-  createPage(parentId: string | null, index?: number): Promise<PageNode> {
+  /** New pages start with an empty title (shown as an "Untitled" placeholder), like Notion. */
+  createPage(
+    parentId: string | null,
+    index?: number,
+    content: { title: string; blocks: Block[] } = { title: '', blocks: [] }
+  ): Promise<PageNode> {
     return this.run(async () => {
       const parent = parentId ? this.record(parentId) : null
       const dir = parent ? childDirOf(parent.path) : ''
       await mkdir(this.abs(dir), { recursive: true })
-      // New pages start with an empty title (shown as an "Untitled" placeholder), like Notion.
-      const title = ''
+      const { title, blocks } = content
       const stem = await this.pageStem(dir, title)
       const path = joinPath(dir, `${stem}.md`)
       const id = randomUUID()
       const meta: PageMeta = { id, extra: {}, ...(stem !== title ? { title } : {}) }
-      await this.writeText(path, serializePage(meta, []))
+      const fileBlocks = mapBlockLinks(blocks, (href) => this.toFileHref(path, href))
+      await this.writeText(path, serializePage(meta, fileBlocks))
       const record: PageRecord = { id, title, path, parentId }
       this.pages.set(id, record)
       this.knownPaths.set(id, path)
-      this.index.set(id, title, '')
+      this.index.set(id, title, blocksText(blocks))
       this.insertOrder(parentId, id, index)
       await this.persist()
       return { id, title, path, children: [] }

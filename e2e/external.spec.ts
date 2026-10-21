@@ -204,6 +204,71 @@ test('Reload keeps the edits and the banner when they cannot be kept in history'
   expect((await historyTexts(workspace, id)).some((t) => t.includes('Base plus mine'))).toBe(true)
 })
 
+test('leaving a page whose edits cannot be kept brings it back with the edits', async ({ nb }) => {
+  const { page, workspace } = nb
+  await newPage(page, 'Other')
+  const [file, id] = await conflicted(nb)
+  const banner = page.getByRole('status')
+  try {
+    await chmodHistory(workspace, 0o555)
+    await page.getByTestId('sidebar-row-Other').click()
+    await expect(page.getByRole('alert')).toContainText("Couldn't save the page")
+    await expect(page.getByTestId('page-title')).toHaveText('Shared')
+    await expect(banner).toContainText('This page was changed outside Nobsidian.')
+    await expect(page.locator(editor)).toHaveText('Base plus mine')
+  } finally {
+    await chmodHistory(workspace, 0o755)
+  }
+  await page.getByTestId('sidebar-row-Other').click()
+  await expect(page.getByTestId('page-title')).toHaveText('Other')
+  await expect
+    .poll(async () => (await historyTexts(workspace, id)).some((t) => t.includes('Base plus mine')))
+    .toBe(true)
+  expect(await readFile(file, 'utf8')).toContain('Theirs')
+})
+
+test('leaving a page that cannot be saved brings it back and saves it once it can', async ({
+  nb
+}) => {
+  const { page, workspace } = nb
+  await newPage(page, 'Other')
+  await newPage(page, 'Locked')
+  await page.keyboard.type('Start')
+  const file = join(workspace, 'Locked.md')
+  await waitForFile(file, 'Start')
+  try {
+    await chmod(workspace, 0o555)
+    await page.keyboard.type(' more')
+    await page.getByTestId('sidebar-row-Other').click()
+    await expect(page.getByRole('alert')).toContainText("Couldn't save the page")
+    await expect(page.getByTestId('page-title')).toHaveText('Locked')
+    await expect(page.locator(editor)).toHaveText('Start more')
+    await expect(page.getByRole('status')).toHaveCount(0)
+  } finally {
+    await chmod(workspace, 0o755)
+  }
+  await page.getByTestId('sidebar-row-Other').click()
+  await expect(page.getByTestId('page-title')).toHaveText('Other')
+  await waitForFile(file, 'Start more')
+})
+
+test('a page deleted outside while its edits cannot be kept leaves a recovered page', async ({
+  nb
+}) => {
+  const { page, workspace } = nb
+  const [file] = await conflicted(nb)
+  try {
+    await chmodHistory(workspace, 0o555)
+    await unlink(file)
+    await expect(page.getByRole('alert')).toContainText("Couldn't save the page")
+    await expect(page.getByTestId('page-title')).toHaveText('Recovered edits')
+    await expect(page.locator(editor)).toHaveText('Base plus mine')
+    await waitForFile(join(workspace, 'Recovered edits.md'), 'Base plus mine')
+  } finally {
+    await chmodHistory(workspace, 0o755)
+  }
+})
+
 test('quitting holds when the edits cannot be kept, and asks first', async ({ nb }) => {
   const { app, page, workspace } = nb
   await conflicted(nb)

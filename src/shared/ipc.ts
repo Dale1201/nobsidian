@@ -49,7 +49,10 @@ export interface IpcContract {
     result: WriteResult
   ]
   'page:meta': [payload: { id: string; patch: PageMetaPatch }, result: void]
-  'page:create': [payload: { parentId: string | null; index?: number }, result: PageNode]
+  'page:create': [
+    payload: { parentId: string | null; index?: number; title?: string; blocks?: Block[] },
+    result: PageNode
+  ]
   'page:rename': [payload: { id: string; title: string }, result: void]
   'page:move': [payload: { id: string; parentId: string | null; index: number }, result: void]
   'page:trash': [payload: { id: string }, result: void]
