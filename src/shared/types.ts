@@ -40,3 +40,10 @@ export interface SearchHit {
   /** One line of matching content, or null when only the title matched. */
   snippet: { text: string; ranges: TextRange[] } | null
 }
+
+export interface HistoryVersion {
+  /** Filename-safe timestamp, e.g. 2026-10-21T14-03-22-123Z. */
+  id: string
+  /** ISO time the snapshot was taken. */
+  at: string
+}

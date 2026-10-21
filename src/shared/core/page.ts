@@ -3,6 +3,9 @@ import type { Block } from './blocks'
 import { markdownToBlocks } from './parse'
 import { blocksToMarkdown } from './serialize'
 
+/** Page ids become folder names under `.nobsidian/`, so only these characters are accepted. */
+export const PAGE_ID = /^[\w-]+$/
+
 export interface PageMeta {
   id?: string
   title?: string
@@ -50,7 +53,7 @@ export function metaFromData(data: Record<string, unknown>): PageMeta {
   for (const [key, value] of Object.entries(data)) {
     const text = scalar(value)
     const number = typeof value === 'number' ? value : Number(text)
-    if (key === 'id' && text !== undefined) meta.id = text
+    if (key === 'id' && text !== undefined && PAGE_ID.test(text)) meta.id = text
     else if (key === 'title' && text !== undefined) meta.title = text
     else if (key === 'icon' && text !== undefined) meta.icon = text
     else if (key === 'cover' && text !== undefined) meta.cover = text
