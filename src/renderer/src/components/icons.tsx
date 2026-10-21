@@ -174,3 +174,22 @@ export const RestoreIcon = (p: IconProps): React.JSX.Element => (
     <path d="M7.75 5.5 5 8.25 7.75 11" {...stroke} />
   </Svg>
 )
+
+export const ClockIcon = (p: IconProps): React.JSX.Element => (
+  <Svg {...p}>
+    <circle cx="10" cy="10" r="6.75" {...stroke} />
+    <path d="M10 6.25V10l2.5 1.75" {...stroke} />
+  </Svg>
+)
+
+export const CloseIcon = (p: IconProps): React.JSX.Element => (
+  <Svg {...p}>
+    <path d="m5.5 5.5 9 9m0-9-9 9" {...stroke} />
+  </Svg>
+)
+
+export const WidthIcon = (p: IconProps): React.JSX.Element => (
+  <Svg {...p}>
+    <path d="M3 10h14M6 7l-3 3 3 3M14 7l3 3-3 3" {...stroke} />
+  </Svg>
+)

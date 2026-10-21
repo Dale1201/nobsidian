@@ -2,7 +2,7 @@ import { Fragment, useState } from 'react'
 import type { PageDoc } from '@shared/types'
 import { pathTo } from '../lib/tree'
 import { useApp } from '../store'
-import { DotsIcon, SidebarIcon, StarIcon, TrashIcon } from './icons'
+import { ClockIcon, DotsIcon, SidebarIcon, StarIcon, TrashIcon, WidthIcon } from './icons'
 import { Menu } from './Popover'
 import { PageIconView } from './PageIconView'
 
@@ -74,7 +74,14 @@ export function TopBar({
           items={[
             {
               label: doc?.meta.fullWidth ? 'Use default width' : 'Full width',
+              icon: <WidthIcon size={16} />,
               onSelect: onToggleFullWidth
+            },
+            'separator',
+            {
+              label: 'Page history',
+              icon: <ClockIcon size={16} />,
+              onSelect: () => app().setOverlay({ kind: 'history', pageId: currentId })
             },
             'separator',
             {

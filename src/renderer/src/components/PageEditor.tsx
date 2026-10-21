@@ -1,72 +1,156 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, type Ref } from 'react'
 import type { Block } from '@shared/core/blocks'
-import { pageIdFromHref, pageLinkHref } from '@shared/core/links'
+import { pageLinkHref } from '@shared/core/links'
 import { openHref } from '../lib/navigation'
 import type { PageDoc } from '@shared/types'
 import { codeBlockOptions } from '@blocknote/code-block'
 import { Editor } from '../editor/Editor'
 import { createLanguageResolver, withEditorLanguages } from '../editor/codeLanguages'
-import type { AppBlock, AppPartialBlock, PageLinkContextValue } from '../editor/schema'
+import type { AppBlock, AppPartialBlock } from '../editor/schema'
 import { resolveAssetUrl } from '../lib/assets'
-import { findNode } from '../lib/tree'
+import { usePageLink } from '../lib/pageLink'
 import { registerFlusher, useApp } from '../store'
 
 const SAVE_DELAY_MS = 500
 const editorLanguage = createLanguageResolver(codeBlockOptions.supportedLanguages)
 const api = window.api
 
+/** `auto`: the typing debounce. `leave`: the page is closing. `force`: the user chose Keep mine. */
+type SaveMode = 'auto' | 'leave' | 'force'
+
+export interface PageEditorHandle {
+  /** Edits not yet on disk: typed, being saved, or held back by a conflict. */
+  hasUnsaved(): boolean
+  /** The file revision this editor's content is based on. */
+  revision(): number
+  /** Saves what is on screen over the version changed outside the app; false if the save failed. */
+  keepMine(): Promise<boolean>
+  /** Moves unsaved edits into the page's history before a reload; false if that failed. */
+  discard(): Promise<boolean>
+}
+
 export function PageEditor({
   doc,
-  theme
+  theme,
+  onConflict,
+  ref
 }: {
   doc: PageDoc
   theme: 'light' | 'dark'
+  onConflict: () => void
+  ref?: Ref<PageEditorHandle>
 }): React.JSX.Element {
   const pending = useRef<Block[] | null>(null)
+  const latest = useRef<Block[] | null>(null)
+  const revision = useRef(doc.revision)
+  const conflicted = useRef(false)
+  const failed = useRef(false)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const tree = useApp((s) => s.tree)
+  const inFlight = useRef<Promise<void> | null>(null)
+  const pageLink = usePageLink()
 
-  const flush = useCallback(async (): Promise<void> => {
-    if (timer.current) clearTimeout(timer.current)
-    timer.current = null
-    const blocks = pending.current
-    pending.current = null
-    if (blocks)
-      await api.invoke('page:write', { id: doc.id, blocks, revision: doc.revision, force: true })
-  }, [doc.id, doc.revision])
+  const keepDraft = useCallback(
+    (blocks: Block[]) => api.invoke('history:draft', { id: doc.id, blocks }),
+    [doc.id]
+  )
+
+  const save = useCallback(
+    async (mode: SaveMode): Promise<void> => {
+      if (timer.current) clearTimeout(timer.current)
+      timer.current = null
+      // One save at a time, so each is based on the revision the previous one returned.
+      while (inFlight.current) await inFlight.current.catch(() => {})
+      const blocks = pending.current
+      if (!blocks || (conflicted.current && mode === 'auto')) return
+      pending.current = null
+      const write = async (): Promise<void> => {
+        failed.current = false
+        try {
+          // A page left during a conflict keeps the other version; these edits go to history.
+          if (conflicted.current && mode === 'leave') return await keepDraft(blocks)
+          const result = await api.invoke('page:write', {
+            id: doc.id,
+            blocks,
+            revision: revision.current,
+            force: mode === 'force'
+          })
+          if (result.ok) {
+            revision.current = result.revision
+            conflicted.current = false
+          } else if (result.reason === 'conflict') {
+            conflicted.current = true
+            if (mode === 'leave') return await keepDraft(blocks)
+            pending.current ??= blocks
+            onConflict()
+          }
+        } catch (err) {
+          failed.current = true
+          pending.current ??= blocks
+          void useApp.getState().reportError('save', err)
+        }
+      }
+      inFlight.current = write().finally(() => {
+        inFlight.current = null
+      })
+      await inFlight.current
+    },
+    [doc.id, onConflict, keepDraft]
+  )
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      hasUnsaved: () => pending.current !== null || inFlight.current !== null || conflicted.current,
+      revision: () => revision.current,
+      keepMine: async () => {
+        pending.current = latest.current ?? pending.current
+        await save('force')
+        return !conflicted.current && !failed.current
+      },
+      discard: async () => {
+        if (timer.current) clearTimeout(timer.current)
+        while (inFlight.current) await inFlight.current.catch(() => {})
+        const blocks = pending.current
+        pending.current = null
+        if (blocks) {
+          try {
+            await keepDraft(blocks)
+          } catch (err) {
+            pending.current ??= blocks
+            conflicted.current = true
+            void useApp.getState().reportError('save', err)
+            return false
+          }
+        }
+        conflicted.current = false
+        return true
+      }
+    }),
+    [save, keepDraft]
+  )
 
   useEffect(() => {
+    const flush = (): Promise<void> => save('leave')
     const unregister = registerFlusher(flush)
     return () => {
       unregister()
-      void flush()
+      void flush().then(() => api.invoke('history:checkpoint', { id: doc.id }))
     }
-  }, [flush])
+  }, [save, doc.id])
 
   const onChange = useCallback(
     (blocks: AppBlock[]) => {
-      pending.current = blocks as unknown as Block[]
+      latest.current = blocks as unknown as Block[]
+      pending.current = latest.current
       if (timer.current) clearTimeout(timer.current)
-      timer.current = setTimeout(() => void flush(), SAVE_DELAY_MS)
+      timer.current = setTimeout(() => void save('auto'), SAVE_DELAY_MS)
     },
-    [flush]
+    [save]
   )
 
   const initialBlocks = useMemo(
     () => withEditorLanguages(doc.blocks, editorLanguage) as unknown as AppPartialBlock[],
     [doc.blocks]
-  )
-
-  const pageLink = useMemo<PageLinkContextValue>(
-    () => ({
-      resolve: (href) => {
-        const id = pageIdFromHref(href)
-        const node = id ? findNode(tree, id) : null
-        return node ? { title: node.title || 'Untitled', icon: node.icon } : null
-      },
-      open: openHref
-    }),
-    [tree]
   )
 
   return (
@@ -82,7 +166,7 @@ export function PageEditor({
       }
       resolveFileUrl={async (url) => resolveAssetUrl(url)}
       createSubPage={async () => {
-        await flush()
+        await save('auto')
         const node = await api.invoke('page:create', { parentId: doc.id })
         void useApp.getState().setExpanded(doc.id, true)
         return pageLinkHref(node.id)

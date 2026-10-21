@@ -58,6 +58,7 @@ export function Modal({
 
   const trapTab = (e: React.KeyboardEvent): void => {
     if (e.key !== 'Tab' || !panel.current) return
+    if (!panel.current.contains(e.target as Node)) return
     const items = [...panel.current.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
       (el) => el.tabIndex >= 0 && !el.hasAttribute('disabled')
     )

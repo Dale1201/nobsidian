@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { HistoryModal } from './components/HistoryModal'
 import { PageView } from './components/PageView'
 import { SearchModal } from './components/SearchModal'
 import { Sidebar } from './components/Sidebar'
@@ -72,6 +73,7 @@ export function App(): React.JSX.Element | null {
           )}
           {overlay?.kind === 'search' && <SearchModal />}
           {overlay?.kind === 'move' && <SearchModal moving={overlay.pageId} />}
+          {overlay?.kind === 'history' && <HistoryModal pageId={overlay.pageId} theme={theme} />}
         </>
       )}
       {error && (

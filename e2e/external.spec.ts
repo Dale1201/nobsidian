@@ -1,7 +1,155 @@
-import { readdir, rename, rm, unlink, writeFile } from 'node:fs/promises'
+import { chmod, readFile, readdir, rename, rm, unlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { expect, test } from './fixtures'
-import { newPage, waitForFile } from './helpers'
+import { editor, newPage, waitForFile } from './helpers'
+
+/** The page's id line, so an outside edit keeps the page's identity like a real editor would. */
+async function header(file: string): Promise<string> {
+  return /^---\n[\s\S]*?\n---\n/.exec(await readFile(file, 'utf8'))![0]
+}
+
+test('an outside edit reloads the open page when nothing is unsaved', async ({ nb }) => {
+  const { page, workspace } = nb
+  await newPage(page, 'Shared')
+  await page.keyboard.type('Original')
+  const file = join(workspace, 'Shared.md')
+  await waitForFile(file, 'Original')
+  await writeFile(file, `${await header(file)}\nEdited in another app\n`)
+  await expect(page.locator(editor)).toHaveText('Edited in another app')
+  await expect(page.getByRole('status')).toHaveCount(0)
+})
+
+test('an outside edit during typing asks before replacing it, and keeps both', async ({ nb }) => {
+  const { page, workspace } = nb
+  await newPage(page, 'Shared')
+  await page.keyboard.type('Base')
+  const file = join(workspace, 'Shared.md')
+  await waitForFile(file, 'Base')
+  const head = await header(file)
+  const id = /id: (\S+)/.exec(head)![1]
+  const history = async (): Promise<string[]> => {
+    const dir = join(workspace, '.nobsidian', 'history', id)
+    const names = (await readdir(dir).catch(() => [])).filter((v) => v.endsWith('.md'))
+    return Promise.all(names.map((v) => readFile(join(dir, v), 'utf8')))
+  }
+
+  await page.keyboard.type(' plus mine')
+  await writeFile(file, `${head}\nTheirs\n`)
+  const banner = page.getByRole('status')
+  await expect(banner).toContainText('This page was changed outside Nobsidian.')
+  await expect(page.locator(editor)).toHaveText('Base plus mine')
+  await banner.getByRole('button', { name: 'Keep mine' }).click()
+  await expect(banner).toHaveCount(0)
+  await waitForFile(file, 'Base plus mine')
+  expect((await history()).some((t) => t.endsWith('\nTheirs\n'))).toBe(true)
+
+  await page.keyboard.type(' again')
+  await writeFile(file, `${head}\nTheirs again\n`)
+  await banner.getByRole('button', { name: 'Reload' }).click()
+  await expect(page.locator(editor)).toHaveText('Theirs again')
+  await expect
+    .poll(async () => (await history()).some((t) => t.includes('Base plus mine again')))
+    .toBe(true)
+  await page.waitForTimeout(800)
+  expect(await readFile(file, 'utf8')).toContain('Theirs again')
+})
+
+test('the banner stays until the user chooses, even after opening history', async ({ nb }) => {
+  const { page, workspace } = nb
+  await newPage(page, 'Shared')
+  await page.keyboard.type('Base')
+  const file = join(workspace, 'Shared.md')
+  await waitForFile(file, 'Base')
+  const head = await header(file)
+
+  await page.keyboard.type(' plus mine')
+  await writeFile(file, `${head}\nTheirs\n`)
+  const banner = page.getByRole('status')
+  await expect(banner).toContainText('This page was changed outside Nobsidian.')
+
+  await page.getByRole('button', { name: 'Page menu' }).click()
+  await page.getByRole('button', { name: 'Page history' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Page history' })
+  await dialog.getByRole('button', { name: 'Close' }).click()
+  await expect(dialog).toHaveCount(0)
+
+  await writeFile(file, `${head}\nTheirs again\n`)
+  await page.waitForTimeout(800)
+  await expect(banner).toBeVisible()
+  await expect(page.locator(editor)).toHaveText('Base plus mine')
+})
+
+test('a failed save keeps the edits and saves them once it can', async ({ nb }) => {
+  const { page, workspace } = nb
+  await newPage(page, 'Locked')
+  await page.keyboard.type('Start')
+  const file = join(workspace, 'Locked.md')
+  await waitForFile(file, 'Start')
+  try {
+    await chmod(workspace, 0o555)
+    await page.keyboard.type(' more')
+    await expect(page.getByRole('alert')).toContainText("Couldn't save")
+  } finally {
+    await chmod(workspace, 0o755)
+  }
+  await page.keyboard.type(' end')
+  await waitForFile(file, 'Start more end')
+})
+
+test('a failed Keep mine keeps the banner until the save succeeds', async ({ nb }) => {
+  const { page, workspace } = nb
+  await newPage(page, 'Shared')
+  await page.keyboard.type('Base')
+  const file = join(workspace, 'Shared.md')
+  await waitForFile(file, 'Base')
+  const head = await header(file)
+
+  await page.keyboard.type(' plus mine')
+  await writeFile(file, `${head}\nTheirs\n`)
+  const banner = page.getByRole('status')
+  await expect(banner).toContainText('This page was changed outside Nobsidian.')
+
+  try {
+    await chmod(workspace, 0o555)
+    await banner.getByRole('button', { name: 'Keep mine' }).click()
+    await expect(page.getByRole('alert')).toContainText("Couldn't save")
+    await expect(banner).toBeVisible()
+  } finally {
+    await chmod(workspace, 0o755)
+  }
+  await banner.getByRole('button', { name: 'Keep mine' }).click()
+  await expect(banner).toHaveCount(0)
+  await waitForFile(file, 'Base plus mine')
+})
+
+test('leaving a page during a conflict keeps the outside version and the edits in history', async ({
+  nb
+}) => {
+  const { page, workspace } = nb
+  await newPage(page, 'Other')
+  await newPage(page, 'Mine')
+  await page.keyboard.type('Base')
+  const file = join(workspace, 'Mine.md')
+  await waitForFile(file, 'Base')
+  const head = await header(file)
+  const id = /id: (\S+)/.exec(head)![1]
+
+  await page.keyboard.type(' plus mine')
+  await writeFile(file, `${head}\nTheirs\n`)
+  await expect(page.getByRole('status')).toContainText('This page was changed outside Nobsidian.')
+  await page.getByTestId('sidebar-row-Other').click()
+
+  const dir = join(workspace, '.nobsidian', 'history', id)
+  await expect
+    .poll(async () => {
+      const names = (await readdir(dir).catch(() => [])).filter((v) => v.endsWith('.md'))
+      const texts = await Promise.all(names.map((v) => readFile(join(dir, v), 'utf8')))
+      return texts.some((t) => t.includes('Base plus mine'))
+    })
+    .toBe(true)
+  expect(await readFile(file, 'utf8')).toContain('Theirs')
+  expect(await readFile(file, 'utf8')).not.toContain('plus mine')
+})
 
 test('pages added, renamed and deleted in Finder show up in the sidebar', async ({ nb }) => {
   const { page, workspace } = nb
