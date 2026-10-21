@@ -1,0 +1,31 @@
+appId: io.github.dale1201.nobsidian
+productName: Nobsidian
+directories:
+  buildResources: build
+files:
+  - '!**/.vscode/*'
+  - '!src/*'
+  - '!docs/*'
+  - '!electron.vite.config.{js,ts,mjs,cjs}'
+  - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,.editorconfig,.nvmrc,README.md,LICENSE}'
+  - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
+  - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+  - '!{vitest.config.*,playwright.config.*,e2e/*,e2e-packaged/*,test-results/*,playwright-report/*,*.tsbuildinfo}'
+  # Renderer code is bundled by Vite; only main-process dependencies ship in node_modules.
+  - '!{.superpowers,.impeccable,.claude,.github}/**'
+asarUnpack:
+  - resources/**
+mac:
+  target:
+    - target: dmg
+      arch: [arm64]
+  category: public.app-category.productivity
+  # Ad-hoc signature: free, and Apple Silicon refuses to run unsigned code.
+  identity: '-'
+  # Only needed for notarization, which an ad-hoc build cannot use.
+  hardenedRuntime: false
+  entitlementsInherit: build/entitlements.mac.plist
+  notarize: false
+dmg:
+  artifactName: ${name}-${version}-arm64.${ext}
+npmRebuild: false

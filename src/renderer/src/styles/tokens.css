@@ -1,0 +1,84 @@
+/* Notion's palette and type scale. Light is the default; dark applies via data-theme. */
+:root {
+  --font-ui:
+    ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI Variable Display', 'Segoe UI',
+    Helvetica, 'Apple Color Emoji', Arial, sans-serif, 'Segoe UI Emoji', 'Segoe UI Symbol';
+  --font-mono: 'SFMono-Regular', Menlo, Consolas, 'PT Mono', 'Liberation Mono', Courier, monospace;
+
+  --bg: #ffffff;
+  --bg-sidebar: #f8f8f7;
+  --text: #32302c;
+  --text-secondary: rgba(55, 53, 47, 0.65);
+  --text-tertiary: rgba(55, 53, 47, 0.45);
+  --sidebar-text: #5f5e5b;
+  --divider: rgba(55, 53, 47, 0.09);
+  --hover: rgba(55, 53, 47, 0.06);
+  --hover-strong: rgba(55, 53, 47, 0.1);
+  --selected: rgba(35, 131, 226, 0.14);
+  --accent: #2383e2;
+  --menu-bg: #ffffff;
+  --menu-shadow:
+    rgba(15, 15, 15, 0.05) 0 0 0 1px, rgba(15, 15, 15, 0.1) 0 3px 6px,
+    rgba(15, 15, 15, 0.2) 0 9px 24px;
+  --drop-line: rgba(35, 131, 226, 0.6);
+
+  --color-gray: #787774;
+  --color-brown: #9f6b53;
+  --color-orange: #d9730d;
+  --color-yellow: #cb912f;
+  --color-green: #448361;
+  --color-blue: #337ea9;
+  --color-purple: #9065b0;
+  --color-pink: #c14c8a;
+  --color-red: #d44c47;
+  --bg-gray: #f1f1ef;
+  --bg-brown: #f4eeee;
+  --bg-orange: #fbecdd;
+  --bg-yellow: #fbf3db;
+  --bg-green: #edf3ec;
+  --bg-blue: #e7f3f8;
+  --bg-purple: #f4f0f7;
+  --bg-pink: #f9eef3;
+  --bg-red: #fdebec;
+
+  --sidebar-row-height: 30px;
+  --topbar-height: 45px;
+  --page-width: 708px;
+  --page-padding: 96px;
+}
+
+:root[data-theme='dark'] {
+  --bg: #191919;
+  --bg-sidebar: #202020;
+  --text: #d4d4d4;
+  --text-secondary: rgba(255, 255, 255, 0.46);
+  --text-tertiary: rgba(255, 255, 255, 0.28);
+  --sidebar-text: #9b9b9b;
+  --divider: rgba(255, 255, 255, 0.094);
+  --hover: rgba(255, 255, 255, 0.055);
+  --hover-strong: rgba(255, 255, 255, 0.09);
+  --selected: rgba(35, 131, 226, 0.2);
+  --menu-bg: #252525;
+  --menu-shadow:
+    rgba(15, 15, 15, 0.1) 0 0 0 1px, rgba(15, 15, 15, 0.2) 0 3px 6px,
+    rgba(15, 15, 15, 0.4) 0 9px 24px;
+
+  --color-gray: #9b9b9b;
+  --color-brown: #ba856f;
+  --color-orange: #c77d48;
+  --color-yellow: #ca9849;
+  --color-green: #529e72;
+  --color-blue: #5e87c9;
+  --color-purple: #9d68d3;
+  --color-pink: #d15796;
+  --color-red: #df5452;
+  --bg-gray: #2f2f2f;
+  --bg-brown: #4a3228;
+  --bg-orange: #5c3b23;
+  --bg-yellow: #56452f;
+  --bg-green: #243d30;
+  --bg-blue: #143a4e;
+  --bg-purple: #3c2d49;
+  --bg-pink: #4e2c3c;
+  --bg-red: #522e2a;
+}

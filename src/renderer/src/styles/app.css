@@ -1,0 +1,541 @@
+@import './tokens.css';
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  user-select: none;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+::selection {
+  background: rgba(35, 131, 226, 0.28);
+}
+
+.app {
+  display: flex;
+  height: 100%;
+}
+
+.main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.drag-region {
+  -webkit-app-region: drag;
+}
+
+.no-drag {
+  -webkit-app-region: no-drag;
+}
+
+/* ---------- welcome ---------- */
+.welcome {
+  margin: auto;
+  max-width: 420px;
+  text-align: center;
+  padding: 0 24px;
+}
+.welcome h1 {
+  font-size: 32px;
+  font-weight: 700;
+  margin: 0 0 8px;
+}
+.welcome p {
+  color: var(--text-secondary);
+  font-size: 15px;
+  line-height: 1.5;
+  margin: 0 0 24px;
+}
+.button-primary {
+  background: var(--accent);
+  color: #fff;
+  border-radius: 6px;
+  padding: 8px 14px;
+  font-weight: 500;
+  font-size: 14px;
+}
+.button-primary:hover {
+  background: #0077d4;
+}
+
+/* ---------- sidebar ---------- */
+.sidebar {
+  position: relative;
+  flex: none;
+  background: var(--bg-sidebar);
+  color: var(--sidebar-text);
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--divider);
+}
+.sidebar-header {
+  height: var(--topbar-height);
+  padding: 0 10px 0 80px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  flex: none;
+}
+.sidebar-header .icon-button {
+  width: 26px;
+  height: 26px;
+  color: var(--text-tertiary);
+}
+.sidebar-workspace {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  margin: 0 8px;
+  padding: 0 6px;
+  border-radius: 6px;
+  font-weight: 500;
+  color: var(--text);
+  text-align: left;
+  flex: none;
+}
+.sidebar-workspace:hover {
+  background: var(--hover);
+}
+.sidebar-workspace-badge {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  background: var(--hover-strong);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+.sidebar-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 8px 12px;
+}
+.sidebar-section {
+  margin-top: 14px;
+}
+.sidebar-section-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  padding: 0 8px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+}
+.sidebar-row {
+  height: var(--sidebar-row-height);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding-right: 4px;
+  border-radius: 6px;
+  cursor: pointer;
+  position: relative;
+  text-align: left;
+}
+.sidebar-add {
+  padding-left: 6px;
+  color: var(--text-tertiary);
+}
+.sidebar-row-lead {
+  position: relative;
+  width: 22px;
+  height: 22px;
+  flex: none;
+}
+.sidebar-row-toggle {
+  position: absolute;
+  inset: 0;
+  display: none;
+}
+.sidebar-row:hover .sidebar-row-lead.expandable .page-icon {
+  visibility: hidden;
+}
+.sidebar-row:hover .sidebar-row-lead.expandable .sidebar-row-toggle {
+  display: inline-flex;
+}
+.sidebar-row:hover {
+  background: var(--hover);
+}
+.sidebar-row.active {
+  background: var(--hover-strong);
+  color: var(--text);
+  font-weight: 500;
+}
+.sidebar-row.drop-inside {
+  background: var(--selected);
+}
+.sidebar-row.drop-before::before,
+.sidebar-row.drop-after::after {
+  content: '';
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  height: 2px;
+  background: var(--drop-line);
+}
+.sidebar-row.drop-before::before {
+  top: -1px;
+}
+.sidebar-row.drop-after::after {
+  bottom: -1px;
+}
+.sidebar-row-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sidebar-row-actions {
+  display: none;
+  gap: 2px;
+}
+.sidebar-row:hover .sidebar-row-actions,
+.sidebar-row.menu-open .sidebar-row-actions {
+  display: flex;
+}
+.icon-button {
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+  flex: none;
+}
+.icon-button:hover {
+  background: var(--hover-strong);
+  color: var(--text-secondary);
+}
+.toggle-arrow {
+  transition: transform 120ms ease;
+}
+.toggle-arrow.open {
+  transform: rotate(90deg);
+}
+.page-icon {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  font-size: 16px;
+  line-height: 1;
+}
+.page-icon img {
+  width: 18px;
+  height: 18px;
+  object-fit: cover;
+  border-radius: 3px;
+}
+.sidebar-empty {
+  padding: 4px 8px 4px 36px;
+  color: var(--text-tertiary);
+  height: var(--sidebar-row-height);
+  display: flex;
+  align-items: center;
+}
+.sidebar-resize {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 2;
+}
+.sidebar-resize:hover {
+  background: var(--divider);
+}
+.rename-input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  padding: 2px 4px;
+  outline: none;
+}
+
+/* ---------- menus ---------- */
+.menu {
+  position: fixed;
+  z-index: 100;
+  min-width: 220px;
+  background: var(--menu-bg);
+  box-shadow: var(--menu-shadow);
+  border-radius: 8px;
+  padding: 4px;
+  color: var(--text);
+}
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 5px;
+  text-align: left;
+  font-size: 14px;
+}
+.menu-item:hover {
+  background: var(--hover);
+}
+.menu-item.danger:hover {
+  color: var(--color-red);
+}
+.menu-separator {
+  height: 1px;
+  background: var(--divider);
+  margin: 4px 0;
+}
+
+/* ---------- top bar ---------- */
+.topbar {
+  height: var(--topbar-height);
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  gap: 8px;
+}
+.topbar.sidebar-hidden {
+  padding-left: 80px;
+}
+.breadcrumbs {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  color: var(--text);
+}
+.breadcrumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 200px;
+  height: 24px;
+  padding: 0 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.breadcrumb:hover {
+  background: var(--hover);
+}
+.breadcrumb-sep {
+  color: var(--text-tertiary);
+  padding: 0 2px;
+}
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.topbar-actions .icon-button {
+  width: 28px;
+  height: 28px;
+  color: var(--text-secondary);
+}
+.topbar-actions .icon-button.on {
+  color: var(--color-yellow);
+}
+
+/* ---------- page ---------- */
+.page-scroll {
+  flex: 1;
+  overflow-y: auto;
+  user-select: text;
+}
+.page-cover {
+  position: relative;
+  height: 30vh;
+  max-height: 280px;
+  min-height: 160px;
+  background-size: cover;
+}
+.page-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.page-cover-actions {
+  position: absolute;
+  right: calc(50% - var(--page-width) / 2);
+  bottom: 12px;
+  display: none;
+  gap: 4px;
+}
+.page-cover:hover .page-cover-actions {
+  display: flex;
+}
+.cover-button {
+  background: var(--menu-bg);
+  color: var(--text-secondary);
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  box-shadow: var(--menu-shadow);
+}
+.page-column {
+  width: 100%;
+  max-width: calc(var(--page-width) + var(--page-padding) * 2);
+  padding: 0 var(--page-padding);
+  margin: 0 auto;
+}
+.page-column.full-width {
+  max-width: none;
+}
+.page-header {
+  padding-top: 80px;
+  position: relative;
+}
+.page-header.has-cover {
+  padding-top: 0;
+}
+.page-header-icon {
+  font-size: 78px;
+  line-height: 1.1;
+  width: 78px;
+  height: 78px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-bottom: 4px;
+}
+.page-header.has-cover .page-header-icon {
+  margin-top: -42px;
+  position: relative;
+}
+.page-header-icon:hover {
+  background: var(--hover);
+}
+.page-header-icon img {
+  width: 78px;
+  height: 78px;
+  object-fit: cover;
+  border-radius: 4px;
+}
+.page-header-controls {
+  display: flex;
+  gap: 2px;
+  height: 28px;
+  margin-bottom: 4px;
+  opacity: 0;
+  transition: opacity 100ms ease;
+}
+.page-header:hover .page-header-controls {
+  opacity: 1;
+}
+.page-header-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-tertiary);
+  font-size: 14px;
+  padding: 0 6px;
+  height: 28px;
+  border-radius: 4px;
+}
+.page-header-control:hover {
+  background: var(--hover);
+  color: var(--text-secondary);
+}
+.page-title {
+  font-size: 40px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--text);
+  outline: none;
+  padding: 3px 2px;
+  margin: 0 0 4px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  cursor: text;
+}
+.page-title:empty::before {
+  content: attr(data-placeholder);
+  color: var(--text-tertiary);
+}
+.page-body {
+  padding-bottom: 30vh;
+}
+
+/* ---------- icon picker ---------- */
+.icon-picker {
+  padding: 4px 0 0;
+  display: flex;
+  flex-direction: column;
+}
+.icon-picker-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 4px 8px;
+  border-bottom: 1px solid var(--divider);
+  margin-bottom: 4px;
+}
+
+/* The editor's own side padding would double the page column's; block handles live in the margin. */
+.page-body .bn-editor {
+  padding-inline: 0;
+}
+
+.toast {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 520px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: var(--menu-bg);
+  box-shadow: var(--menu-shadow);
+  color: var(--color-red);
+  font-size: 14px;
+  z-index: 200;
+}

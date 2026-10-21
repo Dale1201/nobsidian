@@ -129,6 +129,8 @@ Body in Markdown.
 ```
 
 - `id` is a UUID assigned when the page is created or first seen, and never changes.
+  When an existing file without an id is first seen, only an `id:` line is added to its frontmatter (or a minimal frontmatter is prepended); the rest of the file is left byte for byte.
+  A page is rewritten in Nobsidian's canonical Markdown only when it is edited in the app.
   It keys history, favorites and ordering, so they survive renames and moves.
 - `icon` is an emoji or a path to an image in `attachments/`.
 - `cover` is a path to an image in `attachments/`.
@@ -185,7 +187,7 @@ Invariants, enforced by tests:
 
 - `parse(serialize(doc))` equals `doc` for every supported block and style.
 - `serialize(parse(md))` equals `md` for Markdown in canonical form.
-- Markdown the parser does not understand (for example hand-written HTML or footnotes) is kept as a raw block and written back, never dropped.
+- Markdown the editor cannot represent (raw HTML, footnotes, wikilinks, inline images, reference links) is kept as a raw block holding the author's exact text, and written back unchanged, never dropped.
 
 Known, accepted normalizations:
 
