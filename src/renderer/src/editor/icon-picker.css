@@ -1,0 +1,89 @@
+.nb-icon-picker {
+  display: flex;
+  flex-direction: column;
+  width: 408px;
+  height: 356px;
+  background: var(--bg);
+  color: var(--text);
+  isolation: isolate;
+}
+
+.nb-icon-picker-search {
+  margin: 8px 8px 4px;
+  padding: 4px 8px;
+  height: 28px;
+  border: 1px solid var(--divider);
+  border-radius: 6px;
+  background: var(--hover);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  outline: none;
+  appearance: none;
+}
+
+.nb-icon-picker-search::-webkit-search-cancel-button {
+  display: none;
+}
+
+.nb-icon-picker-search::placeholder {
+  color: var(--text-secondary);
+}
+
+.nb-icon-picker-search:focus {
+  border-color: var(--text-secondary);
+}
+
+.nb-icon-picker-viewport {
+  flex: 1;
+  outline: none;
+}
+
+.nb-icon-picker-list {
+  padding: 0 8px 8px;
+}
+
+.nb-icon-picker-status {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+/* frimousse sizes rows and headers from their content box: no vertical padding or borders. */
+.nb-icon-picker-category {
+  display: flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 4px;
+  background: var(--bg);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.nb-icon-picker-row {
+  scroll-margin-block: 30px 8px;
+}
+
+.nb-icon-picker-emoji {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.nb-icon-picker-emoji[data-active] {
+  background: var(--hover);
+}

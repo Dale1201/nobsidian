@@ -1,0 +1,234 @@
+/* Must load after @blocknote/mantine/style.css: equal-specificity overrides win by order. */
+
+.bn-root {
+  --nb-font-notion:
+    ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI Variable Display', 'Segoe UI',
+    Helvetica, 'Apple Color Emoji', Arial, sans-serif, 'Segoe UI Emoji', 'Segoe UI Symbol';
+  --bn-font-family: var(--nb-font-notion);
+}
+
+/* Editor content font is hardcoded on .bn-default-styles in core CSS, not read from --bn-font-family. */
+.bn-root .bn-default-styles {
+  font-family: var(--nb-font-notion);
+}
+
+.bn-root[data-color-scheme='light'] {
+  --bn-colors-editor-text: #37352f;
+  --bn-colors-editor-background: #ffffff;
+  --bn-colors-highlights-gray-text: #787774;
+  --bn-colors-highlights-gray-background: #f1f1ef;
+  --bn-colors-highlights-brown-text: #9f6b53;
+  --bn-colors-highlights-brown-background: #f4eeee;
+  --bn-colors-highlights-orange-text: #d9730d;
+  --bn-colors-highlights-orange-background: #fbecdd;
+  --bn-colors-highlights-yellow-text: #cb912f;
+  --bn-colors-highlights-yellow-background: #fbf3db;
+  --bn-colors-highlights-green-text: #448361;
+  --bn-colors-highlights-green-background: #edf3ec;
+  --bn-colors-highlights-blue-text: #337ea9;
+  --bn-colors-highlights-blue-background: #e7f3f8;
+  --bn-colors-highlights-purple-text: #9065b0;
+  --bn-colors-highlights-purple-background: #f6f3f9;
+  --bn-colors-highlights-pink-text: #c14c8a;
+  --bn-colors-highlights-pink-background: #faf1f5;
+  --bn-colors-highlights-red-text: #d44c47;
+  --bn-colors-highlights-red-background: #fdebec;
+}
+
+.bn-root[data-color-scheme='dark'] {
+  --bn-colors-editor-text: #d4d4d4;
+  --bn-colors-editor-background: #191919;
+  --bn-colors-highlights-gray-text: #9b9b9b;
+  --bn-colors-highlights-gray-background: #2f2f2f;
+  --bn-colors-highlights-brown-text: #ba856f;
+  --bn-colors-highlights-brown-background: #4a3228;
+  --bn-colors-highlights-orange-text: #c77d48;
+  --bn-colors-highlights-orange-background: #5c3b23;
+  --bn-colors-highlights-yellow-text: #ca9849;
+  --bn-colors-highlights-yellow-background: #564328;
+  --bn-colors-highlights-green-text: #529e72;
+  --bn-colors-highlights-green-background: #243d30;
+  --bn-colors-highlights-blue-text: #379ad3;
+  --bn-colors-highlights-blue-background: #143a4e;
+  --bn-colors-highlights-purple-text: #9d68d3;
+  --bn-colors-highlights-purple-background: #3c2d49;
+  --bn-colors-highlights-pink-text: #d15796;
+  --bn-colors-highlights-pink-background: #4e2c3c;
+  --bn-colors-highlights-red-text: #df5452;
+  --bn-colors-highlights-red-background: #522e2a;
+}
+
+/* Callout: BlockNote paints the color on .bn-block, so the box spans content and children. */
+.bn-block:has(> .react-renderer > .bn-block-content[data-content-type='callout']) {
+  border-radius: 4px;
+  padding: 12px 16px 12px 12px;
+}
+
+.bn-block-content[data-content-type='callout'] {
+  background-color: transparent;
+}
+
+/* Children sit inside the box, aligned with the text after the icon, without the nesting guide line. */
+.bn-block:has(> .react-renderer > .bn-block-content[data-content-type='callout'])
+  > .bn-block-group {
+  margin-left: 30px;
+}
+
+.bn-block:has(> .react-renderer > .bn-block-content[data-content-type='callout'])
+  > .bn-block-group
+  > .bn-block-outer::before {
+  display: none;
+}
+
+.nb-callout {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+
+.nb-callout-icon {
+  flex: none;
+  font-size: 1.2em;
+  line-height: 1.5;
+  user-select: none;
+}
+
+.nb-callout-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.nb-math {
+  width: 100%;
+  padding: 4px 0;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.nb-math:hover {
+  background-color: var(--bn-colors-hovered-background);
+}
+
+.nb-math-empty {
+  color: var(--bn-colors-highlights-gray-text);
+}
+
+.nb-math-source {
+  width: 100%;
+  min-height: 4em;
+  padding: 8px;
+  border: var(--bn-border);
+  border-radius: 4px;
+  background: var(--bn-colors-menu-background);
+  color: var(--bn-colors-editor-text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9em;
+  resize: vertical;
+}
+
+.nb-page-link {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 3px 2px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.nb-page-link:hover {
+  background-color: var(--bn-colors-hovered-background);
+}
+
+.nb-page-link-title {
+  text-decoration: underline;
+  text-decoration-color: var(--bn-colors-border);
+  text-underline-offset: 3px;
+  font-weight: 500;
+}
+
+.nb-page-link[data-missing] .nb-page-link-title {
+  color: var(--bn-colors-highlights-gray-text);
+}
+
+.nb-raw {
+  width: 100%;
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 4px;
+  background-color: var(--bn-colors-hovered-background);
+  color: var(--bn-colors-highlights-gray-text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85em;
+  white-space: pre-wrap;
+}
+
+/* ---------- Notion look for built-in blocks ---------- */
+.bn-root[data-color-scheme='light'] {
+  --nb-code-bg: #f7f6f3;
+  --nb-table-border: #e9e9e7;
+  --nb-muted: rgba(55, 53, 47, 0.45);
+}
+.bn-root[data-color-scheme='dark'] {
+  --nb-code-bg: #202020;
+  --nb-table-border: rgba(255, 255, 255, 0.13);
+  --nb-muted: rgba(255, 255, 255, 0.28);
+}
+
+.bn-root [data-content-type='heading'] {
+  font-weight: 600;
+}
+.bn-root [data-content-type='heading'][data-level='1'] {
+  --level: 1.875em;
+}
+.bn-root [data-content-type='heading'][data-level='2'] {
+  --level: 1.5em;
+}
+.bn-root [data-content-type='heading'][data-level='3'] {
+  --level: 1.25em;
+}
+.bn-root [data-content-type='heading'][data-level='4'],
+.bn-root [data-content-type='heading'][data-level='5'],
+.bn-root [data-content-type='heading'][data-level='6'] {
+  --level: 1em;
+}
+
+.bn-root [data-content-type='quote'] blockquote {
+  color: inherit;
+  border-left: 3px solid currentColor;
+  padding-left: 14px;
+}
+
+.bn-root .bn-block-content[data-content-type='codeBlock'] {
+  background-color: var(--nb-code-bg);
+  color: var(--bn-colors-editor-text);
+  border-radius: 4px;
+}
+.bn-root .bn-block-content[data-content-type='codeBlock'] > pre {
+  --bn-suggestion-surface: var(--nb-code-bg);
+  padding: 32px 16px 32px 32px;
+  font-family: 'SFMono-Regular', Menlo, Consolas, monospace;
+  font-size: 85%;
+  line-height: 1.5;
+}
+.bn-root .bn-block-content[data-content-type='codeBlock'] > div > select {
+  color: var(--nb-muted);
+}
+/* BlockNote always paints dark-theme token colours; light mode uses Shiki's light theme. */
+.bn-root[data-color-scheme='light'] .shiki {
+  color: var(--bn-suggestion-token-color, var(--shiki-light));
+}
+
+.bn-root .bn-editor [data-content-type='table'] th,
+.bn-root .bn-editor [data-content-type='table'] td {
+  border-color: var(--nb-table-border);
+  padding: 7px 9px;
+}
+
+.bn-root [data-content-type='checkListItem'] input {
+  accent-color: #2383e2;
+}
+.bn-root [data-content-type='checkListItem'][data-checked='true'] .bn-inline-content {
+  color: var(--nb-muted);
+  text-decoration-color: var(--nb-muted);
+}
