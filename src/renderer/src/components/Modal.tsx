@@ -91,3 +91,42 @@ export function Modal({
     document.body
   )
 }
+
+/** A small "are you sure" dialog with a destructive or primary confirm button. */
+export function ConfirmDialog({
+  title,
+  message,
+  confirmLabel,
+  danger,
+  onConfirm,
+  onClose
+}: {
+  title: string
+  message?: string
+  confirmLabel: string
+  danger?: boolean
+  onConfirm: () => void
+  onClose: () => void
+}): React.JSX.Element {
+  return (
+    <Modal onClose={onClose} className="confirm" label={title}>
+      <div className="confirm-title">{title}</div>
+      {message && <div className="confirm-message">{message}</div>}
+      <div className="confirm-actions">
+        <button
+          className={danger ? 'button-danger' : 'button-primary'}
+          autoFocus
+          onClick={() => {
+            onClose()
+            onConfirm()
+          }}
+        >
+          {confirmLabel}
+        </button>
+        <button className="button-secondary" onClick={onClose}>
+          Cancel
+        </button>
+      </div>
+    </Modal>
+  )
+}

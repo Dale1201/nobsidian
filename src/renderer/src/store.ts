@@ -30,6 +30,8 @@ interface AppState {
   renamingId: string | null
   error: string | null
   overlay: Overlay | null
+  /** Trash entry whose page is shown read-only instead of the current page. */
+  trashEntry: string | null
 
   init: () => Promise<void>
   chooseWorkspace: () => Promise<void>
@@ -41,6 +43,9 @@ interface AppState {
   renamePage: (id: string, title: string) => Promise<void>
   movePage: (id: string, parentId: string | null, index: number) => Promise<void>
   trashPage: (id: string) => Promise<void>
+  showTrashEntry: (entry: string | null) => void
+  restoreTrash: (entry: string) => Promise<void>
+  deleteTrash: (entry: string) => Promise<void>
   setOverlay: (overlay: Overlay | null) => void
   workspaceMissing: () => void
   toggleFavorite: (id: string) => Promise<void>
@@ -68,6 +73,7 @@ export const useApp = create<AppState>((set, get) => ({
   renamingId: null,
   error: null,
   overlay: null,
+  trashEntry: null,
 
   init: async () => {
     const [settings, workspace] = await Promise.all([
@@ -96,7 +102,14 @@ export const useApp = create<AppState>((set, get) => ({
       return
     }
     if (!workspace) return
-    set({ workspace, currentId: null, history: [], historyIndex: -1, overlay: null })
+    set({
+      workspace,
+      currentId: null,
+      history: [],
+      historyIndex: -1,
+      overlay: null,
+      trashEntry: null
+    })
     get().applySnapshot(await api.invoke('tree:get', undefined))
     const start = firstPageId(get().tree) ?? (await get().createPage(null))
     get().openPage(start)
@@ -113,7 +126,8 @@ export const useApp = create<AppState>((set, get) => ({
   },
 
   openPage: (id) => {
-    const { history, historyIndex, currentId, workspace, settings } = get()
+    const { history, historyIndex, currentId, workspace, settings, trashEntry } = get()
+    if (trashEntry) set({ trashEntry: null })
     if (id === currentId) return
     const nextHistory = [...history.slice(0, historyIndex + 1), id]
     set({ currentId: id, history: nextHistory, historyIndex: nextHistory.length - 1 })
@@ -129,14 +143,16 @@ export const useApp = create<AppState>((set, get) => ({
   back: () => {
     const { history, historyIndex, tree } = get()
     for (let i = historyIndex - 1; i >= 0; i--) {
-      if (findNode(tree, history[i])) return set({ currentId: history[i], historyIndex: i })
+      if (findNode(tree, history[i]))
+        return set({ currentId: history[i], historyIndex: i, trashEntry: null })
     }
   },
 
   forward: () => {
     const { history, historyIndex, tree } = get()
     for (let i = historyIndex + 1; i < history.length; i++) {
-      if (findNode(tree, history[i])) return set({ currentId: history[i], historyIndex: i })
+      if (findNode(tree, history[i]))
+        return set({ currentId: history[i], historyIndex: i, trashEntry: null })
     }
   },
 
@@ -165,9 +181,31 @@ export const useApp = create<AppState>((set, get) => ({
     await api.invoke('page:trash', { id }).catch((e) => get().reportError('delete', e))
   },
 
+  showTrashEntry: (entry) => set({ trashEntry: entry }),
+
+  restoreTrash: async (entry) => {
+    try {
+      const id = await api.invoke('trash:restore', { entry })
+      set({ trashEntry: null })
+      get().openPage(id)
+    } catch (e) {
+      await get().reportError('restore', e)
+    }
+  },
+
+  deleteTrash: async (entry) => {
+    try {
+      await api.invoke('trash:delete', { entry })
+      if (get().trashEntry === entry) set({ trashEntry: null })
+    } catch (e) {
+      await get().reportError('delete', e)
+    }
+  },
+
   setOverlay: (overlay) => set({ overlay }),
 
-  workspaceMissing: () => set({ workspace: null, currentId: null, overlay: null, tree: [] }),
+  workspaceMissing: () =>
+    set({ workspace: null, currentId: null, trashEntry: null, overlay: null, tree: [] }),
 
   toggleFavorite: async (id) => {
     await api

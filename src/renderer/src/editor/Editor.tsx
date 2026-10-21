@@ -41,6 +41,7 @@ export type EditorProps = {
   createSubPage(): Promise<string>
   openLink(href: string): void
   pageLink: PageLinkContextValue
+  editable?: boolean
 }
 
 const OpenLinkContext = createContext<(href: string) => void>(() => {})
@@ -114,6 +115,7 @@ export function Editor(props: EditorProps): React.JSX.Element {
         <BlockNoteView
           editor={editor}
           theme={props.theme}
+          editable={props.editable !== false}
           slashMenu={false}
           formattingToolbar={false}
           linkToolbar={false}

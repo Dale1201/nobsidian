@@ -1,9 +1,13 @@
 import { useState } from 'react'
+import type { TrashItem } from '@shared/types'
 import { findNode } from '../lib/tree'
+import { deleteForeverTitle } from '../lib/trash'
 import { useApp } from '../store'
-import { ComposeIcon, PlusIcon, SearchIcon, SidebarIcon } from './icons'
+import { ComposeIcon, PlusIcon, SearchIcon, SidebarIcon, TrashIcon } from './icons'
+import { ConfirmDialog } from './Modal'
 import { Menu } from './Popover'
 import { SidebarRow } from './SidebarRow'
+import { TrashPopover } from './TrashPopover'
 
 const MIN_WIDTH = 200
 const MAX_WIDTH = 480
@@ -15,6 +19,9 @@ export function Sidebar(): React.JSX.Element {
   const savedWidth = useApp((s) => s.settings?.sidebarWidth ?? 240)
   const [width, setWidth] = useState<number | null>(null)
   const [menu, setMenu] = useState<DOMRect | null>(null)
+  const [trash, setTrash] = useState<DOMRect | null>(null)
+  const [deleting, setDeleting] = useState<TrashItem | null>(null)
+  const [trashButton, setTrashButton] = useState<HTMLButtonElement | null>(null)
   const app = useApp.getState
 
   const startResize = (e: React.MouseEvent): void => {
@@ -100,7 +107,40 @@ export function Sidebar(): React.JSX.Element {
           </button>
         </div>
       </div>
+      <div className="sidebar-footer">
+        <button
+          ref={setTrashButton}
+          className={`sidebar-row ${trash ? 'menu-open' : ''}`}
+          onClick={(e) => setTrash(trash ? null : e.currentTarget.getBoundingClientRect())}
+        >
+          <span className="page-icon">
+            <TrashIcon size={18} />
+          </span>
+          <span className="sidebar-row-title">Trash</span>
+        </button>
+      </div>
       <div className="sidebar-resize" onMouseDown={startResize} />
+      {trash && (
+        <TrashPopover
+          anchor={trash}
+          ignore={trashButton}
+          onClose={() => setTrash(null)}
+          onDeleteForever={setDeleting}
+        />
+      )}
+      {deleting && (
+        <ConfirmDialog
+          title={deleteForeverTitle(deleting)}
+          message="This can't be undone."
+          confirmLabel="Delete forever"
+          danger
+          onConfirm={() => void app().deleteTrash(deleting.entry)}
+          onClose={() => {
+            setDeleting(null)
+            trashButton?.focus()
+          }}
+        />
+      )}
       {menu && (
         <Menu
           anchor={menu}

@@ -167,3 +167,10 @@ export const RenameIcon = (p: IconProps): React.JSX.Element => (
     <path d="M12.75 4.25 15.75 7.25 7.5 15.5H4.5v-3l8.25-8.25Z" {...stroke} />
   </Svg>
 )
+
+export const RestoreIcon = (p: IconProps): React.JSX.Element => (
+  <Svg {...p}>
+    <path d="M5 8.25h7.25a3.75 3.75 0 0 1 0 7.5H9" {...stroke} />
+    <path d="M7.75 5.5 5 8.25 7.75 11" {...stroke} />
+  </Svg>
+)

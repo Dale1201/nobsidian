@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { PageView } from './components/PageView'
 import { SearchModal } from './components/SearchModal'
 import { Sidebar } from './components/Sidebar'
+import { TrashedPageView } from './components/TrashedPageView'
 import { Welcome } from './components/Welcome'
 import { toggledPreference, useEffectiveTheme } from './lib/theme'
 import { flushAll, useApp } from './store'
@@ -15,6 +16,7 @@ export function App(): React.JSX.Element | null {
   const theme = useEffectiveTheme(settings?.theme)
   const error = useApp((s) => s.error)
   const overlay = useApp((s) => s.overlay)
+  const trashEntry = useApp((s) => s.trashEntry)
 
   useEffect(() => {
     void useApp.getState().init()
@@ -63,7 +65,11 @@ export function App(): React.JSX.Element | null {
       ) : (
         <>
           {!settings?.sidebarCollapsed && <Sidebar />}
-          <PageView theme={theme} />
+          {trashEntry ? (
+            <TrashedPageView key={trashEntry} entry={trashEntry} theme={theme} />
+          ) : (
+            <PageView theme={theme} />
+          )}
           {overlay?.kind === 'search' && <SearchModal />}
           {overlay?.kind === 'move' && <SearchModal moving={overlay.pageId} />}
         </>
