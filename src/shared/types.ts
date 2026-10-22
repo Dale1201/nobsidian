@@ -75,3 +75,22 @@ export interface HistoryVersion {
   /** ISO time the snapshot was taken. */
   at: string
 }
+
+export interface ImportProgress {
+  phase: 'reading' | 'converting' | 'copying' | 'finishing'
+  done: number
+  total: number
+}
+
+export type ImportStatus =
+  | { state: 'running'; progress: ImportProgress }
+  | { state: 'done'; rootId: string; reportId: string; pages: number; issues: number }
+  | { state: 'cancelled' }
+  | { state: 'failed'; message: string }
+
+export interface ImportResult {
+  rootId: string
+  reportId: string
+  pages: number
+  issues: number
+}
