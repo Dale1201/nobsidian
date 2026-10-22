@@ -435,9 +435,6 @@
   overflow-y: auto;
   padding: 4px;
 }
-.slash-menu .menu-item:hover {
-  background: var(--hover);
-}
 .slash-menu-footer {
   flex: none;
   display: flex;

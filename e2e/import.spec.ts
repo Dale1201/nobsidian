@@ -379,9 +379,15 @@ test('a message shows above the import panel in a narrow window', async ({ nb })
   await dropZip(page, zip)
   const toast = page.getByRole('alert')
   await expect(toast).toContainText('This is a Markdown export.')
+  // The lift follows the panel's height through a ResizeObserver, which reports on the next frame.
+  await expect
+    .poll(async () => {
+      const toastBox = (await toast.boundingBox())!
+      const panelBox = (await panel.boundingBox())!
+      return panelBox.y - (toastBox.y + toastBox.height)
+    })
+    .toBeGreaterThanOrEqual(0)
   const toastBox = (await toast.boundingBox())!
-  const panelBox = (await panel.boundingBox())!
-  expect(toastBox.y + toastBox.height).toBeLessThanOrEqual(panelBox.y)
   expect(Math.abs(toastBox.x + toastBox.width / 2 - 360)).toBeLessThanOrEqual(1)
 })
 

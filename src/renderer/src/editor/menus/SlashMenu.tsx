@@ -2,14 +2,15 @@ import { SuggestionMenu } from '@blocknote/core/extensions'
 import { useExtension, useExtensionState, type SuggestionMenuProps } from '@blocknote/react'
 import { Fragment, useEffect, useRef } from 'react'
 import type { SlashItem } from '../slashItems'
+import { useSuggestionKeys } from './useSuggestionKeys'
 
 export function SlashMenu({
   items,
-  selectedIndex,
   onItemClick,
   loadingState
 }: SuggestionMenuProps<SlashItem>): React.JSX.Element {
   const menu = useExtension(SuggestionMenu)
+  const { active, setActive } = useSuggestionKeys(items, onItemClick)
   const query = useExtensionState(SuggestionMenu, { selector: (s) => s?.query ?? '' })
   const list = useRef<HTMLDivElement>(null)
 
@@ -20,7 +21,7 @@ export function SlashMenu({
 
   useEffect(() => {
     list.current?.querySelector('.menu-item.active')?.scrollIntoView({ block: 'nearest' })
-  }, [selectedIndex])
+  }, [active])
 
   return (
     <div className="menu slash-menu" role="listbox" id="bn-suggestion-menu">
@@ -36,9 +37,10 @@ export function SlashMenu({
               role="option"
               aria-label={item.title}
               id={`bn-suggestion-menu-item-${i}`}
-              aria-selected={i === selectedIndex}
-              className={`menu-item ${i === selectedIndex ? 'active' : ''}`}
+              aria-selected={i === active}
+              className={`menu-item ${i === active ? 'active' : ''}`}
               onMouseDown={(e) => e.preventDefault()}
+              onMouseEnter={() => setActive(i)}
               onClick={() => onItemClick?.(item)}
             >
               <span className="menu-item-icon">{item.icon}</span>

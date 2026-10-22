@@ -96,3 +96,19 @@ test('the whole menu stays on screen when it opens mid-window', async ({ nb }) =
     await page.keyboard.press('Backspace')
   }
 })
+
+test('hovering moves the highlight, and Enter picks the hovered item', async ({ nb }) => {
+  const { page } = nb
+  await newPage(page, 'Hover')
+  await page.keyboard.type('/')
+  await page.keyboard.press('ArrowDown')
+  await page.locator('.slash-menu').getByRole('option', { name: 'Heading 2', exact: true }).hover()
+  const active = page.locator('.slash-menu .menu-item.active')
+  await expect(active).toHaveCount(1)
+  await expect(active).toHaveText(/Heading 2/)
+  await page.keyboard.press('ArrowDown')
+  await expect(active).toHaveText(/Heading 3/)
+  await page.keyboard.press('Enter')
+  await page.keyboard.type('Picked')
+  await waitForFile(join(nb.workspace, 'Hover.md'), '### Picked')
+})
