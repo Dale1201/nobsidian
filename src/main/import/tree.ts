@@ -71,10 +71,10 @@ export function buildTree(
   // Pages nothing links to: their folder's page, else the top level.
   const rest = pages
     .filter((p) => !nodes.has(p.notionId))
-    .sort((a, b) => a.path.localeCompare(b.path))
+    .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
   for (const p of rest) {
     const dir = dirOfPath(p.path)
-    const owner = pages.find((o) => o.folder === dir && o.notionId !== p.notionId)
+    const owner = byFolder.get(dir)?.find((o) => o.notionId !== p.notionId)
     if (owner) {
       nodes.set(p.notionId, { notionId: p.notionId, parent: owner.notionId, group: '' })
       push(owner.notionId, p.notionId)

@@ -10,12 +10,20 @@ export async function downloadImage(
 ): Promise<{ name: string; data: Uint8Array }> {
   if (!/^https?:/i.test(url)) throw new Error('Not a web address')
   const response = await fetchFn(testOrigin(url), { signal: AbortSignal.timeout(TIMEOUT_MS) })
-  if (!response.ok) throw new Error(`HTTP ${response.status}`)
+  if (!response.ok) {
+    await response.body?.cancel()
+    throw new Error(`HTTP ${response.status}`)
+  }
   const type = response.headers.get('content-type') ?? ''
-  if (!type.startsWith('image/')) throw new Error(`Not an image: ${type}`)
-  if (Number(response.headers.get('content-length') ?? 0) > MAX_BYTES) throw new Error('Too large')
-  const data = new Uint8Array(await response.arrayBuffer())
-  if (data.byteLength > MAX_BYTES) throw new Error('Too large')
+  if (!type.startsWith('image/')) {
+    await response.body?.cancel()
+    throw new Error(`Not an image: ${type}`)
+  }
+  if (Number(response.headers.get('content-length') ?? 0) > MAX_BYTES) {
+    await response.body?.cancel()
+    throw new Error('Too large')
+  }
+  const data = await readCapped(response.body)
   let name = new URL(url).pathname.split('/').pop() ?? ''
   try {
     name = decodeURIComponent(name)
@@ -24,6 +32,31 @@ export async function downloadImage(
   }
   if (!extname(name)) name = `${name || 'image'}.${type.slice(6).split(/[+;]/)[0]}`
   return { name, data }
+}
+
+/** Reads at most MAX_BYTES, whatever content-length says. */
+async function readCapped(body: ReadableStream<Uint8Array> | null): Promise<Uint8Array> {
+  if (!body) return new Uint8Array()
+  const reader = body.getReader()
+  const chunks: Uint8Array[] = []
+  let total = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    total += value.byteLength
+    if (total > MAX_BYTES) {
+      await reader.cancel()
+      throw new Error('Too large')
+    }
+    chunks.push(value)
+  }
+  const data = new Uint8Array(total)
+  let offset = 0
+  for (const chunk of chunks) {
+    data.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return data
 }
 
 /** End-to-end tests serve "web" images from a local server instead of the internet. */

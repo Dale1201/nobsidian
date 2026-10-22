@@ -40,6 +40,20 @@ describe('openExport', () => {
     await writeFile(join(dir, 'fake.zip'), 'not a zip')
     await expect(openExport([join(dir, 'fake.zip')], dir)).rejects.toThrow(ImportError)
   })
+
+  it('keeps a zip attached to a page as a file instead of opening it', async () => {
+    const dir = await tempDir()
+    const outer = await writeZip(join(dir, 'Export.zip'), {
+      [`Space/${PAGE}.html`]: '<p>1</p>',
+      'Space/Notes/backup.zip': 'not a zip'
+    })
+    const archive = await openExport([outer], dir)
+    expect(archive.entries.get('Space/Notes/backup.zip')!.path).toBe('Space/Notes/backup.zip')
+    expect((await archive.entries.get('Space/Notes/backup.zip')!.read()).toString()).toBe(
+      'not a zip'
+    )
+    archive.close()
+  })
 })
 
 describe('peekExport', () => {

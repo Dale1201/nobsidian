@@ -39,7 +39,8 @@ export async function openExport(zips: string[], tempDir: string): Promise<Expor
       if (name.endsWith('/') || name.startsWith('__MACOSX/') || /(^|\/)\.DS_Store$/.test(name)) {
         continue
       }
-      if (/\.zip$/i.test(name)) {
+      // Only the export's own part zips sit at its root; a zip attached to a page stays a file.
+      if (!name.includes('/') && /\.zip$/i.test(name)) {
         const copy = join(tempDir, `nested-${++nested}.zip`)
         await pipeline(await zip.openReadStreamPromise(entry), createWriteStream(copy))
         await add(copy)
