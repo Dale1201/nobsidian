@@ -1,20 +1,5 @@
-import { writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
-import type { Page } from '@playwright/test'
 import { expect, test } from './fixtures'
-import { editor } from './helpers'
-
-async function openFile(
-  nb: { workspace: string; relaunch: () => Promise<Page> },
-  name: string,
-  body: string
-): Promise<Page> {
-  await writeFile(join(nb.workspace, `${name}.md`), body)
-  const page = await nb.relaunch()
-  await page.getByTestId(`sidebar-row-${name}`).click()
-  await expect(page.locator(editor)).toBeVisible()
-  return page
-}
+import { editor, openFile } from './helpers'
 
 test('headings use Notion sizes, level 1 included', async ({ nb }) => {
   const page = await openFile(nb, 'Sizes', '# One\n\n## Two\n\n### Three\n')

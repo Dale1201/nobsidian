@@ -1,4 +1,5 @@
-import { readFile } from 'node:fs/promises'
+import { readFile, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import type { Page } from '@playwright/test'
 import { expect } from './fixtures'
 
@@ -36,4 +37,17 @@ export async function rowAction(page: Page, title: string, action: string): Prom
   await row.hover()
   await row.getByRole('button', { name: 'Page actions' }).click()
   await page.getByRole('button', { name: action, exact: true }).click()
+}
+
+/** Writes a page file, relaunches so the app reads it, and opens it. */
+export async function openFile(
+  nb: { workspace: string; relaunch: () => Promise<Page> },
+  name: string,
+  body: string
+): Promise<Page> {
+  await writeFile(join(nb.workspace, `${name}.md`), body)
+  const page = await nb.relaunch()
+  await page.getByTestId(`sidebar-row-${name}`).click()
+  await expect(page.locator(editor)).toBeVisible()
+  return page
 }

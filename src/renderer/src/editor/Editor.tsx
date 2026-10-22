@@ -37,6 +37,7 @@ import { AppColorStyleButton } from './ColorButton'
 import { ColorPickContext, type PickedColor } from './colors'
 import { AppCreateLinkButton, AppEditLinkButton } from './LinkButtons'
 import { isValidLink, linkHrefFromEvent } from './links'
+import { listMarkers } from './listMarkersPlugin'
 import type { WebImage } from './notionPaste'
 import {
   PageLinkContext,
@@ -151,9 +152,16 @@ export function Editor(props: EditorProps): React.JSX.Element {
   const editor = useCreateBlockNote({
     schema,
     initialContent: props.initialBlocks.length ? props.initialBlocks : undefined,
-    dictionary: { ...en, multi_column: multiColumnLocales.en },
+    dictionary: {
+      ...en,
+      multi_column: multiColumnLocales.en,
+      toggle_blocks: {
+        ...en.toggle_blocks,
+        add_block_button: 'Empty toggle. Click or drop blocks inside.'
+      }
+    },
     dropCursor: multiColumnDropCursor,
-    extensions: [syntaxHighlighter],
+    extensions: [syntaxHighlighter, listMarkers],
     uploadFile: (file) => props.uploadFile(file),
     resolveFileUrl: (url) => props.resolveFileUrl(url),
     pasteHandler: ({ event, editor, defaultPasteHandler }) => {
