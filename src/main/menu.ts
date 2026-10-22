@@ -2,6 +2,8 @@ import { app, Menu, type BrowserWindow, type MenuItemConstructorOptions } from '
 import type { MenuCommand } from '../shared/ipc'
 import { send } from './ipc'
 
+export const IMPORT_MENU_ID = 'import-notion'
+
 export function buildMenu(getWindow: () => BrowserWindow | null): Menu {
   const command = (cmd: MenuCommand) => (): void => {
     const win = getWindow()
@@ -14,6 +16,13 @@ export function buildMenu(getWindow: () => BrowserWindow | null): Menu {
       submenu: [
         { label: 'New Page', accelerator: 'CmdOrCtrl+N', click: command('new-page') },
         { label: 'Open Folder…', accelerator: 'CmdOrCtrl+O', click: command('open-folder') },
+        { type: 'separator' },
+        {
+          id: IMPORT_MENU_ID,
+          label: 'Import from Notion…',
+          enabled: false,
+          click: command('import-notion')
+        },
         { type: 'separator' },
         { role: 'close' }
       ]

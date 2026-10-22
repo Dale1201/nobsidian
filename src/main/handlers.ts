@@ -1,9 +1,13 @@
-import { BrowserWindow, dialog, shell } from 'electron'
+import { BrowserWindow, dialog, Menu, shell } from 'electron'
 import { readFile } from 'node:fs/promises'
 import { basename } from 'node:path'
 import type { TreeSnapshot } from '../shared/ipc'
 import type { WorkspaceInfo } from '../shared/types'
+import { downloadImage } from './import/download'
+import type { ImportService } from './import/service'
+import { peekExport } from './import/zip'
 import { handle, send } from './ipc'
+import { IMPORT_MENU_ID } from './menu'
 import type { SettingsStore } from './settings'
 import { exists } from './workspace/fs-utils'
 import { watchWorkspace, type WorkspaceWatcher } from './workspace/watcher'
@@ -14,7 +18,14 @@ export interface AppContext {
   workspace: Workspace | null
   watcher: WorkspaceWatcher | null
   maintainTimer: ReturnType<typeof setTimeout> | null
+  imports: ImportService
   window: () => BrowserWindow | null
+}
+
+/** File > Import from Notion works only while a workspace is open. */
+export function updateMenu(ctx: AppContext): void {
+  const item = Menu.getApplicationMenu()?.getMenuItemById(IMPORT_MENU_ID)
+  if (item) item.enabled = ctx.workspace !== null
 }
 
 export function workspaceInfo(ws: Workspace): WorkspaceInfo {
@@ -51,6 +62,7 @@ export async function openWorkspace(ctx: AppContext, root: string): Promise<Work
     },
     () => void lost()
   )
+  updateMenu(ctx)
   void ws.indexContent().catch((err) => console.error('Indexing failed', err))
   // Housekeeping can wait until the window is up.
   ctx.maintainTimer = setTimeout(() => {
@@ -63,11 +75,13 @@ export async function closeWorkspace(
   ctx: AppContext,
   { checkpoint = true }: { checkpoint?: boolean } = {}
 ): Promise<void> {
+  await ctx.imports.stop()
   const { watcher, workspace } = ctx
   if (ctx.maintainTimer) clearTimeout(ctx.maintainTimer)
   ctx.maintainTimer = null
   ctx.watcher = null
   ctx.workspace = null
+  updateMenu(ctx)
   await watcher?.close()
   if (checkpoint) await workspace?.checkpoint().catch(() => {})
   workspace?.close()
@@ -173,6 +187,32 @@ export function registerHandlers(ctx: AppContext): void {
     const file = ws().resolveAsset(href)
     if (file) await shell.openPath(file)
   })
+  handle('attachment:fetch', async ({ url }) => {
+    const image = await downloadImage(url)
+    return ws().saveAttachment(image.name, image.data)
+  })
+  handle('import:choose', async () => {
+    const win = ctx.window()
+    const options: Electron.OpenDialogOptions = {
+      title: 'Import from Notion',
+      message: 'Choose the zip files Notion exported (Export format: HTML).',
+      buttonLabel: 'Import',
+      properties: ['openFile', 'multiSelections'],
+      filters: [{ name: 'Notion export', extensions: ['zip'] }]
+    }
+    const result = win
+      ? await dialog.showOpenDialog(win, options)
+      : await dialog.showOpenDialog(options)
+    if (result.canceled || result.filePaths.length === 0) return false
+    await ctx.imports.start(ws(), result.filePaths)
+    return true
+  })
+  handle('import:start', ({ paths }) => ctx.imports.start(ws(), paths))
+  handle('import:cancel', async () => {
+    await ctx.imports.cancel()
+  })
+  handle('import:peek', ({ paths }) => Promise.all(paths.map((p) => peekExport(p))))
+  handle('notion:pages', ({ notionIds }) => ws().findNotionPages(notionIds))
   handle('settings:get', () => ctx.settings.get())
   handle('settings:set', (patch) => ctx.settings.set(patch))
   handle('shell:openExternal', async ({ url }) => {

@@ -1,6 +1,7 @@
 import type { Block } from './core/blocks'
 import type {
   HistoryVersion,
+  ImportStatus,
   PageDoc,
   PageMetaPatch,
   PageNode,
@@ -37,7 +38,17 @@ export interface TreeSnapshot {
 }
 
 export type MenuCommand =
-  'new-page' | 'open-folder' | 'search' | 'toggle-sidebar' | 'toggle-theme' | 'back' | 'forward'
+  | 'new-page'
+  | 'open-folder'
+  | 'import-notion'
+  | 'search'
+  | 'toggle-sidebar'
+  | 'toggle-theme'
+  | 'back'
+  | 'forward'
+
+/** What a dropped zip is, judged from its file names. */
+export type ZipKind = 'notion-html' | 'notion-markdown' | 'other'
 
 export interface IpcContract {
   'workspace:current': [payload: void, result: WorkspaceInfo | null]
@@ -71,6 +82,15 @@ export interface IpcContract {
   'attachment:save': [payload: { name: string; data: Uint8Array }, result: string]
   'attachment:chooseImage': [payload: void, result: string | null]
   'attachment:open': [payload: { href: string }, result: void]
+  /** Downloads an image from the web into attachments/; returns its internal href. */
+  'attachment:fetch': [payload: { url: string }, result: string]
+  /** Picks Notion export zips and starts importing them; false if the picker was cancelled. */
+  'import:choose': [payload: void, result: boolean]
+  'import:start': [payload: { paths: string[] }, result: void]
+  'import:cancel': [payload: void, result: void]
+  'import:peek': [payload: { paths: string[] }, result: ZipKind[]]
+  /** Imported pages by Notion id (32 hex), for pasted links to them. */
+  'notion:pages': [payload: { notionIds: string[] }, result: Record<string, string>]
   'settings:get': [payload: void, result: Settings]
   'settings:set': [payload: Partial<Settings>, result: Settings]
   'shell:openExternal': [payload: { url: string }, result: void]
@@ -87,11 +107,14 @@ export interface IpcEvents {
   'workspace:missing': void
   'menu:command': MenuCommand
   'app:flush': void
+  'import:status': ImportStatus
 }
 
 export interface Api {
   invoke<C extends IpcChannel>(channel: C, payload: IpcPayload<C>): Promise<IpcResult<C>>
   on<E extends keyof IpcEvents>(event: E, listener: (data: IpcEvents[E]) => void): () => void
+  /** The path of a file dropped on the window. */
+  pathForFile(file: File): string
 }
 
 export const ASSET_SCHEME = 'nbfile'

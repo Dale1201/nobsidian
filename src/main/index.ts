@@ -15,7 +15,9 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { is } from '@electron-toolkit/utils'
 import { ASSET_SCHEME } from '../shared/ipc'
-import { openWorkspace, registerHandlers, type AppContext } from './handlers'
+import { openWorkspace, registerHandlers, updateMenu, type AppContext } from './handlers'
+import { ImportService } from './import/service'
+import { startImportWorker } from './import/start-worker'
 import { send } from './ipc'
 import { buildMenu } from './menu'
 import { SettingsStore } from './settings'
@@ -43,6 +45,9 @@ const ctx: AppContext = {
   workspace: null,
   watcher: null,
   maintainTimer: null,
+  imports: new ImportService(startImportWorker, (status) => {
+    if (mainWindow) send(mainWindow.webContents, 'import:status', status)
+  }),
   window: () => mainWindow
 }
 
@@ -103,6 +108,20 @@ function createWindow(): void {
     event.preventDefault()
     if (closing) return
     closing = true
+    if (ctx.imports.running) {
+      // An import being added finishes first; one still reading can be discarded.
+      const ask = ctx.imports.cancellable ? discardImport(win, quitting) : Promise.resolve(true)
+      void ask.then(async (discard) => {
+        closing = false
+        if (!discard) {
+          quitting = false
+          return
+        }
+        await ctx.imports.stop()
+        win.close()
+      })
+      return
+    }
     const saving = ctx.settings.set({ windowBounds: win.getNormalBounds() }).catch(() => {})
     let answered = false
     const finish = async (saved: boolean): Promise<void> => {
@@ -132,6 +151,20 @@ function createWindow(): void {
   if (is.dev && process.env.ELECTRON_RENDERER_URL)
     void win.loadURL(process.env.ELECTRON_RENDERER_URL)
   else void win.loadFile(join(__dirname, '../renderer/index.html'))
+}
+
+/** Asks before closing while an import runs; true discards it. */
+async function discardImport(win: BrowserWindow, quitting: boolean): Promise<boolean> {
+  const verb = quitting ? 'Quit' : 'Close'
+  const { response } = await dialog.showMessageBox(win, {
+    type: 'warning',
+    message: `An import is running. ${verb} and discard it?`,
+    detail: 'Nothing from it has been added yet.',
+    buttons: ['Cancel', `${verb} and Discard`],
+    defaultId: 0,
+    cancelId: 0
+  })
+  return response === 1
 }
 
 /** Asks before closing over edits the renderer could not save; they are still on screen. */
@@ -167,6 +200,7 @@ app.whenReady().then(async () => {
 
   registerHandlers(ctx)
   Menu.setApplicationMenu(buildMenu(() => mainWindow))
+  updateMenu(ctx)
   createWindow()
 
   app.on('activate', () => {
