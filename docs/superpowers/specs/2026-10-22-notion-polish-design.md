@@ -66,7 +66,7 @@ A replacement for today's `Popover` and `Menu` in `src/renderer/src/components/P
 - Optional parts: search box that filters items, section headers, submenus, and right-aligned muted shortcut hints.
 - Notion's row height, font size, icon size, corner radius, padding and shadow.
 - Positioning keeps today's behaviour: below the anchor, flipping above or shifting inward when there is no room.
-- The sidebar row menu, workspace menu, top bar page menu and trash popover move onto the kit.
+- The sidebar row menu, workspace menu and top bar page menu move onto the kit; the trash popover adopts its search box style.
 
 ## 5. Editor menus
 
