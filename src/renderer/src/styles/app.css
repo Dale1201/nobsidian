@@ -361,6 +361,12 @@ button {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.breadcrumb-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 button.breadcrumb:hover {
   background: var(--hover);
 }
