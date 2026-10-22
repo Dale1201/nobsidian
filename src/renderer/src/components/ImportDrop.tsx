@@ -42,9 +42,17 @@ export function ImportDrop(): React.JSX.Element | null {
     const check = async (files: File[], editor: boolean): Promise<void> => {
       const app = useApp.getState()
       if (!app.workspace) return
+      if (app.importStatus?.state === 'running') {
+        app.showMessage('An import is already running.')
+        return
+      }
       const paths = files.map((f) => api.pathForFile(f))
       const kinds = await api.invoke('import:peek', { paths }).catch(() => null)
-      if (!kinds) return
+      if (!kinds) {
+        if (editor) attach(files)
+        else app.showMessage("Couldn't read that zip.")
+        return
+      }
       const notion = paths.filter((_, i) => kinds[i] === 'notion-html')
       if (notion.length > 0) {
         setPending({ paths: notion, files: editor ? files : null })

@@ -67,7 +67,7 @@ export function App(): React.JSX.Element | null {
         const app = useApp.getState()
         if (cmd === 'new-page') void app.createPage(null)
         if (cmd === 'open-folder') void app.chooseWorkspace()
-        if (cmd === 'import-notion' && app.workspace) void app.startImport()
+        if (cmd === 'import-notion') void app.startImport()
         if (cmd === 'search' && canSearch()) app.setOverlay({ kind: 'search' })
         if (cmd === 'back') app.back()
         if (cmd === 'forward') app.forward()

@@ -24,6 +24,7 @@ import {
 import { locales as multiColumnLocales, multiColumnDropCursor } from '@blocknote/xl-multi-column'
 import { createContext, useContext, useEffect } from 'react'
 import type { Block } from '@shared/core/blocks'
+import { errorReason, useApp } from '../store'
 import { ATTACH_FILES_EVENT, insertAtCursor } from './attachFiles'
 import { AppColorStyleButton } from './ColorButton'
 import { ColorPickContext, type PickedColor } from './colors'
@@ -165,7 +166,9 @@ export function Editor(props: EditorProps): React.JSX.Element {
           props: { url: await uploadFile(file), name: file.name },
           children: []
         }))
-      ).then((blocks) => insertAtCursor(editor, blocks))
+      )
+        .then((blocks) => insertAtCursor(editor, blocks))
+        .catch((e) => useApp.getState().showMessage(`Couldn't attach the file: ${errorReason(e)}`))
     }
     window.addEventListener(ATTACH_FILES_EVENT, attach)
     return () => window.removeEventListener(ATTACH_FILES_EVENT, attach)

@@ -4,10 +4,10 @@ import { readdir, readFile } from 'node:fs/promises'
 import type { AddressInfo } from 'node:net'
 import { join, resolve } from 'node:path'
 import { pipeline } from 'node:stream/promises'
-import type { ElectronApplication } from '@playwright/test'
+import type { ElectronApplication, Page } from '@playwright/test'
 import yazl from 'yazl'
 import { expect, test } from './fixtures'
-import { editor, waitForFile } from './helpers'
+import { editor, newPage, waitForFile } from './helpers'
 
 const FIXTURES = resolve('tests/fixtures')
 const EXPORT_ZIP = join(FIXTURES, 'notion-export.zip')
@@ -108,16 +108,80 @@ test('cancelling an import leaves nothing behind', async ({ nb }) => {
 
 test('a zip that is not a Notion HTML export is refused', async ({ nb }) => {
   const zip = join(nb.userData, 'notes.zip')
-  const out = new yazl.ZipFile()
-  out.addBuffer(Buffer.from('# Notes\n'), 'Notes 0123456789abcdef0123456789abcdef.md')
-  out.end()
-  await pipeline(out.outputStream, createWriteStream(zip))
+  await writeMarkdownExport(zip)
   await importViaMenu(nb.app, [zip])
   await expect(nb.page.getByRole('alert')).toContainText(
     'This is a Markdown export. Export again as HTML.'
   )
   await expect(nb.page.getByTestId('sidebar-row-Imported from Notion')).toHaveCount(0)
 })
+
+test('dropping a Notion export on the window asks, then imports it', async ({ nb }) => {
+  const { page } = nb
+  await expect(page.getByRole('button', { name: 'Search' })).toBeVisible()
+  await dropZip(page, EXPORT_ZIP)
+  await expect(page.getByText('Import this file from Notion?')).toBeVisible()
+  await page.getByRole('button', { name: 'Import', exact: true }).click()
+  await expect(page.getByRole('status')).toContainText('Imported 10 pages')
+})
+
+test('dropping a Markdown export on the window says to export HTML', async ({ nb }) => {
+  const zip = join(nb.userData, 'notes.zip')
+  await writeMarkdownExport(zip)
+  await expect(nb.page.getByRole('button', { name: 'Search' })).toBeVisible()
+  await dropZip(nb.page, zip)
+  await expect(nb.page.getByRole('alert')).toContainText(
+    'This is a Markdown export. Export again as HTML.'
+  )
+  await expect(nb.page.getByText('Import this file from Notion?')).toHaveCount(0)
+})
+
+test('a zip dropped during an import is refused without asking', async ({ nb }) => {
+  const big = join(nb.userData, 'big-export.zip')
+  await writeBigExport(big, 1500)
+  const { app, page } = nb
+  await importViaMenu(app, [big])
+  const panel = page.getByRole('status')
+  await expect(panel).toContainText('Converting pages')
+  await dropZip(page, EXPORT_ZIP)
+  await expect(page.getByRole('alert')).toContainText('An import is already running.')
+  await expect(page.getByText('Import this file from Notion?')).toHaveCount(0)
+  await panel.getByRole('button', { name: 'Cancel' }).click()
+  await expect(panel).toContainText('Cancelled')
+})
+
+test('an export-named zip dropped in a page that is not one is attached as a file', async ({
+  nb
+}) => {
+  const { page } = nb
+  await newPage(page, 'Drops')
+  await dropZip(page, 'Export-1.zip', editor)
+  await expect(page.locator(editor).getByText('Export-1.zip')).toBeVisible()
+  await expect(page.getByText('Import this file from Notion?')).toHaveCount(0)
+})
+
+async function dropZip(page: Page, path: string, target = 'body'): Promise<void> {
+  await page.evaluate(
+    ({ path, target }) => {
+      const transfer = new DataTransfer()
+      transfer.items.add(
+        new File([new Uint8Array([80, 75, 5, 6])], path, { type: 'application/zip' })
+      )
+      const el = document.querySelector(target)!
+      el.dispatchEvent(
+        new DragEvent('drop', { dataTransfer: transfer, bubbles: true, cancelable: true })
+      )
+    },
+    { path, target }
+  )
+}
+
+async function writeMarkdownExport(path: string): Promise<void> {
+  const out = new yazl.ZipFile()
+  out.addBuffer(Buffer.from('# Notes\n'), 'Notes 0123456789abcdef0123456789abcdef.md')
+  out.end()
+  await pipeline(out.outputStream, createWriteStream(path))
+}
 
 async function writeBigExport(path: string, pages: number): Promise<void> {
   const zip = new yazl.ZipFile()
