@@ -116,6 +116,64 @@ test('a zip that is not a Notion HTML export is refused', async ({ nb }) => {
   await expect(nb.page.getByTestId('sidebar-row-Imported from Notion')).toHaveCount(0)
 })
 
+test('pasting from Notion keeps colors, callouts and toggles', async ({ nb }) => {
+  const { app, page } = nb
+  const html = await readFile(join(FIXTURES, 'notion-clipboard', 'page.html'), 'utf8')
+  const records = await readFile(join(FIXTURES, 'notion-clipboard', 'records.json'), 'utf8')
+  await newPage(page, 'Pasted')
+  // Notion's own copy: its HTML plus its block records as Chromium custom data.
+  await app.evaluate(
+    async ({ clipboard, ClipboardItem }, { html, custom }) => {
+      const raw = 'electron application/osclipboard;format="org.chromium.web-custom-data"'
+      await clipboard.write([
+        new ClipboardItem({
+          'text/html': html,
+          'text/plain': 'Notion',
+          [raw]: new Blob([Buffer.from(custom, 'base64')])
+        })
+      ])
+    },
+    {
+      html,
+      custom: chromiumCustomData({ 'text/_notion-blocks-v3-production': records }).toString(
+        'base64'
+      )
+    }
+  )
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.paste())
+  const body = page.locator(editor)
+  await expect(body.getByText('An orange callout with a custom icon')).toBeVisible()
+  await expect(
+    body.locator('[data-style-type="backgroundColor"][data-value="yellow"]').first()
+  ).toBeVisible()
+  const file = join(nb.workspace, 'Pasted.md')
+  const text = await waitForFile(file, '> [!callout:orange_bg] 🚧')
+  expect(text).toContain('<details data-heading="1">')
+  expect(text).toContain('*Image from Notion: fixture-image.png*')
+  await expect(page.getByRole('alert')).toContainText(
+    "Images and files uploaded to Notion can't be pasted"
+  )
+})
+
+/** Chromium's clipboard format for custom MIME types: a pickle of UTF-16 type/value pairs. */
+function chromiumCustomData(entries: Record<string, string>): Buffer {
+  const parts: Buffer[] = []
+  const u32 = (n: number): Buffer => {
+    const b = Buffer.alloc(4)
+    b.writeUInt32LE(n)
+    return b
+  }
+  const string16 = (s: string): Buffer => {
+    const data = Buffer.from(s, 'utf16le')
+    const pad = (4 - (data.length % 4)) % 4
+    return Buffer.concat([u32(s.length), data, Buffer.alloc(pad)])
+  }
+  parts.push(u32(Object.keys(entries).length))
+  for (const [type, value] of Object.entries(entries)) parts.push(string16(type), string16(value))
+  const payload = Buffer.concat(parts)
+  return Buffer.concat([u32(payload.length), payload])
+}
+
 test('dropping a Notion export on the window asks, then imports it', async ({ nb }) => {
   const { page } = nb
   await expect(page.getByRole('button', { name: 'Search' })).toBeVisible()

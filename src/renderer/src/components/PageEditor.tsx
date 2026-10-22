@@ -17,6 +17,7 @@ import { createLanguageResolver, withEditorLanguages } from '../editor/codeLangu
 import type { AppBlock, AppPartialBlock } from '../editor/schema'
 import { resolveAssetUrl } from '../lib/assets'
 import { usePageLink } from '../lib/pageLink'
+import { prepareNotionPaste } from '../editor/notionPaste'
 import { registerFlusher, useApp } from '../store'
 
 const SAVE_DELAY_MS = 500
@@ -213,6 +214,17 @@ export function PageEditor({
       pageLink={pageLink}
       lastColor={lastColor}
       onPickColor={(picked) => void useApp.getState().updateSettings({ lastColor: picked })}
+      pasteNotion={async (clipboard) => {
+        const { blocks, uploads } = await prepareNotionPaste(clipboard)
+        if (uploads > 0) {
+          useApp
+            .getState()
+            .showMessage(
+              "Images and files uploaded to Notion can't be pasted. Import the page to bring them over."
+            )
+        }
+        return withEditorLanguages(blocks, editorLanguage)
+      }}
     />
   )
 }

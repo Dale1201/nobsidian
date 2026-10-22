@@ -25,6 +25,7 @@ import { locales as multiColumnLocales, multiColumnDropCursor } from '@blocknote
 import { createContext, useContext, useEffect } from 'react'
 import type { Block } from '@shared/core/blocks'
 import { errorReason, useApp } from '../store'
+import { readNotionClipboard, type NotionClipboard } from '@shared/notion/paste'
 import { ATTACH_FILES_EVENT, insertAtCursor } from './attachFiles'
 import { AppColorStyleButton } from './ColorButton'
 import { ColorPickContext, type PickedColor } from './colors'
@@ -53,6 +54,8 @@ export type EditorProps = {
   /** Applied by Cmd+Shift+H. */
   lastColor?: PickedColor
   onPickColor?(picked: PickedColor): void
+  /** Blocks for content copied from Notion; other pastes use the editor's own handling. */
+  pasteNotion?(clipboard: NotionClipboard): Promise<Block[]>
 }
 
 const DEFAULT_COLOR: PickedColor = { kind: 'background', color: 'yellow' }
@@ -143,6 +146,12 @@ export function Editor(props: EditorProps): React.JSX.Element {
     extensions: [syntaxHighlighter],
     uploadFile: (file) => props.uploadFile(file),
     resolveFileUrl: (url) => props.resolveFileUrl(url),
+    pasteHandler: ({ event, editor, defaultPasteHandler }) => {
+      const notion = event.clipboardData && readNotionClipboard(event.clipboardData)
+      if (!notion || !props.pasteNotion) return defaultPasteHandler()
+      void props.pasteNotion(notion).then((blocks) => insertAtCursor(editor, blocks))
+      return true
+    },
     links: {
       isValidLink,
       onClick: (event) => {
