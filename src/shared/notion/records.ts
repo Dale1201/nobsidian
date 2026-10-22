@@ -13,6 +13,11 @@ export const NOTION_RECORDS_TYPE = 'text/_notion-blocks-v3-production'
 type RichText = [string, Mark[]?][]
 type Mark = [string, ...unknown[]]
 
+const MAX_DEPTH = 64
+// Bounds the work on records that share children, which can multiply without a cycle.
+const MAX_BLOCKS = 20000
+const MAX_NAME_TEXT = 2000
+
 interface BlockRecord {
   id: string
   type: string
@@ -38,7 +43,7 @@ export function mapNotionRecords(json: string, ctx: MapContext, names: PasteName
   } catch {
     return null
   }
-  const list = (data as { blocks?: unknown }).blocks
+  const list = (data as { blocks?: unknown } | null)?.blocks
   if (!Array.isArray(list)) return null
   const records = new Map<string, BlockRecord>()
   const top: string[] = []
@@ -46,14 +51,16 @@ export function mapNotionRecords(json: string, ctx: MapContext, names: PasteName
     blockId?: string
     blockSubtree?: { block?: Record<string, unknown> }
   }[]) {
-    if (typeof item.blockId !== 'string') continue
+    if (typeof item?.blockId !== 'string') continue
     top.push(item.blockId)
     for (const [id, wrapped] of Object.entries(item.blockSubtree?.block ?? {})) {
       const value = unwrap(wrapped)
       if (value) records.set(id, { ...value, id })
     }
   }
-  return new RecordMapper(records, ctx, names).blocks(top)
+  const mapper = new RecordMapper(records, ctx, names)
+  const blocks = mapper.blocks(top, true)
+  return mapper.complete ? blocks : null
 }
 
 function unwrap(wrapped: unknown): Omit<BlockRecord, 'id'> | null {
@@ -68,47 +75,90 @@ function unwrap(wrapped: unknown): Omit<BlockRecord, 'id'> | null {
 }
 
 class RecordMapper {
+  /** False once a nested block turned out to have no record. */
+  complete = true
+  private readonly path = new Set<string>()
+  private budget = MAX_BLOCKS
+  private reportedDepth = false
+  private readonly used = new Set<number>()
+  private personTexts: string[] | null = null
+
   constructor(
     private readonly records: Map<string, BlockRecord>,
     private readonly ctx: MapContext,
     private readonly names: PasteNames
   ) {}
 
-  blocks(ids: string[]): Block[] {
+  /** Sub-pages and databases arrive at the top level without a record; nested ids must have one. */
+  blocks(ids: string[], top = false): Block[] {
     const out: Block[] = []
     for (const [i, id] of ids.entries()) {
       const record = this.records.get(id)
-      if (record?.type === 'transclusion_container' && !this.hasContent(record)) {
-        out.push(...this.syncedFromHtml(this.records.get(ids[i - 1]), this.records.get(ids[i + 1])))
+      if (!record) {
+        if (top) out.push(...this.pageReference(id))
+        else this.complete = false
         continue
       }
-      out.push(...(record ? this.block(record) : this.pageReference(id)))
+      if (record.type === 'transclusion_container' && !this.hasContent(record)) {
+        out.push(...this.syncedFromHtml(ids, i))
+        continue
+      }
+      if (this.path.has(id) || this.path.size >= MAX_DEPTH || this.budget-- <= 0) {
+        if (!this.reportedDepth) this.ctx.issue('skipped', 'Block nested too deeply')
+        this.reportedDepth = true
+        continue
+      }
+      this.path.add(id)
+      try {
+        out.push(...this.block(record))
+      } finally {
+        this.path.delete(id)
+      }
     }
     return out
   }
 
   private hasContent(r: BlockRecord): boolean {
-    return (r.content ?? []).every((id) => this.records.has(id))
+    return this.ids(r).every((id) => this.records.has(id))
+  }
+
+  private ids(r: BlockRecord): string[] {
+    return Array.isArray(r.content) ? r.content.filter((id) => typeof id === 'string') : []
   }
 
   /**
    * A copied synced block carries only its container; its content is in the `text/html` copy,
-   * between the blocks around it.
+   * between the blocks around it. The nearest siblings with text locate it; siblings without
+   * text (dividers, images, tables) are skipped over, one HTML block each.
    */
-  private syncedFromHtml(before?: BlockRecord, after?: BlockRecord): Block[] {
+  private syncedFromHtml(ids: string[], at: number): Block[] {
     const html = this.names.blocks
-    const own = (b: Block): string =>
-      'content' in b && Array.isArray(b.content) ? inlineText(b.content as Inline[]).trim() : ''
-    const textOf = (r?: BlockRecord): string | null =>
-      r ? inlineText(this.text(r)).trim() || null : null
-    const prev = textOf(before)
-    const next = textOf(after)
-    const start = prev === null ? 0 : html.findIndex((b) => own(b) === prev) + 1
-    const end =
-      next === null ? html.length : html.findIndex((b, i) => i >= start && own(b) === next)
-    if (start <= 0 && prev !== null) return this.lostSynced()
-    if (end < start) return this.lostSynced()
-    return html.slice(start, end)
+    const textOf = (id: string): string | null => {
+      const r = this.records.get(id)
+      return r ? inlineText(this.text(r)).trim() || null : null
+    }
+    let before = at - 1
+    while (before >= 0 && textOf(ids[before]) === null) before--
+    let after = at + 1
+    while (after < ids.length && textOf(ids[after]) === null) after++
+    const prev = before >= 0 ? textOf(ids[before]) : null
+    const next = after < ids.length ? textOf(ids[after]) : null
+    if (prev === null && next === null) return this.lostSynced()
+    const skippedBefore = at - 1 - before
+    const skippedAfter = after - at - 1
+    let start = skippedBefore
+    if (prev !== null) {
+      const found = html.findIndex((b) => ownText(b) === prev)
+      if (found < 0) return this.lostSynced()
+      start = found + 1 + skippedBefore
+    }
+    let end = html.length - skippedAfter
+    if (next !== null) {
+      const found = html.findIndex((b, i) => i >= start && ownText(b) === next)
+      if (found < 0) return this.lostSynced()
+      end = found - skippedAfter
+    }
+    return end < start ? this.lostSynced() : html.slice(start, end)
   }
 
   private lostSynced(): Block[] {
@@ -117,7 +167,7 @@ class RecordMapper {
   }
 
   private children(r: BlockRecord): Block[] {
-    return this.blocks(r.content ?? [])
+    return this.blocks(this.ids(r))
   }
 
   private text(r: BlockRecord, key = 'title'): Inline[] {
@@ -125,11 +175,13 @@ class RecordMapper {
   }
 
   private plain(r: BlockRecord, key: string): string {
-    return (r.properties?.[key] ?? []).map((seg) => seg[0]).join('')
+    return segments(r.properties?.[key])
+      .map(([text]) => text)
+      .join('')
   }
 
   private colors(r: BlockRecord): BlockColors {
-    return notionColor(r.format?.block_color as string | undefined)
+    return notionColor(str(r.format?.block_color))
   }
 
   private block(r: BlockRecord): Block[] {
@@ -224,12 +276,12 @@ class RecordMapper {
       case 'collection_view':
         return this.pageReference(r.id, this.plain(r, 'title'))
       case 'alias': {
-        const target = (r.format?.alias_pointer as { id?: string } | undefined)?.id
-        return target ? this.pageReference(target) : []
+        const target = (r.format?.alias_pointer as { id?: unknown } | undefined)?.id
+        return typeof target === 'string' ? this.pageReference(target) : []
       }
       default: {
         const text = this.text(r)
-        if (text.length === 0 && (r.content ?? []).length === 0) {
+        if (text.length === 0 && this.ids(r).length === 0) {
           this.ctx.issue('skipped', r.type)
           return []
         }
@@ -240,7 +292,7 @@ class RecordMapper {
   }
 
   private callout(r: BlockRecord, colors: BlockColors): Block {
-    const icon = typeof r.format?.page_icon === 'string' ? r.format.page_icon : DEFAULT_CALLOUT_ICON
+    const icon = str(r.format?.page_icon) ?? DEFAULT_CALLOUT_ICON
     let content = this.text(r)
     let kids = this.children(r)
     // Newer callouts keep their text in a first child paragraph.
@@ -259,7 +311,7 @@ class RecordMapper {
   }
 
   private columns(r: BlockRecord): Block[] {
-    const columns = (r.content ?? []).map((id) => this.records.get(id)).filter((c) => !!c)
+    const columns = this.childRecords(r)
     return columns.map((c) => {
       const ratio = Number(c.format?.column_ratio)
       const width = ratio > 0 ? Math.round(ratio * columns.length * 1000) / 1000 : 1
@@ -267,11 +319,22 @@ class RecordMapper {
     })
   }
 
+  /** The records of a block's children; a child without one makes the records incomplete. */
+  private childRecords(r: BlockRecord): BlockRecord[] {
+    const found: BlockRecord[] = []
+    for (const id of this.ids(r)) {
+      const record = this.records.get(id)
+      if (record) found.push(record)
+      else this.complete = false
+    }
+    return found
+  }
+
   private table(r: BlockRecord): Block {
-    const order = (r.format?.table_block_column_order as string[] | undefined) ?? []
-    const rows = (r.content ?? [])
-      .map((id) => this.records.get(id))
-      .filter((row): row is BlockRecord => row?.type === 'table_row')
+    const order = Array.isArray(r.format?.table_block_column_order)
+      ? (r.format.table_block_column_order as string[])
+      : []
+    const rows = this.childRecords(r).filter((row) => row.type === 'table_row')
     if (r.format?.table_block_row_header === true) {
       this.ctx.issue('table', 'Header column (kept as a normal column)')
     }
@@ -333,10 +396,10 @@ class RecordMapper {
   // ---------- rich text ----------
 
   private richText(rich: RichText | undefined): Inline[] {
-    if (!rich) return []
+    const segs = segments(rich)
     const out: Inline[] = []
-    const people = this.personNames(rich)
-    for (const [text, marks = []] of rich) {
+    const people = this.personNames(segs)
+    for (const [text, marks] of segs) {
       const styles: Styles = {}
       let href: string | null = null
       let replaced: Inline | null = null
@@ -358,7 +421,7 @@ class RecordMapper {
             styles.code = true
             break
           case 'h':
-            Object.assign(styles, notionColor(arg as string))
+            Object.assign(styles, notionColor(str(arg)))
             break
           case 'a':
             href = this.ctx.link(String(arg))
@@ -394,19 +457,29 @@ class RecordMapper {
 
   /**
    * Notion's records name people only by id; the `text/html` copy has their names. The rich
-   * text around each mention is matched against it to find them.
+   * text is matched against each HTML block's own text, in document order, taking blocks that
+   * no earlier mention used first.
    */
-  private personNames(rich: RichText): string[] {
-    if (!rich.some(([, marks = []]) => marks.some(([m]) => m === 'u'))) return []
-    const pattern = rich
-      .map(([text, marks = []]) => {
-        if (marks.some(([m]) => m === 'u')) return '@(.+?)'
-        if (marks.some(([m]) => m === 'p' || m === 'd' || m === 'e')) return '.*?'
-        return escapeRegExp(text)
-      })
-      .join('')
-    const m = new RegExp(pattern).exec(this.names.text)
-    return m ? m.slice(1) : []
+  private personNames(rich: Segment[]): string[] {
+    if (!rich.some(([, marks]) => marks.some(([m]) => m === 'u'))) return []
+    const pattern: Part[] = []
+    for (const [text, marks] of rich) {
+      if (marks.some(([m]) => m === 'u')) pattern.push('@', { person: true })
+      else if (marks.some(([m]) => m === 'p' || m === 'd' || m === 'e')) pattern.push({})
+      else pattern.push(text)
+    }
+    const texts = this.personTexts ?? (this.personTexts = personTexts(this.names.blocks))
+    let fallback: string[] | null = null
+    for (const [i, text] of texts.entries()) {
+      const people = matchWhole(pattern, text)
+      if (!people) continue
+      if (!this.used.has(i)) {
+        this.used.add(i)
+        return people
+      }
+      fallback ??= people
+    }
+    return fallback ?? []
   }
 }
 
@@ -434,6 +507,86 @@ function formatDate(date: NotionDate | undefined): string {
   return end ? `${start} → ${end}` : start
 }
 
-function escapeRegExp(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+type Segment = [string, Mark[]]
+/** A literal, or a gap: any text, and for a person (`person`) at least one character, captured. */
+type Part = string | { person?: boolean }
+
+function str(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined
+}
+
+/** Rich text with whatever is malformed dropped. */
+function segments(rich: unknown): Segment[] {
+  if (!Array.isArray(rich)) return []
+  const out: Segment[] = []
+  for (const seg of rich as unknown[]) {
+    if (!Array.isArray(seg)) continue
+    const marks = Array.isArray(seg[1])
+      ? (seg[1] as unknown[]).filter((m): m is Mark => Array.isArray(m))
+      : []
+    out.push([str(seg[0]) ?? '', marks])
+  }
+  return out
+}
+
+function ownText(block: Block): string {
+  return 'content' in block && Array.isArray(block.content)
+    ? inlineText(block.content as Inline[]).trim()
+    : ''
+}
+
+/** The own text of every block of the HTML copy, children included, that is short enough to match. */
+function personTexts(blocks: Block[]): string[] {
+  const out: string[] = []
+  const walk = (list: Block[]): void => {
+    for (const block of list) {
+      if (block.type === 'table') {
+        for (const row of block.content.rows) {
+          for (const cell of row.cells) {
+            out.push(inlineText(Array.isArray(cell) ? cell : cell.content).trim())
+          }
+        }
+      } else {
+        out.push(ownText(block))
+      }
+      walk(block.children)
+    }
+  }
+  walk(blocks)
+  return out.map((text) => (text.length > MAX_NAME_TEXT ? '' : text))
+}
+
+/**
+ * Matches `text` against literals and gaps from start to end, returning what the person gaps
+ * captured. A gap runs only to the next literal's first occurrence, so it never backtracks.
+ */
+function matchWhole(parts: Part[], text: string): string[] | null {
+  const merged: Part[] = []
+  for (const part of parts) {
+    const last = merged[merged.length - 1]
+    if (typeof part === 'string' && typeof last === 'string')
+      merged[merged.length - 1] = last + part
+    else merged.push(part)
+  }
+  const people: string[] = []
+  let pos = 0
+  for (let i = 0; i < merged.length; i++) {
+    const part = merged[i]
+    if (typeof part === 'string') {
+      if (!text.startsWith(part, pos)) return null
+      pos += part.length
+      continue
+    }
+    const min = part.person ? 1 : 0
+    const next = merged[i + 1]
+    let end: number
+    if (next === undefined) end = text.length
+    else if (typeof next !== 'string') end = pos + min
+    else if (i + 1 === merged.length - 1) end = text.length - next.length
+    else end = text.indexOf(next, pos + min)
+    if (end < pos + min || end > text.length) return null
+    if (part.person) people.push(text.slice(pos, end))
+    pos = end
+  }
+  return pos === text.length ? people : null
 }

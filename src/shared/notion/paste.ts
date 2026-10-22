@@ -42,11 +42,21 @@ export function mapNotionPaste(clipboard: NotionClipboard, ctx: MapContext): Blo
     const id = /([0-9a-f]{32})(?:[?#]|$)/.exec(attr(a, 'href') ?? '')?.[1]
     if (id) names.pages.set(id, textOf(a).trim())
   }
-  const quiet: MapContext = { ...ctx, issue: () => {} }
   if (clipboard.records) {
+    const quiet: MapContext = { ...ctx, issue: () => {} }
     names.blocks = mapNotionFragment(tree, quiet)
-    const blocks = mapNotionRecords(clipboard.records, ctx, names)
-    if (blocks) return blocks
+    // Issues are held back so a mapping that is then abandoned reports nothing twice.
+    const issues: Parameters<MapContext['issue']>[] = []
+    try {
+      const held: MapContext = { ...ctx, issue: (...issue) => issues.push(issue) }
+      const blocks = mapNotionRecords(clipboard.records, held, names)
+      if (blocks && (blocks.length > 0 || names.blocks.length === 0)) {
+        for (const issue of issues) ctx.issue(...issue)
+        return blocks
+      }
+    } catch {
+      // Records in an unexpected shape: the HTML copy still holds the content.
+    }
   }
   return mapNotionFragment(tree, ctx)
 }

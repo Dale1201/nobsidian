@@ -20,22 +20,25 @@ function context(pages: Record<string, string> = {}): MapContext & { issues: str
   }
 }
 
-/** Records in Notion's clipboard format, one top-level block per entry. */
+/** Records in Notion's clipboard format, one top-level block per entry with its descendants. */
 function records(
   blocks: Record<string, unknown>[],
   children: Record<string, unknown>[] = []
 ): string {
-  const all = [...blocks, ...children]
+  const byId = new Map([...blocks, ...children].map((b) => [b.id as string, b]))
+  const subtree = (b: Record<string, unknown>): Record<string, unknown>[] => [
+    b,
+    ...((b.content as string[] | undefined) ?? []).flatMap((id) => {
+      const child = byId.get(id)
+      return child ? subtree(child) : []
+    })
+  ]
   return JSON.stringify({
     blocks: blocks.map((b) => ({
       blockId: b.id,
       blockSubtree: {
         __version__: 3,
-        block: Object.fromEntries(
-          all
-            .filter((c) => c === b || (b.content as string[] | undefined)?.includes(c.id as string))
-            .map((c) => [c.id, { value: c }])
-        )
+        block: Object.fromEntries(subtree(b).map((c) => [c.id, { value: c }]))
       }
     }))
   })
@@ -157,6 +160,164 @@ describe('mapNotionPaste', () => {
   it('falls back to the HTML copy without the records', () => {
     const html = '<!-- notionvc: 1 --><h2>Title</h2><ul><li>One</li></ul>'
     expect(blocksToMarkdown(mapNotionPaste({ html }, context()))).toBe('## Title\n\n- One\n')
+  })
+})
+
+/** Records from {id: record} maps, with the given ids at the top level. */
+function rawRecords(top: string[], all: Record<string, unknown>): string {
+  return JSON.stringify({
+    blocks: top.map((id) => ({
+      blockId: id,
+      blockSubtree: {
+        block: Object.fromEntries(
+          Object.entries(all).map(([key, value]) => [
+            key,
+            { value: { id: key, ...(value as object) } }
+          ])
+        )
+      }
+    }))
+  })
+}
+
+describe('mapNotionPaste with unreliable records', () => {
+  it('stops at a record that contains itself', () => {
+    const json = rawRecords(['a'], {
+      a: { type: 'text', properties: { title: [['Loop']] }, content: ['a'] }
+    })
+    const ctx = context()
+    expect(blocksToMarkdown(mapNotionPaste({ records: json }, ctx))).toBe('Loop\n')
+    expect(ctx.issues).toEqual(['skipped: Block nested too deeply'])
+  })
+
+  it('does not blow up on blocks shared by many parents', () => {
+    const all: Record<string, unknown> = {}
+    for (let i = 0; i < 40; i++) {
+      all[`n${i}`] = {
+        type: 'text',
+        properties: { title: [[`L${i}`]] },
+        content: [`n${i + 1}`, `n${i + 1}`]
+      }
+    }
+    all.n40 = { type: 'text', properties: { title: [['Leaf']] } }
+    const started = Date.now()
+    mapNotionPaste({ records: rawRecords(['n0'], all) }, context())
+    expect(Date.now() - started).toBeLessThan(1000)
+  })
+
+  it('treats malformed content, rich text and marks as empty', () => {
+    const json = rawRecords(['a', 'b', 'c', 'd'], {
+      a: { type: 'text', content: 'x', properties: { title: [['Fine']] } },
+      b: { type: 'text', properties: { title: 'x' } },
+      c: {
+        type: 'text',
+        format: 'x',
+        properties: { title: [null, ['x', 5], [7, [['b']]], ['y', ['b']], ['z', [['h', 5]]]] }
+      },
+      d: { type: 'table', format: { table_block_column_order: 'x' }, content: 'y' }
+    })
+    expect(() => mapNotionPaste({ records: json }, context())).not.toThrow()
+    expect(blocksToMarkdown(mapNotionPaste({ records: json }, context()))).toContain('Fine')
+  })
+
+  it('maps the HTML copy when mapping the records throws', () => {
+    const json = records([
+      { id: 'a', type: 'text', properties: { title: [['x', [['a', 'https://example.com']]]] } }
+    ])
+    const ctx = {
+      ...context(),
+      link: (href: string) => {
+        if (href === 'https://example.com') throw new Error('boom')
+        return href
+      }
+    }
+    expect(blocksToMarkdown(mapNotionPaste({ records: json, html: '<p>From HTML</p>' }, ctx))).toBe(
+      'From HTML\n'
+    )
+  })
+
+  it('maps the HTML copy when a nested block has no record', () => {
+    const json = records([
+      { id: 't', type: 'toggle', properties: { title: [['Toggle']] }, content: ['gone'] }
+    ])
+    expect(
+      blocksToMarkdown(mapNotionPaste({ records: json, html: '<p>From HTML</p>' }, context()))
+    ).toBe('From HTML\n')
+  })
+
+  it('keeps a top-level block without a record as a link to its page', () => {
+    const id = '11111111222233334444555555555555'
+    const json = JSON.stringify({ blocks: [{ blockId: id }] })
+    const html = `<p><a href="https://www.notion.so/Plans-${id}">Plans</a></p>`
+    expect(blocksToMarkdown(mapNotionPaste({ records: json, html }, context()))).toBe(
+      `[Plans](https://www.notion.so/${id})\n`
+    )
+  })
+
+  it('maps the HTML copy when the records hold no blocks', () => {
+    expect(
+      blocksToMarkdown(
+        mapNotionPaste({ records: '{"blocks":[]}', html: '<p>From HTML</p>' }, context())
+      )
+    ).toBe('From HTML\n')
+  })
+})
+
+describe('person mentions', () => {
+  const mention = (id: string): [string, [string, string][]] => ['‣', [['u', id]]]
+
+  it('names a person mentioned at the end of a block', () => {
+    const json = records([
+      { id: 'a', type: 'text', properties: { title: [['Ask '], mention('u1')] } }
+    ])
+    expect(
+      blocksToMarkdown(
+        mapNotionPaste({ records: json, html: '<p>Ask @Ada Lovelace</p>' }, context())
+      )
+    ).toBe('Ask @Ada Lovelace\n')
+  })
+
+  it('gives each of two similar blocks its own person', () => {
+    const json = records([
+      { id: 'a', type: 'text', properties: { title: [['Ask '], mention('u1'), [' today.']] } },
+      { id: 'b', type: 'text', properties: { title: [['Ask '], mention('u2'), [' today.']] } }
+    ])
+    const html = '<p>Ask @Ada today.</p><p>Ask @Bob today.</p>'
+    expect(blocksToMarkdown(mapNotionPaste({ records: json, html }, context()))).toBe(
+      'Ask @Ada today.\n\nAsk @Bob today.\n'
+    )
+  })
+
+  it('gives up quickly on mentions that match nothing in a long page', () => {
+    const rich = [
+      mention('1'),
+      [' x '],
+      mention('2'),
+      [' y '],
+      mention('3'),
+      [' z '],
+      mention('4'),
+      [' END']
+    ]
+    const json = records([{ id: 'a', type: 'text', properties: { title: rich } }])
+    const html = `<p>${'@a x @b y @c z @d '.repeat(100)}</p>`.repeat(6)
+    const started = Date.now()
+    mapNotionPaste({ records: json, html }, context())
+    expect(Date.now() - started).toBeLessThan(1000)
+  })
+})
+
+describe('synced blocks next to blocks without text', () => {
+  it('does not repeat a divider or the page around the synced content', () => {
+    const json = records([
+      { id: 'd', type: 'divider' },
+      { id: 's', type: 'transclusion_container', content: ['missing'] },
+      { id: 'b', type: 'text', properties: { title: [['After']] } }
+    ])
+    const html = '<hr><p>Synced</p><p>After</p>'
+    expect(blocksToMarkdown(mapNotionPaste({ records: json, html }, context()))).toBe(
+      '---\n\nSynced\n\nAfter\n'
+    )
   })
 })
 

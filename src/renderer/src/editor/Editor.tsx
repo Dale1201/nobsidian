@@ -26,7 +26,7 @@ import { createContext, useContext, useEffect } from 'react'
 import type { Block } from '@shared/core/blocks'
 import { errorReason, useApp } from '../store'
 import { readNotionClipboard, type NotionClipboard } from '@shared/notion/paste'
-import { ATTACH_FILES_EVENT, insertAtCursor } from './attachFiles'
+import { ATTACH_FILES_EVENT, insertAtCursor, insertPlainText } from './attachFiles'
 import { AppColorStyleButton } from './ColorButton'
 import { ColorPickContext, type PickedColor } from './colors'
 import { AppCreateLinkButton, AppEditLinkButton } from './LinkButtons'
@@ -149,7 +149,19 @@ export function Editor(props: EditorProps): React.JSX.Element {
     pasteHandler: ({ event, editor, defaultPasteHandler }) => {
       const notion = event.clipboardData && readNotionClipboard(event.clipboardData)
       if (!notion || !props.pasteNotion) return defaultPasteHandler()
-      void props.pasteNotion(notion).then((blocks) => insertAtCursor(editor, blocks))
+      const text = event.clipboardData.getData('text/plain')
+      const insert = (blocks: Block[]): void => {
+        try {
+          if (blocks.length > 0) insertAtCursor(editor, blocks)
+          else insertPlainText(editor, text)
+        } catch {
+          // The editor changed under the paste; there is nowhere left to put it.
+        }
+      }
+      props.pasteNotion(notion).then(insert, (err: unknown) => {
+        insert([])
+        useApp.getState().showMessage(`Couldn't paste from Notion: ${errorReason(err)}`)
+      })
       return true
     },
     links: {

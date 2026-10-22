@@ -17,3 +17,17 @@ export function insertAtCursor(editor: AppEditor, blocks: Block[]): void {
   if (empty) editor.replaceBlocks([cursor], partial)
   else editor.insertBlocks(partial, cursor, 'after')
 }
+
+/** Pastes `text` as one paragraph per non-empty line. */
+export function insertPlainText(editor: AppEditor, text: string): void {
+  const lines = text.split(/\r?\n/).filter((line) => line.trim() !== '')
+  insertAtCursor(
+    editor,
+    lines.map((line) => ({
+      type: 'paragraph',
+      props: {},
+      content: [{ type: 'text', text: line, styles: {} }],
+      children: []
+    }))
+  )
+}
