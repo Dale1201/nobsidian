@@ -1,33 +1,11 @@
-import {
-  combineByGroup,
-  filterSuggestionItems,
-  insertOrUpdateBlockForSlashMenu
-} from '@blocknote/core'
+import { filterSuggestionItems, insertOrUpdateBlockForSlashMenu } from '@blocknote/core'
 import { getDefaultReactSlashMenuItems, type DefaultReactSuggestionItem } from '@blocknote/react'
 import { getMultiColumnSlashMenuItems } from '@blocknote/xl-multi-column'
-import { TocIcon } from '../components/icons'
+import { CalloutIcon, PageIcon, TocIcon } from '../components/icons'
 import type { AppEditor, AppPartialBlock } from './schema'
 
 // The React items carry core's `key` at runtime, but their type omits it.
 type KeyedItem = DefaultReactSuggestionItem & { key?: string }
-
-const EXCLUDED_KEYS = new Set([
-  'heading_4',
-  'heading_5',
-  'heading_6',
-  'toggle_heading_4',
-  'toggle_heading_5',
-  'toggle_heading_6'
-])
-
-// The menu draws a group header whenever the group changes, so groups must be contiguous.
-function groupAdjacent<T extends { group?: string }>(items: T[]): T[] {
-  const order = new Map<string | undefined, number>()
-  for (const item of items) {
-    if (!order.has(item.group)) order.set(item.group, order.size)
-  }
-  return [...items].sort((a, b) => order.get(a.group)! - order.get(b.group)!)
-}
 
 export type SlashItemOptions = {
   createSubPage: () => Promise<string>
@@ -51,72 +29,139 @@ async function insertPageLink(
   }
 }
 
-export function getSlashItems(
-  editor: AppEditor,
-  opts: SlashItemOptions
-): DefaultReactSuggestionItem[] {
-  const defaults = groupAdjacent(
-    getDefaultReactSlashMenuItems(editor)
-      .filter((item: KeyedItem) => !(item.key && EXCLUDED_KEYS.has(item.key)))
-      .map((item: KeyedItem) =>
-        item.key?.startsWith('toggle_heading') ? { ...item, group: 'Headings' } : item
-      )
-  )
+export type SlashItem = DefaultReactSuggestionItem & { key: string; hint?: string }
 
-  const custom: DefaultReactSuggestionItem[] = [
+const LABELS: Record<string, { title: string; hint?: string; aliases?: string[] }> = {
+  paragraph: { title: 'Text', aliases: ['text', 'plain'] },
+  heading: { title: 'Heading 1', hint: '#' },
+  heading_2: { title: 'Heading 2', hint: '##' },
+  heading_3: { title: 'Heading 3', hint: '###' },
+  bullet_list: { title: 'Bulleted list', hint: '-' },
+  numbered_list: { title: 'Numbered list', hint: '1.' },
+  check_list: { title: 'To-do list', hint: '[]', aliases: ['todo', 'task', 'checkbox'] },
+  toggle_list: { title: 'Toggle list', hint: '>' },
+  quote: { title: 'Quote', hint: '"' },
+  divider: { title: 'Divider', hint: '---' },
+  code_block: { title: 'Code', hint: '```' },
+  table: { title: 'Table' },
+  toggle_heading: { title: 'Toggle heading 1', hint: '>#' },
+  toggle_heading_2: { title: 'Toggle heading 2', hint: '>##' },
+  toggle_heading_3: { title: 'Toggle heading 3', hint: '>###' },
+  image: { title: 'Image' },
+  video: { title: 'Video' },
+  audio: { title: 'Audio' },
+  file: { title: 'File' },
+  two_columns: { title: '2 columns' },
+  three_columns: { title: '3 columns' }
+}
+
+const ORDER: { group: string; keys: string[] }[] = [
+  {
+    group: 'Basic blocks',
+    keys: [
+      'paragraph',
+      'page',
+      'check_list',
+      'heading',
+      'heading_2',
+      'heading_3',
+      'table',
+      'bullet_list',
+      'numbered_list',
+      'toggle_list',
+      'quote',
+      'divider',
+      'callout',
+      'code_block'
+    ]
+  },
+  { group: 'Media', keys: ['image', 'video', 'audio', 'file'] },
+  {
+    group: 'Advanced',
+    keys: [
+      'toc',
+      'math',
+      'toggle_heading',
+      'toggle_heading_2',
+      'toggle_heading_3',
+      'two_columns',
+      'three_columns'
+    ]
+  }
+]
+
+function customItems(editor: AppEditor, opts: SlashItemOptions): SlashItem[] {
+  return [
     {
+      key: 'page',
       title: 'Page',
-      subtext: 'Embed a sub-page inside this page',
       aliases: ['page', 'subpage', 'link'],
-      group: 'Basic blocks',
-      icon: <span>📄</span>,
-      onItemClick: () => {
-        void insertPageLink(editor, opts.createSubPage)
-      }
+      icon: <PageIcon size={18} />,
+      onItemClick: () => void insertPageLink(editor, opts.createSubPage)
     },
     {
+      key: 'callout',
       title: 'Callout',
-      subtext: 'Make writing stand out',
       aliases: ['callout', 'note', 'info', 'tip'],
-      group: 'Basic blocks',
-      icon: <span>💡</span>,
-      onItemClick: () => {
-        // Converting a paragraph would otherwise carry over its "default" background.
+      icon: <CalloutIcon size={18} />,
+      // Converting a paragraph would otherwise carry over its "default" background.
+      onItemClick: () =>
         insertOrUpdateBlockForSlashMenu(editor, {
           type: 'callout',
           props: { backgroundColor: 'gray' }
         })
-      }
     },
     {
+      key: 'toc',
       title: 'Table of contents',
-      subtext: 'Show an outline of your page',
       aliases: ['toc', 'outline', 'contents'],
-      group: 'Advanced',
       icon: <TocIcon size={18} />,
-      onItemClick: () => {
-        insertOrUpdateBlockForSlashMenu(editor, { type: 'toc' })
-      }
+      onItemClick: () => insertOrUpdateBlockForSlashMenu(editor, { type: 'toc' })
     },
     {
+      key: 'math',
       title: 'Block equation',
-      subtext: 'Display a standalone math equation',
       aliases: ['math', 'equation', 'latex', 'tex', 'katex'],
-      group: 'Advanced',
       icon: <span>∑</span>,
-      onItemClick: () => {
-        insertOrUpdateBlockForSlashMenu(editor, { type: 'math' })
-      }
+      onItemClick: () => insertOrUpdateBlockForSlashMenu(editor, { type: 'math' })
     }
   ]
+}
 
-  return combineByGroup(defaults, getMultiColumnSlashMenuItems(editor), custom)
+export function getSlashItems(editor: AppEditor, opts: SlashItemOptions): SlashItem[] {
+  const byKey = new Map<string, SlashItem>()
+  for (const item of getDefaultReactSlashMenuItems(editor) as KeyedItem[]) {
+    if (item.key) byKey.set(item.key, { ...item, key: item.key })
+  }
+  // The multi-column package's items carry no key; it returns two columns, then three.
+  const [two, three] = getMultiColumnSlashMenuItems(editor)
+  if (two) byKey.set('two_columns', { ...two, key: 'two_columns' })
+  if (three) byKey.set('three_columns', { ...three, key: 'three_columns' })
+  for (const item of customItems(editor, opts)) byKey.set(item.key, item)
+  return ORDER.flatMap(({ group, keys }) =>
+    keys.flatMap((key) => {
+      const item = byKey.get(key)
+      if (!item) return []
+      const label = LABELS[key]
+      return [
+        {
+          ...item,
+          group,
+          title: label?.title ?? item.title,
+          hint: label?.hint,
+          aliases: [...(item.aliases ?? []), item.title.toLowerCase(), ...(label?.aliases ?? [])],
+          badge: undefined,
+          subtext: undefined
+        }
+      ]
+    })
+  )
 }
 
 export async function querySlashItems(
   editor: AppEditor,
   opts: SlashItemOptions,
   query: string
-): Promise<DefaultReactSuggestionItem[]> {
+): Promise<SlashItem[]> {
   return filterSuggestionItems(getSlashItems(editor, opts), query)
 }

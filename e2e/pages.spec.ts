@@ -28,7 +28,7 @@ test('the top bar menu duplicates the open page', async ({ nb }) => {
   await page.getByTestId('sidebar-row-Plan').click()
   await expect(page.getByTestId('page-title')).toHaveText('Plan')
   await page.getByRole('button', { name: 'Page menu' }).click()
-  await page.getByRole('button', { name: 'Duplicate', exact: true }).click()
+  await page.getByRole('menuitem', { name: 'Duplicate', exact: true }).click()
   await expect(page.getByTestId('page-title')).toHaveText('Plan (1)')
   await expect(page.locator(editor)).toContainText('Body')
   await waitForFile(join(nb.workspace, 'Plan (1).md'), 'Body')

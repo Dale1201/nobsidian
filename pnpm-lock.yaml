@@ -20,6 +20,15 @@ importers:
       minisearch:
         specifier: ^7.2.0
         version: 7.2.0
+      prosemirror-model:
+        specifier: 1.25.12
+        version: 1.25.12
+      prosemirror-state:
+        specifier: 1.4.4
+        version: 1.4.4
+      prosemirror-view:
+        specifier: 1.42.6
+        version: 1.42.6
       remark-gfm:
         specifier: ^4.0.1
         version: 4.0.1

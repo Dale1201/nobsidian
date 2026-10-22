@@ -212,3 +212,38 @@ export const TocIcon = (p: IconProps): React.JSX.Element => (
     <circle cx="6.25" cy="15" r="1" />
   </Svg>
 )
+
+export const ChevronDownIcon = (p: IconProps): React.JSX.Element => (
+  <Svg {...p}>
+    <path d="M4.6 7.4a.75.75 0 0 1 1.06 0L10 11.74l4.34-4.34a.75.75 0 1 1 1.06 1.06l-4.87 4.87a.75.75 0 0 1-1.06 0L4.6 8.46a.75.75 0 0 1 0-1.06Z" />
+  </Svg>
+)
+
+export const DragIcon = (p: IconProps): React.JSX.Element => (
+  <Svg {...p}>
+    <circle cx="7.5" cy="5" r="1.3" />
+    <circle cx="12.5" cy="5" r="1.3" />
+    <circle cx="7.5" cy="10" r="1.3" />
+    <circle cx="12.5" cy="10" r="1.3" />
+    <circle cx="7.5" cy="15" r="1.3" />
+    <circle cx="12.5" cy="15" r="1.3" />
+  </Svg>
+)
+
+export const TurnIntoIcon = (p: IconProps): React.JSX.Element => (
+  <Svg {...p}>
+    <path d="M4 7.25A3.25 3.25 0 0 1 7.25 4h6.69l-1.47-1.47a.75.75 0 1 1 1.06-1.06l2.75 2.75a.75.75 0 0 1 0 1.06l-2.75 2.75a.75.75 0 1 1-1.06-1.06l1.47-1.47H7.25A1.75 1.75 0 0 0 5.5 7.25v1a.75.75 0 0 1-1.5 0v-1Zm12 5.5A3.25 3.25 0 0 1 12.75 16H6.06l1.47 1.47a.75.75 0 1 1-1.06 1.06l-2.75-2.75a.75.75 0 0 1 0-1.06l2.75-2.75a.75.75 0 1 1 1.06 1.06L6.06 14.5h6.69a1.75 1.75 0 0 0 1.75-1.75v-1a.75.75 0 0 1 1.5 0v1Z" />
+  </Svg>
+)
+
+export const PaletteIcon = (p: IconProps): React.JSX.Element => (
+  <Svg {...p}>
+    <path d="M10 3a7 7 0 0 0 0 14c.83 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1.01a1.5 1.5 0 0 1 1.12-2.49H14a3 3 0 0 0 3-3C17 5.69 13.87 3 10 3Zm-4 7.5a1 1 0 1 1 0-2 1 1 0 0 1 0 2Zm2-3a1 1 0 1 1 0-2 1 1 0 0 1 0 2Zm4 0a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z" />
+  </Svg>
+)
+
+export const CalloutIcon = (p: IconProps): React.JSX.Element => (
+  <Svg {...p}>
+    <path d="M5 3.5h10A2.5 2.5 0 0 1 17.5 6v6a2.5 2.5 0 0 1-2.5 2.5H9.6l-3.4 2.55A.75.75 0 0 1 5 16.45V14.5A2.5 2.5 0 0 1 2.5 12V6A2.5 2.5 0 0 1 5 3.5Zm0 1.5a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h.75a.75.75 0 0 1 .75.75v1.2l2.55-1.9a.75.75 0 0 1 .45-.15H15a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1H5Zm1.75 2.5h6.5a.75.75 0 0 1 0 1.5h-6.5a.75.75 0 0 1 0-1.5Zm0 2.5h4a.75.75 0 0 1 0 1.5h-4a.75.75 0 0 1 0-1.5Z" />
+  </Svg>
+)

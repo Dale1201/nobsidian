@@ -12,7 +12,7 @@ import {
   StarIcon,
   TrashIcon
 } from './icons'
-import { Menu } from './Popover'
+import { Menu } from './menu/Menu'
 import { PageIconView } from './PageIconView'
 
 const DRAG_TYPE = 'application/x-nobsidian-page'
@@ -132,30 +132,40 @@ export function SidebarRow({
         <Menu
           anchor={menu}
           onClose={() => setMenu(null)}
-          items={[
+          entries={[
             {
+              kind: 'item',
+              id: 'favorite',
               label: isFavorite ? 'Remove from Favorites' : 'Add to Favorites',
               icon: <StarIcon size={16} filled={isFavorite} />,
               onSelect: () => void app().toggleFavorite(node.id)
             },
-            'separator',
+            { kind: 'separator' },
             {
+              kind: 'item',
+              id: 'duplicate',
               label: 'Duplicate',
               icon: <DuplicateIcon size={16} />,
               onSelect: () => void app().duplicatePage(node.id)
             },
             {
+              kind: 'item',
+              id: 'rename',
               label: 'Rename',
               icon: <RenameIcon size={16} />,
               onSelect: () => app().setRenaming(node.id)
             },
             {
+              kind: 'item',
+              id: 'move',
               label: 'Move to',
               icon: <MoveIcon size={16} />,
               onSelect: () => app().setOverlay({ kind: 'move', pageId: node.id })
             },
-            'separator',
+            { kind: 'separator' },
             {
+              kind: 'item',
+              id: 'delete',
               label: 'Delete',
               icon: <TrashIcon size={16} />,
               danger: true,

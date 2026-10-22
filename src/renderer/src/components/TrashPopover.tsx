@@ -47,7 +47,7 @@ export function TrashPopover({
       ignore={ignore}
       onClose={onClose}
       className="trash-popover"
-      side="right"
+      side="right-bottom"
     >
       <div className="trash-search">
         <SearchIcon size={16} />

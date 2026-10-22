@@ -7,12 +7,14 @@ import { en } from '@blocknote/core/locales'
 import { syntaxHighlighter } from '@blocknote/code-block'
 import { BlockNoteView } from '@blocknote/mantine'
 import {
+  BasicTextStyleButton,
   DeleteLinkButton,
   FormattingToolbar,
   FormattingToolbarController,
   getFormattingToolbarItems,
   LinkToolbar,
   LinkToolbarController,
+  SideMenuController,
   SuggestionMenuController,
   useBlockNoteEditor,
   useComponentsContext,
@@ -37,6 +39,8 @@ import { AppColorStyleButton } from './ColorButton'
 import { ColorPickContext, type PickedColor } from './colors'
 import { AppCreateLinkButton, AppEditLinkButton } from './LinkButtons'
 import { isValidLink, linkHrefFromEvent } from './links'
+import { blockSelection } from './blockSelection'
+import { listMarkers } from './listMarkersPlugin'
 import type { WebImage } from './notionPaste'
 import {
   PageLinkContext,
@@ -46,7 +50,11 @@ import {
   type AppPartialBlock,
   type PageLinkContextValue
 } from './schema'
-import { querySlashItems } from './slashItems'
+import { AppSideMenu } from './menus/AppSideMenu'
+import { BlockMenuHost } from './menus/BlockMenu'
+import { SlashMenu } from './menus/SlashMenu'
+import { TurnIntoButton } from './menus/TurnIntoButton'
+import { querySlashItems, type SlashItem } from './slashItems'
 
 export type EditorProps = {
   initialBlocks: AppPartialBlock[]
@@ -72,24 +80,39 @@ const DEFAULT_COLOR: PickedColor = { kind: 'background', color: 'yellow' }
 
 const OpenLinkContext = createContext<(href: string) => void>(() => {})
 
-// Default items minus text alignment, with link creation that doesn't rewrite hrefs.
+// File buttons only show for file blocks; text alignment, nesting and the block type select are not Notion's.
+const TOOLBAR_KEYS = [
+  'tableCellMergeButton',
+  'fileCaptionButton',
+  'replaceFileButton',
+  'fileRenameButton',
+  'fileDeleteButton',
+  'fileDownloadButton',
+  'filePreviewButton'
+]
+
 function AppFormattingToolbar(): React.JSX.Element {
+  const defaults = new Map(getFormattingToolbarItems().map((item) => [String(item.key), item]))
   return (
     <FormattingToolbar>
-      {getFormattingToolbarItems()
-        .filter((item) => !String(item.key).startsWith('textAlign'))
-        .map((item) =>
-          item.key === 'createLinkButton' ? (
-            <AppCreateLinkButton key="createLinkButton" />
-          ) : item.key === 'colorStyleButton' ? (
-            <AppColorStyleButton key="colorStyleButton" />
-          ) : (
-            item
-          )
-        )}
+      <TurnIntoButton key="turnInto" />
+      {TOOLBAR_KEYS.map((key) => defaults.get(key))}
+      <AppCreateLinkButton key="createLinkButton" />
+      <BasicTextStyleButton basicTextStyle="bold" key="bold" />
+      <BasicTextStyleButton basicTextStyle="italic" key="italic" />
+      <BasicTextStyleButton basicTextStyle="underline" key="underline" />
+      <BasicTextStyleButton basicTextStyle="strike" key="strike" />
+      <BasicTextStyleButton basicTextStyle="code" key="code" />
+      <AppColorStyleButton key="colorStyleButton" />
     </FormattingToolbar>
   )
 }
+
+// Notion writes shortcuts as "⌘B"; BlockNote's "Mod+B" would show as "⌘+B".
+const shortcut = (tip: string, keys: string): { tooltip: string; secondary_tooltip: string } => ({
+  tooltip: tip,
+  secondary_tooltip: keys
+})
 
 // The default "Open" button calls window.open on the URL resolved against the page URL,
 // and the default edit form prefixes https:// to hrefs outside a fixed protocol list.
@@ -151,9 +174,25 @@ export function Editor(props: EditorProps): React.JSX.Element {
   const editor = useCreateBlockNote({
     schema,
     initialContent: props.initialBlocks.length ? props.initialBlocks : undefined,
-    dictionary: { ...en, multi_column: multiColumnLocales.en },
+    dictionary: {
+      ...en,
+      multi_column: multiColumnLocales.en,
+      toggle_blocks: {
+        ...en.toggle_blocks,
+        add_block_button: 'Empty toggle. Click or drop blocks inside.'
+      },
+      formatting_toolbar: {
+        ...en.formatting_toolbar,
+        bold: shortcut('Bold', 'ModB'),
+        italic: shortcut('Italic', 'ModI'),
+        underline: shortcut('Underline', 'ModU'),
+        strike: shortcut('Strike', 'Mod⇧S'),
+        code: shortcut('Code', 'ModE'),
+        link: shortcut('Create link', 'ModK')
+      }
+    },
     dropCursor: multiColumnDropCursor,
-    extensions: [syntaxHighlighter],
+    extensions: [syntaxHighlighter, listMarkers, blockSelection],
     uploadFile: (file) => props.uploadFile(file),
     resolveFileUrl: (url) => props.resolveFileUrl(url),
     pasteHandler: ({ event, editor, defaultPasteHandler }) => {
@@ -244,17 +283,22 @@ export function Editor(props: EditorProps): React.JSX.Element {
             slashMenu={false}
             formattingToolbar={false}
             linkToolbar={false}
+            sideMenu={false}
             onChange={(ed) => props.onChange(ed.document)}
           >
-            <SuggestionMenuController
-              triggerCharacter="/"
-              getItems={(query) =>
-                querySlashItems(editor, { createSubPage: props.createSubPage }, query)
-              }
-            />
-            <FormattingToolbarController formattingToolbar={AppFormattingToolbar} />
-            <LinkToolbarController linkToolbar={AppLinkToolbar} />
-            <HighlightShortcut color={props.lastColor ?? DEFAULT_COLOR} />
+            <BlockMenuHost>
+              <SuggestionMenuController
+                triggerCharacter="/"
+                getItems={(query: string): Promise<SlashItem[]> =>
+                  querySlashItems(editor, { createSubPage: props.createSubPage }, query)
+                }
+                suggestionMenuComponent={SlashMenu}
+              />
+              <SideMenuController sideMenu={AppSideMenu} />
+              <FormattingToolbarController formattingToolbar={AppFormattingToolbar} />
+              <LinkToolbarController linkToolbar={AppLinkToolbar} />
+              <HighlightShortcut color={props.lastColor ?? DEFAULT_COLOR} />
+            </BlockMenuHost>
           </BlockNoteView>
         </ColorPickContext.Provider>
       </OpenLinkContext.Provider>

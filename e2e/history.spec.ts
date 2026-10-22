@@ -10,7 +10,7 @@ test('page history previews an older version and restores it', async ({ nb }) =>
 
   const openHistory = async (): Promise<void> => {
     await page.getByRole('button', { name: 'Page menu' }).click()
-    await page.getByRole('button', { name: 'Page history' }).click()
+    await page.getByRole('menuitem', { name: 'Page history' }).click()
   }
   await openHistory()
   const dialog = page.getByRole('dialog', { name: 'Page history' })

@@ -5,7 +5,7 @@ import { deleteForeverTitle } from '../lib/trash'
 import { useApp } from '../store'
 import { ComposeIcon, PlusIcon, SearchIcon, SidebarIcon, TrashIcon } from './icons'
 import { ConfirmDialog } from './Modal'
-import { Menu } from './Popover'
+import { Menu } from './menu/Menu'
 import { SidebarRow } from './SidebarRow'
 import { TrashPopover } from './TrashPopover'
 
@@ -145,7 +145,14 @@ export function Sidebar(): React.JSX.Element {
         <Menu
           anchor={menu}
           onClose={() => setMenu(null)}
-          items={[{ label: 'Open another folder…', onSelect: () => void app().chooseWorkspace() }]}
+          entries={[
+            {
+              kind: 'item',
+              id: 'open-folder',
+              label: 'Open another folder…',
+              onSelect: () => void app().chooseWorkspace()
+            }
+          ]}
         />
       )}
     </aside>
