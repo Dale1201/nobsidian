@@ -50,6 +50,13 @@ export function SidebarRow({
 
   const expandKey = scope === 'favorites' ? `fav:${node.id}` : node.id
   const expanded = expandable && expandedIds.includes(expandKey)
+
+  const expandTimer = useRef<number | null>(null)
+  const stopExpandTimer = (): void => {
+    if (expandTimer.current !== null) window.clearTimeout(expandTimer.current)
+    expandTimer.current = null
+  }
+  useEffect(() => stopExpandTimer, [])
   const isFavorite = favorites.includes(node.id)
   const indent = 6 + depth * 14
 
@@ -82,11 +89,24 @@ export function SidebarRow({
         onDragOver={(e) => {
           if (!draggable || !e.dataTransfer.types.includes(DRAG_TYPE)) return
           e.preventDefault()
-          setDrop(positionFor(e))
+          const position = positionFor(e)
+          setDrop(position)
+          if (position === 'inside' && expandable && !expanded && node.children.length) {
+            expandTimer.current ??= window.setTimeout(() => {
+              expandTimer.current = null
+              void app().setExpanded(expandKey, true)
+            }, 500)
+          } else {
+            stopExpandTimer()
+          }
         }}
-        onDragLeave={() => setDrop(null)}
+        onDragLeave={() => {
+          setDrop(null)
+          stopExpandTimer()
+        }}
         onDrop={(e) => {
           e.preventDefault()
+          stopExpandTimer()
           setDrop(null)
           const dragged = e.dataTransfer.getData(DRAG_TYPE)
           const target = dragged && dropTarget(app().tree, dragged, node.id, positionFor(e))

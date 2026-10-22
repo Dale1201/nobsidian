@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from 'node:fs/promises'
+import { access, mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Page } from '@playwright/test'
 import { expect, test, type AppFixture } from './fixtures'
@@ -100,4 +100,49 @@ test('a page without sub-pages says so when expanded', async ({ nb }) => {
   await row.hover()
   await row.getByRole('button', { name: 'Expand' }).click()
   await expect(page.locator('.sidebar-empty')).toHaveText('No pages inside')
+})
+
+test('holding a dragged page over a collapsed page opens it, and dropping nests it', async ({
+  nb
+}) => {
+  await mkdir(join(nb.workspace, 'Folder'))
+  await writeFile(join(nb.workspace, 'Folder.md'), 'f\n')
+  await writeFile(join(nb.workspace, 'Folder', 'Inside.md'), 'i\n')
+  await writeFile(join(nb.workspace, 'Mover.md'), 'm\n')
+  const page = await nb.relaunch()
+  await page.getByTestId('sidebar-row-Mover').hover()
+  await page.mouse.down()
+  const box = (await page.getByTestId('sidebar-row-Folder').boundingBox())!
+  const x = box.x + box.width / 2
+  const y = box.y + box.height / 2
+  await page.mouse.move(x, y, { steps: 5 })
+  await page.waitForTimeout(700)
+  await page.mouse.move(x + 2, y, { steps: 2 })
+  await expect(page.getByTestId('sidebar-row-Inside')).toBeVisible()
+  await page.mouse.up()
+  await expect
+    .poll(() =>
+      access(join(nb.workspace, 'Folder', 'Mover.md')).then(
+        () => true,
+        () => false
+      )
+    )
+    .toBe(true)
+})
+
+test('the sidebar scrolls while a page is dragged near its bottom edge', async ({ nb }) => {
+  for (let i = 0; i < 40; i++) {
+    await writeFile(join(nb.workspace, `Page ${String(i).padStart(2, '0')}.md`), 'x\n')
+  }
+  const page = await nb.relaunch()
+  const scroller = page.locator('.sidebar-scroll')
+  await expect(page.getByTestId('sidebar-row-Page 00')).toBeVisible()
+  await page.getByTestId('sidebar-row-Page 00').hover()
+  await page.mouse.down()
+  const box = (await scroller.boundingBox())!
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height - 10, { steps: 5 })
+  for (let i = 0; i < 10; i++)
+    await page.mouse.move(box.x + box.width / 2 + (i % 2), box.y + box.height - 10)
+  await expect.poll(() => scroller.evaluate((el) => el.scrollTop)).toBeGreaterThan(0)
+  await page.mouse.up()
 })
