@@ -442,7 +442,6 @@ export class Workspace {
       try {
         return await this.imports.land(manifest, staging)
       } finally {
-        // Also on failure: pages may already be in the tree when a later step throws.
         this.core.emit({ type: 'tree' })
         await this.imports.discard(staging)
       }

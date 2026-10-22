@@ -149,7 +149,10 @@ export class PageImports {
       if (page.parentId) (core.state.order[page.parentId] ??= []).push(page.id)
     }
     core.insertOrder(null, rootId)
-    await core.persist()
+    // The pages are in; without the saved order, siblings sort by name after a restart.
+    await core.persist().catch((err: unknown) => {
+      console.error('Could not save the workspace state after an import', err)
+    })
     return {
       rootId,
       reportId,

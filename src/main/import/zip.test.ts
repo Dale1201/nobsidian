@@ -1,15 +1,22 @@
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { ImportError } from './types'
 import { openExport, peekExport } from './zip'
 import { writeZip } from './test-zips'
 
 const PAGE = 'Notes 0123456789abcdef0123456789abcdef'
 
+const dirs: string[] = []
+afterEach(async () => {
+  await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })))
+})
+
 async function tempDir(): Promise<string> {
-  return mkdtemp(join(tmpdir(), 'nb-zip-'))
+  const dir = await mkdtemp(join(tmpdir(), 'nb-zip-'))
+  dirs.push(dir)
+  return dir
 }
 
 describe('openExport', () => {
@@ -24,15 +31,18 @@ describe('openExport', () => {
     })
     const extra = await writeZip(join(dir, 'extra.zip'), { 'Other/Page.html': '<p>2</p>' })
     const archive = await openExport([outer, extra], dir)
-    expect([...archive.entries.keys()].sort()).toEqual([
-      'Other/Page.html',
-      `Space/${PAGE}.html`,
-      'Space/Notes/image.png'
-    ])
-    expect((await archive.entries.get(`Space/${PAGE}.html`)!.read()).toString()).toBe('<p>1</p>')
-    await archive.entries.get('Space/Notes/image.png')!.copyTo(join(dir, 'copy.png'))
-    expect(await readFile(join(dir, 'copy.png'), 'utf8')).toBe('png')
-    archive.close()
+    try {
+      expect([...archive.entries.keys()].sort()).toEqual([
+        'Other/Page.html',
+        `Space/${PAGE}.html`,
+        'Space/Notes/image.png'
+      ])
+      expect((await archive.entries.get(`Space/${PAGE}.html`)!.read()).toString()).toBe('<p>1</p>')
+      await archive.entries.get('Space/Notes/image.png')!.copyTo(join(dir, 'copy.png'))
+      expect(await readFile(join(dir, 'copy.png'), 'utf8')).toBe('png')
+    } finally {
+      archive.close()
+    }
   })
 
   it('refuses a file that is not a zip', async () => {
@@ -48,11 +58,14 @@ describe('openExport', () => {
       'Space/Notes/backup.zip': 'not a zip'
     })
     const archive = await openExport([outer], dir)
-    expect(archive.entries.get('Space/Notes/backup.zip')!.path).toBe('Space/Notes/backup.zip')
-    expect((await archive.entries.get('Space/Notes/backup.zip')!.read()).toString()).toBe(
-      'not a zip'
-    )
-    archive.close()
+    try {
+      expect(archive.entries.get('Space/Notes/backup.zip')!.path).toBe('Space/Notes/backup.zip')
+      expect((await archive.entries.get('Space/Notes/backup.zip')!.read()).toString()).toBe(
+        'not a zip'
+      )
+    } finally {
+      archive.close()
+    }
   })
 })
 

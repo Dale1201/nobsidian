@@ -194,6 +194,7 @@ describe('ImportService', () => {
       state: 'failed',
       message: "This file isn't a zip, or it's damaged."
     })
+    await service.stop()
     expect(ws.tree()).toEqual([])
   })
 
@@ -209,6 +210,7 @@ describe('ImportService', () => {
       () => {}
     )
     await expect(service.start(ws, [FIXTURE_ZIP])).rejects.toThrow('no worker available')
+    await service.stop()
     expect(service.running).toBe(false)
   })
 

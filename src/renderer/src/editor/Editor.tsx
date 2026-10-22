@@ -26,11 +26,18 @@ import { createContext, useContext, useEffect } from 'react'
 import type { Block } from '@shared/core/blocks'
 import { errorReason, useApp } from '../store'
 import { readNotionClipboard, type NotionClipboard } from '@shared/notion/paste'
-import { ATTACH_FILES_EVENT, insertAtCursor, insertPlainText } from './attachFiles'
+import {
+  ATTACH_FILES_EVENT,
+  insertAtCursor,
+  insertPasted,
+  insertPlainText,
+  pasteAsText
+} from './attachFiles'
 import { AppColorStyleButton } from './ColorButton'
 import { ColorPickContext, type PickedColor } from './colors'
 import { AppCreateLinkButton, AppEditLinkButton } from './LinkButtons'
 import { isValidLink, linkHrefFromEvent } from './links'
+import type { WebImage } from './notionPaste'
 import {
   PageLinkContext,
   schema,
@@ -54,8 +61,11 @@ export type EditorProps = {
   /** Applied by Cmd+Shift+H. */
   lastColor?: PickedColor
   onPickColor?(picked: PickedColor): void
-  /** Blocks for content copied from Notion; other pastes use the editor's own handling. */
-  pasteNotion?(clipboard: NotionClipboard): Promise<Block[]>
+  /**
+   * Blocks for content copied from Notion, with web images to download into place after they
+   * are inserted; other pastes use the editor's own handling.
+   */
+  pasteNotion?(clipboard: NotionClipboard): Promise<{ blocks: Block[]; images: WebImage[] }>
 }
 
 const DEFAULT_COLOR: PickedColor = { kind: 'background', color: 'yellow' }
@@ -150,6 +160,15 @@ export function Editor(props: EditorProps): React.JSX.Element {
       const notion = event.clipboardData && readNotionClipboard(event.clipboardData)
       if (!notion || !props.pasteNotion) return defaultPasteHandler()
       const text = event.clipboardData.getData('text/plain')
+      if (pasteAsText(editor, text)) return true
+      // An editor whose page was left is unmounted, and edits to it are never saved.
+      const closed = (): boolean => {
+        if (!editor.headless) return false
+        useApp
+          .getState()
+          .showMessage('The page was left before the paste from Notion finished. Paste it again.')
+        return true
+      }
       const insertText = (): void => {
         try {
           insertPlainText(editor, text)
@@ -158,15 +177,27 @@ export function Editor(props: EditorProps): React.JSX.Element {
         }
       }
       const fail = (err: unknown): void => {
+        if (closed()) return
         insertText()
         useApp.getState().showMessage(`Couldn't paste from Notion: ${errorReason(err)}`)
       }
-      props.pasteNotion(notion).then((blocks) => {
+      props.pasteNotion(notion).then(({ blocks, images }) => {
+        if (closed()) return
         if (blocks.length === 0) return insertText()
         try {
-          insertAtCursor(editor, blocks)
+          insertPasted(editor, blocks)
         } catch (err) {
-          fail(err)
+          return fail(err)
+        }
+        for (const image of images) {
+          void image.download().then((update) => {
+            if (editor.headless) return
+            try {
+              editor.updateBlock(image.id, update as unknown as AppPartialBlock)
+            } catch {
+              // The image was deleted while it downloaded.
+            }
+          })
         }
       }, fail)
       return true

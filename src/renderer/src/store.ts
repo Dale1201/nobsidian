@@ -140,7 +140,8 @@ export const useApp = create<AppState>((set, get) => ({
       history: [],
       historyIndex: -1,
       overlay: null,
-      trashEntry: null
+      trashEntry: null,
+      importStatus: null
     })
     get().applySnapshot(await api.invoke('tree:get', undefined))
     const start = firstPageId(get().tree) ?? (await get().createPage(null))
@@ -253,7 +254,8 @@ export const useApp = create<AppState>((set, get) => ({
       trashEntry: null,
       overlay: null,
       tree: [],
-      favorites: []
+      favorites: [],
+      importStatus: null
     }),
 
   toggleFavorite: async (id) => {

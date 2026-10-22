@@ -1,7 +1,7 @@
-import { mkdir, mkdtemp, readFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { mapBlockLinks, pageLinkHref } from '../../shared/core/links'
 import { blocksToMarkdown } from '../../shared/core/serialize'
 import { sanitizeTitle } from '../../shared/core/paths'
@@ -12,8 +12,15 @@ import { ImportError, type ImportManifest } from './types'
 const EXPECTED = join(__dirname, '../../../tests/fixtures/notion-export.expected')
 const id = (n: number): string => n.toString(16).padStart(32, '0')
 
+const dirs: string[] = []
+afterEach(async () => {
+  await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })))
+})
+
 async function staging(): Promise<string> {
-  return mkdtemp(join(tmpdir(), 'nb-stage-'))
+  const dir = await mkdtemp(join(tmpdir(), 'nb-stage-'))
+  dirs.push(dir)
+  return dir
 }
 
 /** Answers every download with a tiny PNG, recording the addresses asked for. */
@@ -258,6 +265,21 @@ describe('runImport', () => {
     expect(manifest.pages.map((p) => p.title)).toEqual(['A'])
     expect(manifest.files).toEqual([{ key: '1', name: 'pic.png' }])
     expect(manifest.issues.map((i) => [i.kind, i.detail])).toEqual([['missingFile', 'S/A/pic.png']])
+  })
+
+  it('keeps the text of a page without the usual Notion layout, and reports it', async () => {
+    const dir = await staging()
+    const zip = await writeZip(join(dir, 'e.zip'), {
+      [`S/A ${id(1)}.html`]:
+        '<html><body><article class="page sans"><header><h1 class="page-title">A</h1></header>' +
+        '<div class="content"><p>First</p><p>Second</p></div></article></body></html>'
+    })
+    const manifest = await runImport({ zips: [zip], staging: dir })
+    expect(manifest.pages[0].title).toBe('A')
+    expect(manifest.pages[0].blocks.map(paragraphText)).toEqual(['First', 'Second'])
+    expect(manifest.issues.map((i) => [i.kind, i.detail])).toEqual([
+      ['unknown', 'Page without the usual Notion layout']
+    ])
   })
 })
 

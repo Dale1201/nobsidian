@@ -147,9 +147,13 @@ $$
 
 *Image from Notion: fixture-image.png*
 
+An uploaded image with a caption
+
 ![An external image](https://www.notion.so/images/page-cover/gradients_2.png)
 
 *File from Notion: fixture-report.pdf*
+
+An uploaded PDF file
 
 ## Columns
 

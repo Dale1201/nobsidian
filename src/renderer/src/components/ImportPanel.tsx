@@ -21,6 +21,20 @@ function summary(status: Exclude<ImportStatus, { state: 'running' }>): string {
   return `${pages} ${plural(status.issues, 'thing needs', 'things need')} a look.`
 }
 
+/** Lifts messages (`.toast`) above the panel while it shows, so the two never overlap. */
+function liftMessages(panel: HTMLDivElement | null): (() => void) | undefined {
+  if (!panel) return
+  const root = document.documentElement.style
+  const update = (): void => root.setProperty('--import-panel-lift', `${panel.offsetHeight + 12}px`)
+  update()
+  const observer = new ResizeObserver(update)
+  observer.observe(panel)
+  return () => {
+    observer.disconnect()
+    root.removeProperty('--import-panel-lift')
+  }
+}
+
 /** The bottom-right card that follows a Notion import; editing carries on underneath it. */
 export function ImportPanel(): React.JSX.Element | null {
   const status = useApp((s) => s.importStatus)
@@ -37,7 +51,7 @@ export function ImportPanel(): React.JSX.Element | null {
     const p = status.progress
     const fraction = p.total > 0 ? p.done / p.total : null
     return (
-      <div className="import-panel" role="status" aria-live="polite">
+      <div ref={liftMessages} className="import-panel" role="status" aria-live="polite">
         <div className="import-panel-title">Importing from Notion</div>
         <div className="import-panel-line">{progressLine(p)}</div>
         <div className="import-panel-bar">
@@ -59,6 +73,7 @@ export function ImportPanel(): React.JSX.Element | null {
 
   return (
     <div
+      ref={liftMessages}
       className={status.state === 'failed' ? 'import-panel failed' : 'import-panel'}
       role={status.state === 'failed' ? 'alert' : 'status'}
     >

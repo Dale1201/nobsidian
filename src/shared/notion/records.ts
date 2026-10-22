@@ -246,7 +246,8 @@ class RecordMapper {
             props: { language: language === 'plaintext' ? 'text' : language },
             content: text ? [{ type: 'text', text, styles: {} }] : [],
             children: []
-          }
+          },
+          ...this.caption(r)
         ]
       }
       case 'equation':
@@ -262,16 +263,19 @@ class RecordMapper {
       case 'audio':
       case 'file':
       case 'pdf':
-        return [this.media(r)]
+        return this.media(r)
       case 'bookmark':
-        return [this.linkParagraph(this.plain(r, 'link'), this.plain(r, 'title'))]
+        return [
+          this.linkParagraph(this.plain(r, 'link'), this.plain(r, 'title')),
+          ...this.caption(r)
+        ]
       case 'embed':
       case 'figma':
       case 'tweet':
       case 'maps':
       case 'codepen':
       case 'gist':
-        return [this.linkParagraph(this.plain(r, 'source'), '')]
+        return [this.linkParagraph(this.plain(r, 'source'), ''), ...this.caption(r)]
       case 'table_of_contents':
         return [{ type: 'toc', props: {}, children: [] }]
       case 'transclusion_container':
@@ -354,7 +358,7 @@ class RecordMapper {
     }
   }
 
-  private media(r: BlockRecord): Block {
+  private media(r: BlockRecord): Block[] {
     const source = this.plain(r, 'source')
     const caption = this.plain(r, 'caption')
     const name = this.plain(r, 'title') || source.split('/').pop() || 'file'
@@ -362,7 +366,7 @@ class RecordMapper {
       // Uploaded files arrive as `attachment:<id>:<name>`; Notion gives no address to fetch.
       const label = r.type === 'image' ? 'Image' : 'File'
       this.ctx.issue('missingFile', name)
-      return {
+      const note: Block = {
         type: 'paragraph',
         props: {},
         content: [
@@ -370,13 +374,20 @@ class RecordMapper {
         ],
         children: []
       }
+      return [note, ...this.caption(r)]
     }
     const url = this.ctx.file(source)
-    if (r.type === 'image') return { type: 'image', props: { url, caption }, children: [] }
-    if (r.type === 'video' || r.type === 'audio') {
-      return { type: r.type, props: { url, caption }, children: [] }
+    if (r.type === 'image' || r.type === 'video' || r.type === 'audio') {
+      return [{ type: r.type, props: { url, caption }, children: [] }]
     }
-    return this.linkParagraph(source, name)
+    return [this.linkParagraph(source, name), ...this.caption(r)]
+  }
+
+  /** A caption as its own paragraph, for blocks that have no caption of their own. */
+  private caption(r: BlockRecord): Block[] {
+    const content = this.text(r, 'caption')
+    if (inlineText(content).trim() === '') return []
+    return [{ type: 'paragraph', props: {}, content, children: [] }]
   }
 
   private linkParagraph(href: string, text: string): Block {
@@ -447,8 +458,19 @@ class RecordMapper {
           case 'd':
             replaced = this.styled(`@${formatDate(arg as NotionDate)}`, styles)
             break
+          case 'lm': {
+            const link = arg as { href?: unknown; title?: unknown } | undefined
+            const target = str(link?.href)
+            if (target) {
+              href = this.ctx.link(target)
+              replaced = this.styled(str(link?.title) || target, styles)
+            }
+            break
+          }
         }
       }
+      // A mention this mapper does not know would leave only its placeholder.
+      if (!replaced && text === '‣') this.complete = false
       const item = replaced ?? this.styled(text, styles)
       if (href && item.type === 'text') out.push({ type: 'link', href, content: [item] })
       else out.push(item)
@@ -571,7 +593,7 @@ function patternOf(rich: Segment[]): Part[] {
     if (marks.some(([m]) => m === 'u')) {
       add('@')
       add({ person: true })
-    } else if (marks.some(([m]) => m === 'p' || m === 'd' || m === 'e')) add({})
+    } else if (marks.some(([m]) => m === 'p' || m === 'd' || m === 'e' || m === 'lm')) add({})
     else add(text)
   }
   const first = parts[0]

@@ -12,13 +12,16 @@ import { editor, newPage, waitForFile } from './helpers'
 const FIXTURES = resolve('tests/fixtures')
 const EXPORT_ZIP = join(FIXTURES, 'notion-export.zip')
 
-// "Web" images the export links to are served locally.
+// "Web" images the export links to are served locally; a test can hold the answers back.
 let server: Server
+let held: Promise<void> | null = null
 test.beforeAll(async () => {
   const png = await readFile(join(FIXTURES, 'web-image.png'))
   server = createServer((_req, res) => {
-    res.writeHead(200, { 'content-type': 'image/png' })
-    res.end(png)
+    void (held ?? Promise.resolve()).then(() => {
+      res.writeHead(200, { 'content-type': 'image/png' })
+      res.end(png)
+    })
   })
   await new Promise<void>((done) => server.listen(0, '127.0.0.1', done))
   process.env.NOBSIDIAN_E2E_WEB = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
@@ -121,31 +124,80 @@ test('a zip that is not a Notion HTML export is refused', async ({ nb }) => {
   await expect(nb.page.getByTestId('sidebar-row-Imported from Notion')).toHaveCount(0)
 })
 
-test('pasting from Notion keeps colors, callouts and toggles', async ({ nb }) => {
-  const { app, page } = nb
-  const html = await readFile(join(FIXTURES, 'notion-clipboard', 'page.html'), 'utf8')
-  const records = await readFile(join(FIXTURES, 'notion-clipboard', 'records.json'), 'utf8')
-  await newPage(page, 'Pasted')
-  // Notion's own copy: its HTML plus its block records as Chromium custom data.
+/** Puts Notion's own copy on the clipboard: its HTML, text and block records as Chromium custom data. */
+async function copyFromNotion(
+  app: ElectronApplication,
+  copy: { records: string; html?: string; text?: string }
+): Promise<void> {
   await app.evaluate(
-    async ({ clipboard, ClipboardItem }, { html, custom }) => {
+    async ({ clipboard, ClipboardItem }, { html, text, custom }) => {
       const raw = 'electron application/osclipboard;format="org.chromium.web-custom-data"'
       await clipboard.write([
         new ClipboardItem({
           'text/html': html,
-          'text/plain': 'Notion',
+          'text/plain': text,
           [raw]: new Blob([Buffer.from(custom, 'base64')])
         })
       ])
     },
     {
-      html,
-      custom: chromiumCustomData({ 'text/_notion-blocks-v3-production': records }).toString(
+      html: copy.html ?? '',
+      text: copy.text ?? 'Notion',
+      custom: chromiumCustomData({ 'text/_notion-blocks-v3-production': copy.records }).toString(
         'base64'
       )
     }
   )
+}
+
+async function paste(app: ElectronApplication): Promise<void> {
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.paste())
+}
+
+/**
+ * Presses a key that moves the selection and waits for the editor to take the move in: keys
+ * pressed faster than it reads the selection are lost.
+ */
+async function pressMovingSelection(page: Page, key: string): Promise<void> {
+  await page.evaluate(() => {
+    const w = window as unknown as { moved?: Promise<void> }
+    w.moved = new Promise((done) =>
+      document.addEventListener('selectionchange', () => requestAnimationFrame(() => done()), {
+        once: true
+      })
+    )
+  })
+  await page.keyboard.press(key)
+  await page.evaluate(() => (window as unknown as { moved: Promise<void> }).moved)
+}
+
+async function copyFixtureFromNotion(app: ElectronApplication): Promise<void> {
+  await copyFromNotion(app, {
+    html: await readFile(join(FIXTURES, 'notion-clipboard', 'page.html'), 'utf8'),
+    records: await readFile(join(FIXTURES, 'notion-clipboard', 'records.json'), 'utf8')
+  })
+}
+
+/** Records for Notion text blocks, one per text. */
+function textRecords(...texts: string[]): string {
+  return JSON.stringify({
+    blocks: texts.map((text, i) => {
+      const id = `11111111-2222-4333-8444-55555555555${i}`
+      return {
+        blockId: id,
+        blockSubtree: {
+          block: { [id]: { value: { id, type: 'text', properties: { title: [[text]] } } } }
+        }
+      }
+    })
+  })
+}
+
+test('pasting from Notion keeps colors, callouts and toggles', async ({ nb }) => {
+  const { app, page } = nb
+  await newPage(page, 'Pasted')
+  await copyFixtureFromNotion(app)
+  await paste(app)
   const body = page.locator(editor)
   await expect(body.getByText('An orange callout with a custom icon')).toBeVisible()
   await expect(
@@ -158,6 +210,96 @@ test('pasting from Notion keeps colors, callouts and toggles', async ({ nb }) =>
   await expect(page.getByRole('alert')).toContainText(
     "Images and files uploaded to Notion can't be pasted"
   )
+  // The web image is downloaded into attachments/ once it arrives.
+  await waitForFile(file, '](attachments/gradients_2.png)')
+})
+
+test('a Notion paste stays on its page when the page is left before images arrive', async ({
+  nb
+}) => {
+  const { app, page } = nb
+  let release!: () => void
+  held = new Promise((done) => (release = done))
+  try {
+    await newPage(page, 'Pasted')
+    await copyFixtureFromNotion(app)
+    await paste(app)
+    await expect(
+      page.locator(editor).getByText('An orange callout with a custom icon')
+    ).toBeVisible()
+    await newPage(page, 'Elsewhere')
+  } finally {
+    release()
+    held = null
+  }
+  const file = join(nb.workspace, 'Pasted.md')
+  const text = await waitForFile(file, '> [!callout:orange_bg] 🚧')
+  expect(text).toContain('<details data-heading="1">')
+  expect(text).toContain('gradients_2.png')
+  await page.getByTestId('sidebar-row-Pasted').click()
+  await expect(page.getByTestId('page-title')).toHaveText('Pasted')
+  await expect(page.locator(editor).getByText('An orange callout with a custom icon')).toBeVisible()
+})
+
+test('a phrase from Notion is pasted into the sentence at the cursor', async ({ nb }) => {
+  const { app, page } = nb
+  await newPage(page, 'Phrase')
+  await page.keyboard.type('Hello world')
+  // Saved means the editor has taken the typing in, so the next keys are not lost.
+  await waitForFile(join(nb.workspace, 'Phrase.md'), 'Hello world')
+  for (let i = 0; i < 'world'.length; i++) await pressMovingSelection(page, 'ArrowLeft')
+  await copyFromNotion(app, {
+    records: textRecords('pasted words'),
+    html: '<!-- notionvc: 1 --><p>pasted words</p>',
+    text: 'pasted words'
+  })
+  await paste(app)
+  const paragraphs = page.locator(`${editor} .bn-block-content`)
+  await expect(paragraphs).toHaveText(['Hello pasted wordsworld'])
+  await waitForFile(join(nb.workspace, 'Phrase.md'), 'Hello pasted wordsworld')
+})
+
+test('a Notion paste replaces the selected text', async ({ nb }) => {
+  const { app, page } = nb
+  await newPage(page, 'Selected')
+  await page.keyboard.type('Hello world')
+  await waitForFile(join(nb.workspace, 'Selected.md'), 'Hello world')
+  for (let i = 0; i < 'world'.length; i++) await pressMovingSelection(page, 'Shift+ArrowLeft')
+  await copyFromNotion(app, { records: textRecords('pasted words'), text: 'pasted words' })
+  await paste(app)
+  const blocks = page.locator(`${editor} .bn-block-content`)
+  await expect(blocks).toHaveText(['Hello pasted words'])
+  await pressMovingSelection(page, 'Shift+ArrowLeft')
+  await pressMovingSelection(page, 'Shift+ArrowLeft')
+  await copyFromNotion(app, { records: textRecords('One', 'Two'), text: 'One\nTwo' })
+  await paste(app)
+  await expect(blocks).toHaveText(['Hello pasted wor', 'One', 'Two'])
+})
+
+test('a Notion paste into a code block is pasted as plain text', async ({ nb }) => {
+  const { app, page } = nb
+  await newPage(page, 'Code')
+  await page.keyboard.type('``` ')
+  await expect(page.locator(`${editor} [data-content-type="codeBlock"]`)).toBeVisible()
+  await copyFromNotion(app, { records: textRecords('x = 1'), text: 'x = 1\ny = 2' })
+  await paste(app)
+  await expect(page.locator(`${editor} [data-content-type="codeBlock"] code`)).toHaveText(
+    'x = 1\ny = 2'
+  )
+  await expect(page.locator(`${editor} .bn-block-content`)).toHaveCount(1)
+})
+
+test('a Notion paste into a table cell is pasted as plain text', async ({ nb }) => {
+  const { app, page } = nb
+  await newPage(page, 'Table')
+  await page.keyboard.type('/table')
+  await page.keyboard.press('Enter')
+  const table = page.locator(`${editor} [data-content-type="table"]`)
+  await expect(table).toBeVisible()
+  await copyFromNotion(app, { records: textRecords('One', 'Two'), text: 'One\nTwo' })
+  await paste(app)
+  await expect(table.locator('td, th').first()).toHaveText('OneTwo')
+  await expect(page.locator(`${editor} .bn-block-content`)).toHaveCount(1)
 })
 
 /** Chromium's clipboard format for custom MIME types: a pickle of UTF-16 type/value pairs. */
@@ -221,6 +363,26 @@ test('an export-named zip dropped in a page that is not one is attached as a fil
   await dropZip(page, 'Export-1.zip', editor)
   await expect(page.locator(editor).getByText('Export-1.zip')).toBeVisible()
   await expect(page.getByText('Import this file from Notion?')).toHaveCount(0)
+})
+
+test('a message shows above the import panel in a narrow window', async ({ nb }) => {
+  const { app, page } = nb
+  await importViaMenu(app, [EXPORT_ZIP])
+  const panel = page.getByRole('status')
+  await expect(panel).toContainText('Imported 10 pages')
+  await app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()[0].setContentSize(720, 600)
+  )
+  await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(720)
+  const zip = join(nb.userData, 'notes.zip')
+  await writeMarkdownExport(zip)
+  await dropZip(page, zip)
+  const toast = page.getByRole('alert')
+  await expect(toast).toContainText('This is a Markdown export.')
+  const toastBox = (await toast.boundingBox())!
+  const panelBox = (await panel.boundingBox())!
+  expect(toastBox.y + toastBox.height).toBeLessThanOrEqual(panelBox.y)
+  expect(Math.abs(toastBox.x + toastBox.width / 2 - 360)).toBeLessThanOrEqual(1)
 })
 
 async function dropZip(page: Page, path: string, target = 'body'): Promise<void> {

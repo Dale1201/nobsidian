@@ -126,9 +126,12 @@ async function convert(
       const root = fromHtml(html)
       links.set(page.notionId, subPageLinks(root))
       const mapped = mapNotionPage(root, ctx)
-      const blocks = mapped.properties.length
-        ? [propertiesTable(mapped.properties), ...mapped.blocks]
-        : mapped.blocks
+      let body = mapped.blocks
+      if (body.length === 0) {
+        body = plainTextBlocks(html)
+        if (body.length > 0) issue('unknown', 'Page without the usual Notion layout')
+      }
+      const blocks = mapped.properties.length ? [propertiesTable(mapped.properties), ...body] : body
       staged.set(page.notionId, {
         id,
         notionId: page.notionId,
@@ -260,8 +263,9 @@ export function plainTextBlocks(html: string): Block[] {
     findAll(root, (el) => hasClass(el, 'page-body'))[0] ??
     findAll(root, (el) => el.tagName === 'body')[0] ??
     root
+  const header = findAll(body, (el) => el.tagName === 'header' && hasPageTitle(el))[0]
   const texts: string[] = []
-  collectParagraphs(body, texts)
+  collectParagraphs(body, texts, header)
   return texts.map((text): Block => ({
     type: 'paragraph',
     props: {},
@@ -270,8 +274,12 @@ export function plainTextBlocks(html: string): Block[] {
   }))
 }
 
+function hasPageTitle(el: Element): boolean {
+  return findAll(el, (child) => hasClass(child, 'page-title')).length > 0
+}
+
 /** A block element with no block children is one paragraph; otherwise its children are read in turn. */
-function collectParagraphs(parent: Root | Element, texts: string[]): void {
+function collectParagraphs(parent: Root | Element, texts: string[], skip?: Element): void {
   let loose = ''
   const flush = (): void => {
     addText(texts, loose)
@@ -284,7 +292,8 @@ function collectParagraphs(parent: Root | Element, texts: string[]): void {
       loose += textOf(child)
     } else {
       flush()
-      if (child.children.some(isBlockElement)) collectParagraphs(child, texts)
+      if (child === skip) continue
+      if (child.children.some(isBlockElement)) collectParagraphs(child, texts, skip)
       else addText(texts, textOf(child))
     }
   }

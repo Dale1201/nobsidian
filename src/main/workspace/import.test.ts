@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -201,7 +201,7 @@ describe('landing an import', () => {
     ws.close()
   })
 
-  it('tells the window the tree changed when landing fails after the pages are added', async () => {
+  it('lands the import when saving the state fails after the pages are added', async () => {
     const ws = await Workspace.open(root)
     const manifest = await importFixture(ws)
     // A folder where the state file should be makes saving the state fail after the pages are added.
@@ -209,9 +209,18 @@ describe('landing an import', () => {
     await mkdir(join(root, '.nobsidian', 'workspace.json'))
     const events: WorkspaceEvent[] = []
     ws.onEvent((e) => events.push(e))
-    await expect(ws.landImport(manifest, manifest.staging)).rejects.toThrow()
-    expect(events).toContainEqual({ type: 'tree' })
-    ws.close()
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const result = await ws.landImport(manifest, manifest.staging)
+      expect(result.pages).toBe(10)
+      expect(ws.tree().map((n) => n.title)).toEqual(['Imported from Notion'])
+      expect(ws.tree()[0].children.map((n) => n.title)).toContain('Nobsidian import fixture')
+      expect(events).toContainEqual({ type: 'tree' })
+      expect(errors).toHaveBeenCalled()
+    } finally {
+      errors.mockRestore()
+      ws.close()
+    }
   })
 
   it('keeps sibling pages apart when their names differ only in Unicode form', async () => {

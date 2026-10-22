@@ -157,6 +157,119 @@ describe('mapNotionPaste', () => {
     expect(ctx.issues).toEqual(['missingFile: photo.png'])
   })
 
+  it('maps a link mention to a link named by its title, or its address', () => {
+    const json = records([
+      {
+        id: 'a',
+        type: 'text',
+        properties: {
+          title: [
+            ['See '],
+            ['‣', [['lm', { href: 'https://github.com/nb/repo', title: 'nb/repo' }]]],
+            [' and '],
+            ['‣', [['lm', { href: 'https://example.com/x' }]]]
+          ]
+        }
+      }
+    ])
+    const html =
+      '<p>See <a href="https://github.com/nb/repo">nb/repo</a> and <a href="https://example.com/x">x</a></p>'
+    const [block] = mapNotionPaste({ records: json, html }, context())
+    expect(block).toMatchObject({
+      type: 'paragraph',
+      content: [
+        { type: 'text', text: 'See ' },
+        {
+          type: 'link',
+          href: 'https://github.com/nb/repo',
+          content: [{ type: 'text', text: 'nb/repo' }]
+        },
+        { type: 'text', text: ' and ' },
+        {
+          type: 'link',
+          href: 'https://example.com/x',
+          content: [{ type: 'text', text: 'https://example.com/x' }]
+        }
+      ]
+    })
+  })
+
+  it('maps the HTML copy for a mention it does not know', () => {
+    const json = records([
+      {
+        id: 'a',
+        type: 'text',
+        properties: { title: [['Due '], ['‣', [['rm', { id: 'r1' }]]]] }
+      }
+    ])
+    const html = '<p>Due Tomorrow 9:00</p>'
+    expect(blocksToMarkdown(mapNotionPaste({ records: json, html }, context()))).toBe(
+      'Due Tomorrow 9:00\n'
+    )
+  })
+
+  it('keeps the captions of bookmarks, embeds, code, files and media', () => {
+    const caption = (text: string): unknown => [[text, [['b']]]]
+    const json = records([
+      {
+        id: 'b',
+        type: 'bookmark',
+        properties: { link: [['https://a.example']], title: [['A']], caption: caption('Cap b') }
+      },
+      {
+        id: 'e',
+        type: 'figma',
+        properties: { source: [['https://figma.com/f']], caption: caption('Cap e') }
+      },
+      {
+        id: 'c',
+        type: 'code',
+        properties: { title: [['x = 1']], language: [['Python']], caption: caption('Cap c') }
+      },
+      {
+        id: 'f',
+        type: 'pdf',
+        properties: { source: [['https://a.example/r.pdf']], caption: caption('Cap f') }
+      },
+      {
+        id: 'u',
+        type: 'file',
+        properties: { source: [['attachment:x:notes.txt']], caption: caption('Cap u') }
+      },
+      {
+        id: 'v',
+        type: 'video',
+        properties: { source: [['https://a.example/v.mp4']], caption: [['Cap v']] }
+      },
+      { id: 'n', type: 'bookmark', properties: { link: [['https://n.example']] } }
+    ])
+    const blocks = mapNotionPaste({ records: json }, context())
+    const capped = (text: string): object => ({
+      type: 'paragraph',
+      content: [{ type: 'text', text, styles: { bold: true } }]
+    })
+    expect(blocks.map((b) => b.type)).toEqual([
+      'paragraph',
+      'paragraph',
+      'paragraph',
+      'paragraph',
+      'codeBlock',
+      'paragraph',
+      'paragraph',
+      'paragraph',
+      'paragraph',
+      'paragraph',
+      'video',
+      'paragraph'
+    ])
+    expect(blocks[1]).toMatchObject(capped('Cap b'))
+    expect(blocks[3]).toMatchObject(capped('Cap e'))
+    expect(blocks[5]).toMatchObject(capped('Cap c'))
+    expect(blocks[7]).toMatchObject(capped('Cap f'))
+    expect(blocks[9]).toMatchObject(capped('Cap u'))
+    expect(blocks[10]).toMatchObject({ type: 'video', props: { caption: 'Cap v' } })
+  })
+
   it('falls back to the HTML copy without the records', () => {
     const html = '<!-- notionvc: 1 --><h2>Title</h2><ul><li>One</li></ul>'
     expect(blocksToMarkdown(mapNotionPaste({ html }, context()))).toBe('## Title\n\n- One\n')

@@ -215,7 +215,7 @@ export function PageEditor({
       lastColor={lastColor}
       onPickColor={(picked) => void useApp.getState().updateSettings({ lastColor: picked })}
       pasteNotion={async (clipboard) => {
-        const { blocks, uploads } = await prepareNotionPaste(clipboard)
+        const { blocks, images, uploads } = await prepareNotionPaste(clipboard)
         if (uploads > 0) {
           useApp
             .getState()
@@ -223,7 +223,7 @@ export function PageEditor({
               "Images and files uploaded to Notion can't be pasted. Import the page to bring them over."
             )
         }
-        return withEditorLanguages(blocks, editorLanguage)
+        return { blocks: withEditorLanguages(blocks, editorLanguage), images }
       }}
     />
   )

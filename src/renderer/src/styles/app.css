@@ -527,7 +527,8 @@ button.breadcrumb:hover {
 
 .toast {
   position: fixed;
-  bottom: 20px;
+  /* Set while the import panel shows, so a message sits above it. */
+  bottom: calc(20px + var(--import-panel-lift, 0px));
   left: 50%;
   transform: translateX(-50%);
   max-width: 520px;
