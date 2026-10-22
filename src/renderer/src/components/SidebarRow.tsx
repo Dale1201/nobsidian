@@ -44,9 +44,13 @@ export function SidebarRow({
 
   const rowRef = useRef<HTMLDivElement>(null)
   const isCurrent = currentId === node.id
+  // Only the page tree answers a reveal, once, so favorites and remounts never move the list.
+  const revealRequest = useApp((s) => s.revealRequest)
   useEffect(() => {
-    if (isCurrent) rowRef.current?.scrollIntoView({ block: 'nearest' })
-  }, [isCurrent])
+    if (scope !== 'pages' || revealRequest !== node.id) return
+    rowRef.current?.scrollIntoView({ block: 'nearest' })
+    useApp.getState().takeReveal(node.id)
+  }, [revealRequest, node.id, scope])
 
   const expandKey = scope === 'favorites' ? `fav:${node.id}` : node.id
   const expanded = expandable && expandedIds.includes(expandKey)
@@ -81,7 +85,7 @@ export function SidebarRow({
         style={{ paddingLeft: indent }}
         data-testid={`sidebar-row-${node.title || 'Untitled'}`}
         draggable={draggable && renamingId !== node.id}
-        onClick={() => app().openPage(node.id)}
+        onClick={() => app().openPage(node.id, { scroll: false })}
         onDragStart={(e) => {
           e.dataTransfer.setData(DRAG_TYPE, node.id)
           e.dataTransfer.effectAllowed = 'move'
@@ -152,7 +156,10 @@ export function SidebarRow({
             aria-label="Add a page inside"
             onClick={(e) => {
               e.stopPropagation()
-              void app().createPage(node.id)
+              void app().createPage(node.id, undefined, {
+                expandKey,
+                scroll: scope === 'pages'
+              })
             }}
           >
             <PlusIcon size={14} />

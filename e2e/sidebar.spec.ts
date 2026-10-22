@@ -146,3 +146,63 @@ test('the sidebar scrolls while a page is dragged near its bottom edge', async (
   await expect.poll(() => scroller.evaluate((el) => el.scrollTop)).toBeGreaterThan(0)
   await page.mouse.up()
 })
+
+test('starring the current page does not move the sidebar', async ({ nb }) => {
+  for (let i = 0; i < 40; i++) {
+    await writeFile(join(nb.workspace, `Page ${String(i).padStart(2, '0')}.md`), 'x\n')
+  }
+  const page = await nb.relaunch()
+  const scroller = page.locator('.sidebar-scroll')
+  await expect(page.getByTestId('sidebar-row-Page 39')).toBeAttached()
+  await scroller.evaluate((el) => (el.scrollTop = el.scrollHeight))
+  await page.getByTestId('sidebar-row-Page 39').click()
+  await expect(page.getByTestId('page-title')).toHaveText('Page 39')
+  const row = page
+    .locator('.sidebar-section', { hasText: 'Pages' })
+    .getByTestId('sidebar-row-Page 39')
+  const before = (await row.boundingBox())!.y
+  await page.getByRole('button', { name: 'Add to Favorites' }).click()
+  await expect(page.locator('.sidebar-section', { hasText: 'Favorites' })).toBeAttached()
+  await page.waitForTimeout(300)
+  // Scroll anchoring may raise scrollTop by the new section's height; the row itself stays put.
+  expect(Math.abs((await row.boundingBox())!.y - before)).toBeLessThanOrEqual(1)
+})
+
+test('clicking a favorite of a nested page keeps the favorite in view', async ({ nb }) => {
+  for (let i = 0; i < 40; i++) {
+    await writeFile(join(nb.workspace, `Page ${String(i).padStart(2, '0')}.md`), 'x\n')
+  }
+  await mkdir(join(nb.workspace, 'Zzz'))
+  await writeFile(join(nb.workspace, 'Zzz.md'), 'z\n')
+  await writeFile(join(nb.workspace, 'Zzz', 'Target.md'), 'target\n')
+  const page = await nb.relaunch()
+  await expect(page.getByTestId('sidebar-row-Zzz')).toBeAttached()
+  await search(page, 'Target')
+  await page.getByRole('button', { name: 'Add to Favorites' }).click()
+  const zzz = page.locator('.sidebar-section', { hasText: 'Pages' }).getByTestId('sidebar-row-Zzz')
+  await zzz.hover()
+  await zzz.getByRole('button', { name: 'Collapse' }).click()
+  await page.getByTestId('sidebar-row-Page 00').click()
+  await page.locator('.sidebar-scroll').evaluate((el) => (el.scrollTop = 0))
+  const favorite = page
+    .locator('.sidebar-section', { hasText: 'Favorites' })
+    .getByTestId('sidebar-row-Target')
+  await favorite.click()
+  await expect(page.getByTestId('page-title')).toHaveText('Target')
+  await page.waitForTimeout(300)
+  await expect(favorite).toBeInViewport()
+})
+
+test('+ on a favorite adds the page inside the favorite', async ({ nb }) => {
+  await writeFile(join(nb.workspace, 'Starred.md'), 's\n')
+  const page = await nb.relaunch()
+  const pagesRow = page.getByTestId('sidebar-row-Starred')
+  await pagesRow.hover()
+  await pagesRow.getByRole('button', { name: 'Page actions' }).click()
+  await page.getByRole('menuitem', { name: 'Add to Favorites' }).click()
+  const favorites = page.locator('.sidebar-section', { hasText: 'Favorites' })
+  const favRow = favorites.getByTestId('sidebar-row-Starred')
+  await favRow.hover()
+  await favRow.getByRole('button', { name: 'Add a page inside' }).click()
+  await expect(favorites.getByTestId('sidebar-row-Untitled')).toBeVisible()
+})
