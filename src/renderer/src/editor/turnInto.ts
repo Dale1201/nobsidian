@@ -127,6 +127,10 @@ export function turnIntoUpdate(block: TurnIntoBlock, id: TurnIntoId): TurnIntoUp
   ) {
     colors.backgroundColor = 'gray'
   }
+  // Gray is the callout's own default, not a colour the user chose; BlockNote would carry it over.
+  if (block.type === 'callout' && option.type !== 'callout' && colors.backgroundColor === 'gray') {
+    colors.backgroundColor = 'default'
+  }
   const update: TurnIntoUpdate = { type: option.type, props: { ...colors, ...option.props } }
   if (PLAIN_TYPES.has(block.type) || option.type === 'codeBlock') update.content = textOf(block)
   return update

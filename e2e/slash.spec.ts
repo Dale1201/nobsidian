@@ -70,3 +70,29 @@ test('the menu flips above the cursor at the bottom of the window', async ({ nb 
   expect(box.y + box.height).toBeLessThanOrEqual(height)
   expect(box.y).toBeGreaterThanOrEqual(0)
 })
+
+test('the whole menu stays on screen when it opens mid-window', async ({ nb }) => {
+  const body = Array.from({ length: 80 }, (_, i) => `Line ${i}`).join('\n\n') + '\n'
+  await writeFile(join(nb.workspace, 'Middle.md'), body)
+  const page = await nb.relaunch()
+  await page.getByTestId('sidebar-row-Middle').click()
+  const height = await page.evaluate(() => innerHeight)
+  for (const room of [320, 360, 400]) {
+    const line = page.locator(`${editor} .bn-block-content`, { hasText: /^Line 40$/ })
+    await line.evaluate((el, gap) => {
+      const scroller = document.querySelector('[data-testid="page-scroll"]')!
+      const r = el.getBoundingClientRect()
+      scroller.scrollTop += r.bottom - (innerHeight - gap)
+    }, room)
+    await line.click()
+    await page.keyboard.press('End')
+    await page.keyboard.type(' /')
+    const footer = page.locator('.slash-menu-footer')
+    await expect(footer).toBeVisible()
+    const box = (await footer.boundingBox())!
+    expect(box.y + box.height).toBeLessThanOrEqual(height)
+    await page.keyboard.press('Escape')
+    await page.keyboard.press('Backspace')
+    await page.keyboard.press('Backspace')
+  }
+})

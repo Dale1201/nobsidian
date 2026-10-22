@@ -65,6 +65,16 @@ describe('turn into', () => {
     ).toBe('blue')
   })
 
+  it("drops a callout's default gray background when it becomes another type", () => {
+    const callout = { type: 'callout', props: { backgroundColor: 'gray', textColor: 'red' } }
+    expect(turnIntoUpdate(callout, 'paragraph').props).toEqual({
+      backgroundColor: 'default',
+      textColor: 'red'
+    })
+    const blue = { type: 'callout', props: { backgroundColor: 'blue' } }
+    expect(turnIntoUpdate(blue, 'quote').props.backgroundColor).toBe('blue')
+  })
+
   it('moves text into code and equations and back out', () => {
     const para = { type: 'paragraph', props: {}, content: text('x^2') }
     expect(turnIntoUpdate(para, 'code')).toEqual({ type: 'codeBlock', props: {}, content: 'x^2' })

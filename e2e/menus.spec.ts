@@ -1,3 +1,5 @@
+import { writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { expect, test } from './fixtures'
 import { newPage } from './helpers'
 
@@ -39,4 +41,30 @@ test('a menu opened near the window edge stays on screen', async ({ nb }) => {
   const size = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }))
   expect(box!.x + box!.width).toBeLessThanOrEqual(size.width)
   expect(box!.y + box!.height).toBeLessThanOrEqual(size.height)
+})
+
+test('the trash popover and icon picker keep their own widths', async ({ nb }) => {
+  const { page } = nb
+  await newPage(page, 'Widths')
+  await page.getByRole('button', { name: 'Trash' }).click()
+  expect((await page.locator('.menu.trash-popover').boundingBox())!.width).toBe(414)
+  await page.keyboard.press('Escape')
+  await page.getByTestId('page-title').hover()
+  await page.getByRole('button', { name: 'Add icon' }).click()
+  await page.getByTestId('page-icon').click()
+  const panel = (await page.locator('.menu.icon-picker').boundingBox())!
+  const picker = (await page.locator('.nb-icon-picker').boundingBox())!
+  expect(panel.width).toBeGreaterThanOrEqual(picker.width)
+})
+
+test('a menu keeps its highlight when the app updates behind it', async ({ nb }) => {
+  const { page } = nb
+  await newPage(page, 'Steady')
+  await page.getByRole('button', { name: 'Page menu' }).click()
+  const menu = page.getByRole('menu')
+  await page.keyboard.press('ArrowDown')
+  await expect(menu.locator('.menu-item.active')).toHaveText('Duplicate')
+  await writeFile(join(nb.workspace, 'Arrived.md'), 'new\n')
+  await expect(page.getByTestId('sidebar-row-Arrived')).toBeVisible()
+  await expect(menu.locator('.menu-item.active')).toHaveText('Duplicate')
 })

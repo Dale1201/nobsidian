@@ -306,6 +306,19 @@
 }
 
 /* ---------- Lists like Notion ---------- */
+/* Children start where the parent's marker column ends (2px + 24px), as in Notion. */
+.bn-root
+  .bn-block:has(
+    > .bn-block-content:is(
+        [data-content-type='bulletListItem'],
+        [data-content-type='numberedListItem'],
+        [data-content-type='checkListItem']
+      )
+  )
+  > .bn-block-group,
+.bn-root .bn-toggle-slot > .bn-block-group {
+  margin-left: 26px;
+}
 /* Matches BlockNote's indent-line selector with .bn-root in front, so it wins. */
 .bn-root
   .bn-block-group
@@ -407,12 +420,17 @@
 /* ---------- Slash menu ---------- */
 .menu.slash-menu {
   position: static;
+  display: flex;
+  flex-direction: column;
   width: 324px;
   max-width: none;
   padding: 0;
   overflow: hidden;
 }
+/* BlockNote caps the wrapper to the room on screen; the list shrinks so the footer stays visible. */
 .slash-menu-list {
+  flex: 1 1 auto;
+  min-height: 0;
   max-height: min(40vh, 380px);
   overflow-y: auto;
   padding: 4px;
@@ -421,6 +439,7 @@
   background: var(--hover);
 }
 .slash-menu-footer {
+  flex: none;
   display: flex;
   justify-content: space-between;
   padding: 6px 12px;

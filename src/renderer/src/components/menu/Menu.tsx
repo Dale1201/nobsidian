@@ -38,15 +38,18 @@ export function Menu(props: MenuProps): React.JSX.Element {
   const { entries, onClose, nested } = props
   const [query, setQuery] = useState('')
   const shown = useMemo(() => filterEntries(entries, query), [entries, query])
-  const [active, setActive] = useState(() => moveIndex(shown, -1, 1))
-  const [sub, setSub] = useState<{ index: number; rect: DOMRect } | null>(null)
+  // Kept by id, not index: callers rebuild entries on every render.
+  const [activeId, setActiveId] = useState<string | null>(null)
+  const [sub, setSub] = useState<{ id: string; rect: DOMRect } | null>(null)
   const rows = useRef<(HTMLButtonElement | null)[]>([])
 
-  const [prevShown, setPrevShown] = useState(shown)
-  if (prevShown !== shown) {
-    setPrevShown(shown)
-    setActive(moveIndex(shown, -1, 1))
-    setSub(null)
+  const indexOf = (id: string | null): number =>
+    id === null ? -1 : shown.findIndex((e) => e.kind === 'item' && e.id === id)
+  const found = indexOf(activeId)
+  const active = found === -1 ? moveIndex(shown, -1, 1) : found
+  const idAt = (index: number): string | null => {
+    const entry = shown[index]
+    return entry?.kind === 'item' ? entry.id : null
   }
 
   const select = (index: number): void => {
@@ -54,7 +57,7 @@ export function Menu(props: MenuProps): React.JSX.Element {
     if (entry?.kind !== 'item') return
     if (entry.submenu) {
       const rect = rows.current[index]?.getBoundingClientRect()
-      if (rect) setSub({ index, rect })
+      if (rect) setSub({ id: entry.id, rect })
       return
     }
     onClose()
@@ -68,7 +71,7 @@ export function Menu(props: MenuProps): React.JSX.Element {
       const current = shown[active] as MenuItemEntry | undefined
       let handled = true
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-        setActive((i) => moveIndex(shown, i, e.key === 'ArrowDown' ? 1 : -1))
+        setActiveId(idAt(moveIndex(shown, active, e.key === 'ArrowDown' ? 1 : -1)))
       } else if (e.key === 'Enter' || (e.key === 'ArrowRight' && current?.submenu)) {
         select(active)
       } else if (e.key === 'Escape' || (e.key === 'ArrowLeft' && nested)) {
@@ -89,7 +92,8 @@ export function Menu(props: MenuProps): React.JSX.Element {
     rows.current[active]?.scrollIntoView({ block: 'nearest' })
   }, [active])
 
-  const subEntry = sub ? (shown[sub.index] as MenuItemEntry | undefined) : undefined
+  const subIndex = sub ? indexOf(sub.id) : -1
+  const subEntry = subIndex === -1 ? undefined : (shown[subIndex] as MenuItemEntry)
 
   return (
     <Popover
@@ -109,7 +113,11 @@ export function Menu(props: MenuProps): React.JSX.Element {
           autoFocus
           placeholder={props.search}
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => {
+            setQuery(e.target.value)
+            setActiveId(null)
+            setSub(null)
+          }}
         />
       )}
       {props.header && !query && <div className="menu-section">{props.header}</div>}
@@ -136,9 +144,9 @@ export function Menu(props: MenuProps): React.JSX.Element {
               className={`menu-item ${i === active ? 'active' : ''} ${entry.danger ? 'danger' : ''}`}
               onMouseDown={(e) => e.preventDefault()}
               onMouseEnter={(e) => {
-                setActive(i)
+                setActiveId(entry.id)
                 const rect = e.currentTarget.getBoundingClientRect()
-                setSub(entry.submenu ? { index: i, rect } : null)
+                setSub(entry.submenu ? { id: entry.id, rect } : null)
               }}
               onClick={() => select(i)}
             >
@@ -151,7 +159,7 @@ export function Menu(props: MenuProps): React.JSX.Element {
           )
         })}
       </div>
-      {sub && subEntry?.submenu && (
+      {subEntry?.submenu && sub && (
         <Menu
           nested
           anchor={sub.rect}

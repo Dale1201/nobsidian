@@ -301,7 +301,6 @@ button {
   position: fixed;
   z-index: 100;
   min-width: 220px;
-  max-width: 320px;
   background: var(--menu-bg);
   box-shadow: var(--menu-shadow);
   border-radius: 10px;
@@ -311,6 +310,10 @@ button {
 }
 .menu:focus {
   outline: none;
+}
+/* Only the menu kit is capped; other popovers (Trash, icon picker) set their own widths. */
+.menu[role='menu'] {
+  max-width: 320px;
 }
 .menu-list {
   max-height: min(60vh, 480px);

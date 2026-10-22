@@ -88,3 +88,30 @@ test('an empty toggle says how to fill it', async ({ nb }) => {
     'Empty toggle. Click or drop blocks inside.'
   )
 })
+
+test('children line up under the text of their list item', async ({ nb }) => {
+  const page = await openFile(nb, 'Indent', '- parent\n  - child\n- [ ] task\n  - under task\n')
+  const lefts = await page.evaluate(() => {
+    const textLeft = (text: string): number => {
+      const el = [...document.querySelectorAll('.bn-editor .bn-inline-content')].find(
+        (e) => e.textContent === text
+      )!
+      return Math.round(el.getBoundingClientRect().left)
+    }
+    const markerLeft = (text: string): number => {
+      const el = [...document.querySelectorAll('.bn-editor .bn-block-content')].find(
+        (e) => e.textContent === text
+      )!
+      return Math.round(el.getBoundingClientRect().left)
+    }
+    return {
+      parentText: textLeft('parent'),
+      childBlock: markerLeft('child'),
+      taskText: textLeft('task'),
+      underTaskBlock: markerLeft('under task')
+    }
+  })
+  // Notion starts a child where the parent's marker column ends: 26px, 6px before the text.
+  expect(lefts.childBlock).toBe(lefts.parentText - 6)
+  expect(lefts.underTaskBlock).toBe(lefts.taskText - 6)
+})
