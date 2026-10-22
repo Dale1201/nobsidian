@@ -4,6 +4,7 @@ import { findNode } from '../lib/tree'
 import { useApp } from '../store'
 import { Banner } from './Banner'
 import { PageCover, PageIconAndControls } from './PageHeader'
+import { EditorErrorBoundary } from './EditorErrorBoundary'
 import { PageEditor, type PageEditorHandle } from './PageEditor'
 import { PageTitle } from './PageTitle'
 import { TopBar } from './TopBar'
@@ -153,13 +154,9 @@ export function PageView({ theme }: { theme: 'light' | 'dark' }): React.JSX.Elem
               className={`page-column page-body ${doc.meta.fullWidth ? 'full-width' : ''}`}
               ref={bodyRef}
             >
-              <PageEditor
-                key={`${doc.id}:${generation}`}
-                ref={editorRef}
-                doc={doc}
-                theme={theme}
-                onConflict={onConflict}
-              />
+              <EditorErrorBoundary key={`${doc.id}:${generation}`} path={doc.path}>
+                <PageEditor ref={editorRef} doc={doc} theme={theme} onConflict={onConflict} />
+              </EditorErrorBoundary>
             </div>
           </>
         )}

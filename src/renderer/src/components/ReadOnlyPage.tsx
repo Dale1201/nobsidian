@@ -8,6 +8,7 @@ import type { AppPartialBlock } from '../editor/schema'
 import { resolveAssetUrl } from '../lib/assets'
 import { openHref } from '../lib/navigation'
 import { usePageLink } from '../lib/pageLink'
+import { EditorErrorBoundary } from './EditorErrorBoundary'
 import { PageIconView } from './PageIconView'
 
 const editorLanguage = createLanguageResolver(codeBlockOptions.supportedLanguages)
@@ -56,17 +57,19 @@ export function ReadOnlyPage({
         </div>
       </div>
       <div className={`page-column page-body ${width}`}>
-        <Editor
-          initialBlocks={blocks}
-          theme={theme}
-          editable={false}
-          onChange={() => {}}
-          uploadFile={async () => ''}
-          resolveFileUrl={async (url) => resolveAssetUrl(url)}
-          createSubPage={async () => ''}
-          openLink={openLink}
-          pageLink={{ ...pageLink, open: openLink }}
-        />
+        <EditorErrorBoundary path={doc.path}>
+          <Editor
+            initialBlocks={blocks}
+            theme={theme}
+            editable={false}
+            onChange={() => {}}
+            uploadFile={async () => ''}
+            resolveFileUrl={async (url) => resolveAssetUrl(url)}
+            createSubPage={async () => ''}
+            openLink={openLink}
+            pageLink={{ ...pageLink, open: openLink }}
+          />
+        </EditorErrorBoundary>
       </div>
     </div>
   )

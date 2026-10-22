@@ -1,6 +1,6 @@
 import { DEFAULT_CALLOUT_BACKGROUND, type Block, type Inline, type StyledText } from './blocks'
 import { isColor } from './html'
-import { cleanStyles, sameStyles } from './inline'
+import { cleanStyles, linkText, sameStyles } from './inline'
 
 // Reduces editor-shaped blocks (ids, default props, TableCell objects) to the
 // minimal form markdownToBlocks produces, so documents can be compared.
@@ -97,7 +97,7 @@ export function normalizeInline(content: Inline[]): Inline[] {
       out.push({
         type: 'link',
         href: item.href,
-        content: normalizeInline(item.content) as StyledText[]
+        content: linkText(normalizeInline(item.content) as StyledText[])
       })
     } else {
       out.push({ type: 'inlineMath', props: { latex: item.props.latex } })

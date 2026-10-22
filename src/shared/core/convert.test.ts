@@ -141,6 +141,19 @@ describe('markdownToBlocks structure', () => {
 })
 
 describe('markdown from other tools', () => {
+  it('drops code formatting inside link text, which the editor cannot combine with a link', () => {
+    const [p] = markdownToBlocks('See [`main.rs`](https://main.rs) here')
+    expect(p.content).toEqual([
+      { type: 'text', text: 'See ', styles: {} },
+      {
+        type: 'link',
+        href: 'https://main.rs',
+        content: [{ type: 'text', text: 'main.rs', styles: {} }]
+      },
+      { type: 'text', text: ' here', styles: {} }
+    ])
+  })
+
   it('reads toggles from files with Windows line endings', () => {
     const [toggle] = markdownToBlocks(
       '<details>\r\n<summary>T</summary>\r\n\r\nInside\r\n\r\n</details>\r\n'

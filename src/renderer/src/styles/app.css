@@ -1050,3 +1050,26 @@ button.breadcrumb:hover {
   padding-top: 5px;
   padding-bottom: 5px;
 }
+
+.page-error {
+  margin: 8px 0;
+  padding: 14px 16px;
+  border-radius: 6px;
+  background: var(--bg-red);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.5;
+  user-select: text;
+}
+.page-error p {
+  margin: 0 0 4px;
+}
+.page-error-title {
+  font-weight: 600;
+  color: var(--color-red);
+}
+.page-error-detail {
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
