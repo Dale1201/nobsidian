@@ -102,8 +102,13 @@ test('cancelling an import leaves nothing behind', async ({ nb }) => {
   await panel.getByRole('button', { name: 'Cancel' }).click()
   await expect(panel).toContainText('Cancelled, nothing was imported.')
   await expect(page.getByTestId('sidebar-row-Imported from Notion')).toHaveCount(0)
-  const appDir = await readdir(join(nb.workspace, '.nobsidian')).catch(() => [])
-  expect(appDir.filter((name) => name.startsWith('import-'))).toEqual([])
+  await expect
+    .poll(async () =>
+      (await readdir(join(nb.workspace, '.nobsidian')).catch(() => [])).filter((name) =>
+        name.startsWith('import-')
+      )
+    )
+    .toEqual([])
 })
 
 test('a zip that is not a Notion HTML export is refused', async ({ nb }) => {

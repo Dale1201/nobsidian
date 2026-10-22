@@ -14,8 +14,9 @@ Your notes are plain Markdown files in a folder you choose, so they stay yours.
 - Favorites, duplicate, move to, and a table of contents block.
 - Trash with restore, and page history with restore.
 - Edits made in other apps, Finder or a sync folder show up live, without losing yours.
-
-Notion import is coming next.
+- Import from Notion: export your workspace from Notion as HTML (with sub-pages), then drop the zip on the window or use File > Import from Notion.
+  Pages keep their nesting, colors, icons, covers, images and links, and a report lists anything that could not be converted exactly.
+- Paste from Notion keeps the formatting of what you copied.
 
 ## Development
 
