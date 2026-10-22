@@ -99,7 +99,7 @@ test('the banner stays until the user chooses, even after opening history', asyn
   await expect(banner).toContainText('This page was changed outside Nobsidian.')
 
   await page.getByRole('button', { name: 'Page menu' }).click()
-  await page.getByRole('button', { name: 'Page history' }).click()
+  await page.getByRole('menuitem', { name: 'Page history' }).click()
   const dialog = page.getByRole('dialog', { name: 'Page history' })
   await dialog.getByRole('button', { name: 'Close' }).click()
   await expect(dialog).toHaveCount(0)

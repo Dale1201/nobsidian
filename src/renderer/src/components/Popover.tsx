@@ -4,13 +4,19 @@ import { createPortal } from 'react-dom'
 export interface PopoverProps {
   anchor: DOMRect
   align?: 'start' | 'end'
-  /** Below the anchor (default), or beside it to the right, bottom-aligned. */
-  side?: 'below' | 'right'
+  /** Below the anchor (default), beside it to the right top-aligned, or right and bottom-aligned. */
+  side?: 'below' | 'right' | 'right-bottom'
   /** Clicks inside this element do not count as outside clicks. */
   ignore?: Element | null
+  /** Rendered in place instead of in document.body, so a parent menu counts its clicks as inside. */
+  portal?: boolean
+  closeOnEscape?: boolean
+  /** Moves focus into the panel when it opens. */
+  autoFocus?: boolean
   onClose: () => void
   children: ReactNode
   className?: string
+  role?: string
 }
 
 /** Fixed-position floating panel anchored under a rect; closes on outside click and Escape. */
@@ -19,9 +25,13 @@ export function Popover({
   align = 'start',
   side = 'below',
   ignore,
+  portal = true,
+  closeOnEscape = true,
+  autoFocus = false,
   onClose,
   children,
-  className
+  className,
+  role
 }: PopoverProps): React.JSX.Element {
   const ref = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState({ top: anchor.bottom + 4, left: anchor.left })
@@ -43,6 +53,12 @@ export function Popover({
     if (!el) return
     const { width, height } = el.getBoundingClientRect()
     if (side === 'right') {
+      const fitsRight = anchor.right + 4 + width <= window.innerWidth - 8
+      const left = fitsRight ? anchor.right + 4 : Math.max(8, anchor.left - width - 4)
+      setPos({ top: Math.max(8, Math.min(anchor.top - 4, window.innerHeight - height - 8)), left })
+      return
+    }
+    if (side === 'right-bottom') {
       const left = Math.min(anchor.right + 6, window.innerWidth - width - 8)
       setPos({ top: Math.max(8, Math.min(anchor.bottom, window.innerHeight - 8) - height), left })
       return
@@ -55,12 +71,18 @@ export function Popover({
   }, [anchor, align, side, size])
 
   useEffect(() => {
+    if (autoFocus && !ref.current?.contains(document.activeElement)) {
+      ref.current?.focus({ preventScroll: true })
+    }
+  }, [autoFocus])
+
+  useEffect(() => {
     const onDown = (e: MouseEvent): void => {
       const target = e.target as Node
       if (ref.current && !ref.current.contains(target) && !ignore?.contains(target)) onClose()
     }
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onClose()
+      if (closeOnEscape && e.key === 'Escape') onClose()
     }
     document.addEventListener('mousedown', onDown, true)
     document.addEventListener('keydown', onKey)
@@ -68,53 +90,18 @@ export function Popover({
       document.removeEventListener('mousedown', onDown, true)
       document.removeEventListener('keydown', onKey)
     }
-  }, [onClose, ignore])
+  }, [onClose, ignore, closeOnEscape])
 
-  return createPortal(
-    <div ref={ref} className={`menu ${className ?? ''}`} style={{ top: pos.top, left: pos.left }}>
+  const panel = (
+    <div
+      ref={ref}
+      role={role}
+      tabIndex={autoFocus ? -1 : undefined}
+      className={`menu ${className ?? ''}`}
+      style={{ top: pos.top, left: pos.left }}
+    >
       {children}
-    </div>,
-    document.body
+    </div>
   )
-}
-
-export interface MenuItem {
-  label: string
-  icon?: ReactNode
-  danger?: boolean
-  onSelect: () => void
-}
-
-export function Menu({
-  anchor,
-  align,
-  items,
-  onClose
-}: {
-  anchor: DOMRect
-  align?: 'start' | 'end'
-  items: (MenuItem | 'separator')[]
-  onClose: () => void
-}): React.JSX.Element {
-  return (
-    <Popover anchor={anchor} align={align} onClose={onClose}>
-      {items.map((item, i) =>
-        item === 'separator' ? (
-          <div key={i} className="menu-separator" />
-        ) : (
-          <button
-            key={item.label}
-            className={`menu-item ${item.danger ? 'danger' : ''}`}
-            onClick={() => {
-              onClose()
-              item.onSelect()
-            }}
-          >
-            {item.icon}
-            {item.label}
-          </button>
-        )
-      )}
-    </Popover>
-  )
+  return portal ? createPortal(panel, document.body) : panel
 }

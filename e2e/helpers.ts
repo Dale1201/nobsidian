@@ -36,7 +36,7 @@ export async function rowAction(page: Page, title: string, action: string): Prom
   const row = page.getByTestId(`sidebar-row-${title}`)
   await row.hover()
   await row.getByRole('button', { name: 'Page actions' }).click()
-  await page.getByRole('button', { name: action, exact: true }).click()
+  await page.getByRole('menuitem', { name: action, exact: true }).click()
 }
 
 /** Writes a page file, relaunches so the app reads it, and opens it. */

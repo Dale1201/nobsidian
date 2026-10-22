@@ -11,7 +11,7 @@ import {
   TrashIcon,
   WidthIcon
 } from './icons'
-import { Menu } from './Popover'
+import { Menu } from './menu/Menu'
 import { PageIconView } from './PageIconView'
 
 export function TopBar({
@@ -79,25 +79,33 @@ export function TopBar({
           anchor={menu}
           align="end"
           onClose={() => setMenu(null)}
-          items={[
+          entries={[
             {
+              kind: 'item',
+              id: 'full-width',
               label: doc?.meta.fullWidth ? 'Use default width' : 'Full width',
               icon: <WidthIcon size={16} />,
               onSelect: onToggleFullWidth
             },
-            'separator',
+            { kind: 'separator' },
             {
+              kind: 'item',
+              id: 'duplicate',
               label: 'Duplicate',
               icon: <DuplicateIcon size={16} />,
               onSelect: () => void app().duplicatePage(currentId)
             },
             {
+              kind: 'item',
+              id: 'page-history',
               label: 'Page history',
               icon: <ClockIcon size={16} />,
               onSelect: () => app().setOverlay({ kind: 'history', pageId: currentId })
             },
-            'separator',
+            { kind: 'separator' },
             {
+              kind: 'item',
+              id: 'delete',
               label: 'Delete',
               icon: <TrashIcon size={16} />,
               danger: true,

@@ -153,7 +153,7 @@ test('favorites, delete and dark mode', async ({ nb }) => {
   await typeNewPageTitle(page, 'Remove me')
   await expect(page.getByTestId('sidebar-row-Remove me')).toBeVisible()
   await page.getByRole('button', { name: 'Page menu' }).click()
-  await page.getByRole('button', { name: 'Delete' }).click()
+  await page.getByRole('menuitem', { name: 'Delete' }).click()
   await expect(page.getByTestId('sidebar-row-Remove me')).toHaveCount(0)
   expect(await readdir(join(workspace, '.nobsidian', 'trash'))).toHaveLength(1)
 
