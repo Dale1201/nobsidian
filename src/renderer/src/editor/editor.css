@@ -523,3 +523,29 @@
 .menu-color[data-bg='red'] {
   background: var(--bg-red);
 }
+
+/* ---------- Selection toolbar ---------- */
+.bn-root .bn-formatting-toolbar {
+  gap: 1px;
+  padding: 3px;
+  border: none;
+  border-radius: 8px;
+  background: var(--menu-bg);
+  box-shadow: var(--menu-shadow);
+}
+.bn-root .bn-formatting-toolbar .bn-button {
+  height: 28px;
+  min-width: 28px;
+  border-radius: 6px;
+  background-color: transparent;
+  color: var(--text);
+}
+.bn-root .bn-formatting-toolbar .bn-button:hover,
+.bn-root .bn-formatting-toolbar .bn-button[data-selected] {
+  background-color: var(--hover);
+}
+.bn-root .nb-turn-into-button {
+  gap: 4px;
+  padding: 0 6px;
+  font-size: 14px;
+}
