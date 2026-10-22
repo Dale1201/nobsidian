@@ -23,6 +23,8 @@ import {
 } from '@blocknote/react'
 import { locales as multiColumnLocales, multiColumnDropCursor } from '@blocknote/xl-multi-column'
 import { createContext, useContext, useEffect } from 'react'
+import type { Block } from '@shared/core/blocks'
+import { ATTACH_FILES_EVENT, insertAtCursor } from './attachFiles'
 import { AppColorStyleButton } from './ColorButton'
 import { ColorPickContext, type PickedColor } from './colors'
 import { AppCreateLinkButton, AppEditLinkButton } from './LinkButtons'
@@ -151,6 +153,23 @@ export function Editor(props: EditorProps): React.JSX.Element {
       }
     }
   })
+
+  const { uploadFile, editable } = props
+  useEffect(() => {
+    if (editable === false) return
+    const attach = (event: Event): void => {
+      const files = (event as CustomEvent<File[]>).detail
+      void Promise.all(
+        files.map(async (file): Promise<Block> => ({
+          type: 'file',
+          props: { url: await uploadFile(file), name: file.name },
+          children: []
+        }))
+      ).then((blocks) => insertAtCursor(editor, blocks))
+    }
+    window.addEventListener(ATTACH_FILES_EVENT, attach)
+    return () => window.removeEventListener(ATTACH_FILES_EVENT, attach)
+  }, [editor, uploadFile, editable])
 
   return (
     <PageLinkContext.Provider value={props.pageLink}>

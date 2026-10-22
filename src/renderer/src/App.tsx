@@ -1,5 +1,7 @@
 import { useEffect } from 'react'
 import { HistoryModal } from './components/HistoryModal'
+import { ImportDrop } from './components/ImportDrop'
+import { ImportPanel } from './components/ImportPanel'
 import { PageView } from './components/PageView'
 import { SearchModal } from './components/SearchModal'
 import { Sidebar } from './components/Sidebar'
@@ -41,6 +43,7 @@ export function App(): React.JSX.Element | null {
         .then((saved) => api.invoke('app:flushed', { saved }))
     })
     const offMissing = api.on('workspace:missing', () => useApp.getState().workspaceMissing())
+    const offImport = api.on('import:status', (status) => useApp.getState().setImportStatus(status))
     // Cmd+K opens search unless the editor used it to add a link to selected text.
     const onKey = (e: KeyboardEvent): void => {
       if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.key.toLowerCase() !== 'k') return
@@ -53,6 +56,7 @@ export function App(): React.JSX.Element | null {
       offTree()
       offFlush()
       offMissing()
+      offImport()
       window.removeEventListener('keydown', onKey)
     }
   }, [])
@@ -63,6 +67,7 @@ export function App(): React.JSX.Element | null {
         const app = useApp.getState()
         if (cmd === 'new-page') void app.createPage(null)
         if (cmd === 'open-folder') void app.chooseWorkspace()
+        if (cmd === 'import-notion' && app.workspace) void app.startImport()
         if (cmd === 'search' && canSearch()) app.setOverlay({ kind: 'search' })
         if (cmd === 'back') app.back()
         if (cmd === 'forward') app.forward()
@@ -89,6 +94,8 @@ export function App(): React.JSX.Element | null {
           {overlay?.kind === 'search' && <SearchModal />}
           {overlay?.kind === 'move' && <SearchModal moving={overlay.pageId} />}
           {overlay?.kind === 'history' && <HistoryModal pageId={overlay.pageId} theme={theme} />}
+          <ImportDrop />
+          <ImportPanel />
         </>
       )}
       {error && (

@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import type { Block } from '@shared/core/blocks'
 import { RECENT_LIMIT, type Settings, type TreeSnapshot } from '@shared/ipc'
-import type { PageNode, WorkspaceInfo } from '@shared/types'
+import type { ImportStatus, PageNode, WorkspaceInfo } from '@shared/types'
 import { findNode, firstPageId } from './lib/tree'
 
 const api = window.api
@@ -52,6 +52,8 @@ interface AppState {
   confirms: number
   /** Rescued edits by page id, waiting for that page's editor to show them again. */
   rescued: Record<string, Rescue>
+  /** The Notion import shown in the progress panel; null once dismissed. */
+  importStatus: ImportStatus | null
 
   init: () => Promise<void>
   chooseWorkspace: () => Promise<void>
@@ -76,6 +78,11 @@ interface AppState {
   reportError: (action: string, err: unknown) => Promise<void>
   rescue: (id: string, rescue: Rescue) => Promise<void>
   takeRescued: (id: string) => void
+  showMessage: (message: string) => void
+  /** Imports these zips, or asks which ones when none are given. */
+  startImport: (paths?: string[]) => Promise<void>
+  cancelImport: () => Promise<void>
+  setImportStatus: (status: ImportStatus | null) => void
 }
 
 function errorReason(err: unknown): string {
@@ -99,6 +106,7 @@ export const useApp = create<AppState>((set, get) => ({
   trashEntry: null,
   confirms: 0,
   rescued: {},
+  importStatus: null,
 
   init: async () => {
     const [settings, workspace] = await Promise.all([
@@ -271,6 +279,23 @@ export const useApp = create<AppState>((set, get) => ({
   },
 
   setRenaming: (id) => set({ renamingId: id }),
+
+  showMessage: (message) => showError(message),
+
+  startImport: async (paths) => {
+    try {
+      if (paths) await api.invoke('import:start', { paths })
+      else await api.invoke('import:choose', undefined)
+    } catch (e) {
+      showError(errorReason(e))
+    }
+  },
+
+  cancelImport: async () => {
+    await api.invoke('import:cancel', undefined).catch(() => {})
+  },
+
+  setImportStatus: (importStatus) => set({ importStatus }),
 
   /** Shows what failed and re-syncs the sidebar with what is actually on disk. */
   reportError: async (action, err) => {

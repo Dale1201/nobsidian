@@ -100,6 +100,7 @@ export function ConfirmDialog({
   message,
   confirmLabel,
   danger,
+  extra,
   onConfirm,
   onClose
 }: {
@@ -107,6 +108,8 @@ export function ConfirmDialog({
   message?: string
   confirmLabel: string
   danger?: boolean
+  /** A second way to go ahead, shown between the main button and Cancel. */
+  extra?: { label: string; onSelect: () => void }
   onConfirm: () => void
   onClose: () => void
 }): React.JSX.Element {
@@ -129,6 +132,17 @@ export function ConfirmDialog({
         >
           {confirmLabel}
         </button>
+        {extra && (
+          <button
+            className="button-secondary"
+            onClick={() => {
+              onClose()
+              extra.onSelect()
+            }}
+          >
+            {extra.label}
+          </button>
+        )}
         <button className="button-secondary" autoFocus={danger} onClick={onClose}>
           Cancel
         </button>

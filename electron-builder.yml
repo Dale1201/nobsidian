@@ -10,7 +10,7 @@ files:
   - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,.editorconfig,.nvmrc,README.md,LICENSE}'
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
-  - '!{vitest.config.*,playwright.config.*,e2e/*,e2e-packaged/*,test-results/*,playwright-report/*,*.tsbuildinfo}'
+  - '!{vitest.config.*,playwright.config.*,e2e/*,e2e-packaged/*,tests/*,test-results/*,playwright-report/*,*.tsbuildinfo}'
   # Renderer code is bundled by Vite; only main-process dependencies ship in node_modules.
   - '!{.superpowers,.impeccable,.claude,.github}/**'
 asarUnpack:

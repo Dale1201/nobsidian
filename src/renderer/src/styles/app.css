@@ -971,3 +971,81 @@ button.breadcrumb:hover {
 .history-footer .button-primary {
   width: 100%;
 }
+
+/* ---------- Notion import ---------- */
+.import-panel {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  width: 300px;
+  padding: 14px 16px;
+  border-radius: 8px;
+  background: var(--menu-bg);
+  box-shadow: var(--menu-shadow);
+  font-size: 14px;
+  z-index: 150;
+}
+.import-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.import-panel-head .icon-button {
+  color: var(--text-tertiary);
+}
+.import-panel-title {
+  font-weight: 500;
+}
+.import-panel.failed .import-panel-title {
+  color: var(--color-red);
+}
+.import-panel-line {
+  margin-top: 4px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.import-panel-bar {
+  position: relative;
+  height: 4px;
+  margin-top: 10px;
+  border-radius: 2px;
+  background: var(--hover-strong);
+  overflow: hidden;
+}
+.import-panel-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: var(--accent);
+  transition: width 150ms ease-out;
+}
+.import-panel-fill.indeterminate {
+  width: 30%;
+  animation: import-slide 1.2s ease-in-out infinite;
+}
+@keyframes import-slide {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(340%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .import-panel-fill.indeterminate {
+    animation: none;
+    width: 100%;
+    opacity: 0.4;
+  }
+}
+.import-panel-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+.import-panel-actions button {
+  font-size: 13px;
+  padding-top: 5px;
+  padding-bottom: 5px;
+}
