@@ -280,8 +280,11 @@ sidebar tree event  <-------  wrapper page, subtree, report
 
 1. A Node worker thread reads the zips with yauzl, streaming entries from disk; a nested zip is copied to a temporary file and opened the same way.
    Entry names are never used as paths on disk: staged files get generated names, so an entry like `../x` cannot escape.
-2. It builds the page tree from Notion's names: pages are `Title <32-hex-id>.html` with child folders `Title <32-hex-id>/`.
-   The ids resolve links and are then stripped from names.
+2. It builds the page tree.
+   Pages are `Title <32-hex-id>.html`, but their child folders are named `Title/` without the id, so two sibling pages with the same title share one folder.
+   The tree therefore comes from each page's own links to its sub-pages and database rows (`figure.link-to-page` and row links, which carry `data-notion-page-id`); a page nothing links to falls back to the page its folder belongs to.
+   Titles come from each page's `h1.page-title`, since Notion strips characters such as `:` `/` `?` from file names.
+   An export wraps its pages in folders that are not pages (`Private & Shared/`, one per teamspace in a workspace export): a single one is skipped, and several each become a page named after the folder.
    Each imported page gets a new UUID, and stores its Notion id as `notionId` in its frontmatter.
 3. Each page is parsed into a hast tree (`hast-util-from-html`) and mapped to blocks by a pure mapper in `src/shared/notion/`, shared with paste.
    Links in the mapped blocks use internal hrefs (`nobsidian://page/<uuid>`, `/attachments/<key>`), so the worker never needs final file names.
@@ -300,27 +303,32 @@ sidebar tree event  <-------  wrapper page, subtree, report
 
 **Mapping**
 
+Recent exports carry `data-notion-*` attributes (highlight, callout icon and background, column ratio, equation, image, file, page id); the mapper prefers them and falls back to the CSS classes below.
+Notion calls its green `teal` in both classes and clipboard records; it maps to `green`.
+
 | Notion export HTML | Nobsidian block |
 |---|---|
 | `h1`, `h2`, `h3`, `h4` (`h1.page-title` is the page title) | Heading 1-4 |
 | `p`; an empty `p` | Paragraph; empty paragraph |
 | `ul.bulleted-list`, `ol.numbered-list` (with `start`), `ul.to-do-list` (`.checkbox-on` is checked) | Bulleted, numbered, to-do list items, nested by `li` children |
-| `ul.toggle > li > details`; a heading as the summary | Toggle; toggle heading |
-| `blockquote`; `figure.callout` (icon and body) | Quote; callout |
+| `details.toggle`; a `details` whose summary holds a heading | Toggle; toggle heading |
+| `blockquote` (children follow its text); `aside.callout` (icon and body) | Quote; callout |
+| A plain `div` (what a synced block exports as) | Its children, inline |
 | `hr`; `pre > code` with its language; `figure.equation` (TeX from the KaTeX annotation) | Divider; code block; math |
 | `table.simple-table` (header row and column) | Table |
 | `figure.image` with caption; a file figure | Image; file |
 | `div.column-list > div.column` (width from its style) | Columns |
 | `figure.link-to-page`; `nav.table_of_contents` | Sub-page link; table of contents |
 | `strong`, `em`, underline span, `del`, `code`, `a`, `.notion-text-equation-token` | Bold, italic, underline, strike, code, link, inline math |
-| `.highlight-<color>` and `.highlight-<color>_background`; `.block-color-<color>` and `.block-color-<color>_background` | Text color and highlight; block text and background color |
+| `mark.highlight-<color>` and `mark.highlight-<color>_background`; `.block-color-<color>` and `.block-color-<color>_background` | Text color and highlight; block text and background color |
+| Table cell and row `.block-color-*_background`; `th` cells in body rows | Cell background; header column |
 | Page header icon (emoji or image) and cover | `icon` and `cover` |
 
 Special cases:
 
-- A database becomes a page holding a static table of its view, with titles linking to the rows, each row imported as a child page.
-  Select and multi-select values keep their Notion color as a highlight, so they look like Notion's pills.
-- A database row page starts with a two-column table of its properties.
+- A database (`table.collection-content`) becomes a page holding a static table of its view, with titles linking to the rows, each row imported as a child page.
+  Select and multi-select values (`.select-value-color-<color>`) keep their color as a highlight, so they look like Notion's pills; checkboxes become ☑ and ☐; property icons are dropped.
+- A database row page starts with a two-column table of its properties (`table.properties`).
 - Bookmarks, embeds and video embeds become a paragraph holding a link (the title, or the URL).
 - Synced blocks become their content.
 - Page mentions become links to the imported page; date and person mentions become plain text (`@Name`).
@@ -330,6 +338,7 @@ Special cases:
 - A file a page references but the zips do not contain (for example a missing part) is reported and its link kept.
 - A page that fails to convert is reported and becomes a page holding its plain text; the import continues.
 - A zip that is corrupt or is not a Notion export fails the import before anything is written.
+  A Notion Markdown & CSV export is recognized and refused with "This is a Markdown export. Export again as HTML."
 
 **Progress and report**
 
@@ -342,12 +351,17 @@ Special cases:
 
 ### Paste from Notion
 
-- The editor's paste handler recognizes Notion content (Notion's private clipboard type, or `text/html` carrying Notion's markers), maps it through the same shared mapper, and inserts the blocks at the cursor.
-  Other pastes behave as before.
-- Notion places `text/html` and a private block format on the clipboard.
-  A spike compares both against the exported fixture and picks whichever preserves more; `text/html` is the fallback.
-- Pasted images (Notion's signed URLs) are downloaded by the main process into `attachments/`; a failed download keeps a link and shows a toast.
-- A pasted link or mention of a page that was imported earlier points to that page, found through its `notionId`; other Notion links keep their URL.
+Notion puts three things on the clipboard: `text/plain` (Markdown), `text/html`, and its private block records as the custom type `text/_notion-blocks-v3-production`.
+A spike on the fixture showed the `text/html` copy is generated from Markdown: it loses colors, underline, callouts, toggles, columns and to-dos.
+The private records keep all of them, but carry only ids for mentions and only an internal `attachment:<id>:<name>` reference for uploaded files.
+
+- The editor's paste handler recognizes Notion content and inserts the mapped blocks at the cursor; other pastes behave as before.
+- It maps the private records with a second small mapper in `src/shared/notion/` (Notion records to blocks), which shares color names, link resolution and issue reporting with the HTML mapper.
+  Without the private records it maps the `text/html` copy with the HTML mapper.
+- Mention titles and person names come from the `text/html` copy on the same clipboard.
+  A pasted link or mention of a page imported earlier points to that page, found through its `notionId`; other Notion links keep their URL.
+- External images are downloaded by the main process into `attachments/`; a failed download keeps a link.
+- Uploaded images and files cannot be fetched (Notion gives no URL), so each becomes a paragraph "Image from Notion: <name>" (or "File from Notion: <name>"), and a toast suggests importing the page instead.
 
 ## 8. History, trash, favorites, search
 
