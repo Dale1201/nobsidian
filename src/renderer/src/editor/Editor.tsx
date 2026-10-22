@@ -47,7 +47,8 @@ import {
   type AppPartialBlock,
   type PageLinkContextValue
 } from './schema'
-import { querySlashItems } from './slashItems'
+import { SlashMenu } from './menus/SlashMenu'
+import { querySlashItems, type SlashItem } from './slashItems'
 
 export type EditorProps = {
   initialBlocks: AppPartialBlock[]
@@ -256,9 +257,10 @@ export function Editor(props: EditorProps): React.JSX.Element {
           >
             <SuggestionMenuController
               triggerCharacter="/"
-              getItems={(query) =>
+              getItems={(query: string): Promise<SlashItem[]> =>
                 querySlashItems(editor, { createSubPage: props.createSubPage }, query)
               }
+              suggestionMenuComponent={SlashMenu}
             />
             <FormattingToolbarController formattingToolbar={AppFormattingToolbar} />
             <LinkToolbarController linkToolbar={AppLinkToolbar} />
