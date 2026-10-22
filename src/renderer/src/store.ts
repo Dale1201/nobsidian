@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import type { Block } from '@shared/core/blocks'
 import { RECENT_LIMIT, type Settings, type TreeSnapshot } from '@shared/ipc'
 import type { ImportStatus, PageNode, WorkspaceInfo } from '@shared/types'
-import { findNode, firstPageId } from './lib/tree'
+import { findNode, firstPageId, pathTo } from './lib/tree'
 
 const api = window.api
 
@@ -74,6 +74,7 @@ interface AppState {
   toggleFavorite: (id: string) => Promise<void>
   updateSettings: (patch: Partial<Settings>) => Promise<void>
   setExpanded: (id: string, open: boolean) => Promise<void>
+  revealInSidebar: (id: string) => Promise<void>
   setRenaming: (id: string | null) => void
   reportError: (action: string, err: unknown) => Promise<void>
   rescue: (id: string, rescue: Rescue) => Promise<void>
@@ -164,6 +165,7 @@ export const useApp = create<AppState>((set, get) => ({
     if (id === currentId) return
     const nextHistory = [...history.slice(0, historyIndex + 1), id]
     set({ currentId: id, history: nextHistory, historyIndex: nextHistory.length - 1 })
+    void get().revealInSidebar(id)
     if (workspace && settings) {
       const recent = [id, ...(settings.recent[workspace.root] ?? []).filter((r) => r !== id)]
       void get().updateSettings({
@@ -176,16 +178,22 @@ export const useApp = create<AppState>((set, get) => ({
   back: () => {
     const { history, historyIndex, tree } = get()
     for (let i = historyIndex - 1; i >= 0; i--) {
-      if (findNode(tree, history[i]))
-        return set({ currentId: history[i], historyIndex: i, trashEntry: null })
+      if (findNode(tree, history[i])) {
+        set({ currentId: history[i], historyIndex: i, trashEntry: null })
+        void get().revealInSidebar(history[i])
+        return
+      }
     }
   },
 
   forward: () => {
     const { history, historyIndex, tree } = get()
     for (let i = historyIndex + 1; i < history.length; i++) {
-      if (findNode(tree, history[i]))
-        return set({ currentId: history[i], historyIndex: i, trashEntry: null })
+      if (findNode(tree, history[i])) {
+        set({ currentId: history[i], historyIndex: i, trashEntry: null })
+        void get().revealInSidebar(history[i])
+        return
+      }
     }
   },
 
@@ -277,6 +285,20 @@ export const useApp = create<AppState>((set, get) => ({
     else current.delete(id)
     await get().updateSettings({
       expanded: { ...settings.expanded, [workspace.root]: [...current] }
+    })
+  },
+
+  revealInSidebar: async (id) => {
+    const { settings, workspace, tree } = get()
+    if (!settings || !workspace) return
+    const current = settings.expanded[workspace.root] ?? []
+    const missing = pathTo(tree, id)
+      .slice(0, -1)
+      .map((n) => n.id)
+      .filter((a) => !current.includes(a))
+    if (missing.length === 0) return
+    await get().updateSettings({
+      expanded: { ...settings.expanded, [workspace.root]: [...current, ...missing] }
     })
   },
 

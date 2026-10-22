@@ -1,4 +1,4 @@
-import { useState, type DragEvent } from 'react'
+import { useEffect, useRef, useState, type DragEvent } from 'react'
 import type { PageNode } from '@shared/types'
 import { dropTarget, type DropPosition } from '../lib/tree'
 import { useApp } from '../store'
@@ -39,6 +39,12 @@ export function SidebarRow({
   const [menu, setMenu] = useState<DOMRect | null>(null)
   const [drop, setDrop] = useState<DropPosition | null>(null)
 
+  const rowRef = useRef<HTMLDivElement>(null)
+  const isCurrent = currentId === node.id
+  useEffect(() => {
+    if (isCurrent) rowRef.current?.scrollIntoView({ block: 'nearest' })
+  }, [isCurrent])
+
   const expanded = expandable && expandedIds.includes(node.id)
   const isFavorite = favorites.includes(node.id)
   const indent = 6 + depth * 14
@@ -54,9 +60,10 @@ export function SidebarRow({
   return (
     <>
       <div
+        ref={rowRef}
         className={[
           'sidebar-row',
-          currentId === node.id ? 'active' : '',
+          isCurrent ? 'active' : '',
           menu ? 'menu-open' : '',
           drop ? `drop-${drop}` : ''
         ].join(' ')}
