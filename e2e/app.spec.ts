@@ -237,3 +237,15 @@ test('a title still being typed is not reverted by an earlier rename', async ({ 
   await page.waitForTimeout(800)
   await expect(page.getByTestId('page-title')).toHaveText('Hello')
 })
+
+test('a link whose text is code opens in the editor', async ({ nb }) => {
+  const id = '22222222-2222-4222-8222-222222222222'
+  await writeFile(
+    join(nb.workspace, 'Commands.md'),
+    `---\nid: ${id}\n---\n\nSee [\`main.rs\`](https://main.rs) here\n`
+  )
+  const page = await nb.relaunch()
+  await page.getByTestId('sidebar-row-Commands').click()
+  await expect(page.locator(editor)).toContainText('See main.rs here')
+  await expect(page.locator(`${editor} a[href="https://main.rs"]`)).toHaveText('main.rs')
+})

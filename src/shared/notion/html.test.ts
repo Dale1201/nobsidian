@@ -73,6 +73,12 @@ describe('mapNotionPage', () => {
 })
 
 describe('mapNotionFragment', () => {
+  it('drops code formatting inside link text, which the editor cannot combine with a link', () => {
+    expect(md('<p><a href="https://main.rs"><code>main.rs</code></a></p>')).toBe(
+      '[main.rs](https://main.rs)\n'
+    )
+  })
+
   it('keeps inline styles, colors and inline math', () => {
     expect(
       md(

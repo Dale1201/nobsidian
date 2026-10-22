@@ -57,7 +57,7 @@ export function phrasingToInline(nodes: PhrasingContent[]): ParsedInline {
           const link: LinkInline = { type: 'link', href: node.url, content: [] }
           const inner: Inline[] = []
           walk(node.children, styles, inner)
-          link.content = inner.filter((i): i is StyledText => i.type === 'text')
+          link.content = linkText(inner.filter((i): i is StyledText => i.type === 'text'))
           target.push(link)
           break
         }
@@ -112,6 +112,18 @@ function popMark(stack: HtmlMark[], tag: HtmlMark['tag']): void {
       return
     }
   }
+}
+
+/** BlockNote's code mark excludes every other mark, links included, so link text cannot be code. */
+export function linkText(content: StyledText[]): StyledText[] {
+  const out: StyledText[] = []
+  for (const item of content) {
+    const styles = item.styles.code ? {} : cleanStyles(item.styles)
+    const last = out[out.length - 1]
+    if (last && sameStyles(last.styles, styles)) last.text += item.text
+    else out.push({ type: 'text', text: item.text, styles })
+  }
+  return out
 }
 
 export function cleanStyles(styles: Styles): Styles {

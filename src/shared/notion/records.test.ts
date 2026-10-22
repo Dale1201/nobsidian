@@ -89,6 +89,20 @@ describe('mapNotionPaste', () => {
     )
   })
 
+  it('drops code formatting inside link text, which the editor cannot combine with a link', () => {
+    const json = records([
+      {
+        id: 'a',
+        type: 'text',
+        properties: { title: [['main.rs', [['c'], ['a', 'https://main.rs']]]] }
+      }
+    ])
+    const html = '<p><a href="https://main.rs"><code>main.rs</code></a></p>'
+    expect(blocksToMarkdown(mapNotionPaste({ records: json, html }, context()))).toBe(
+      '[main.rs](https://main.rs)\n'
+    )
+  })
+
   it('names a mentioned person from the HTML copy', () => {
     const json = records([
       {

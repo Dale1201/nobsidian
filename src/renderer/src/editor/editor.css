@@ -202,10 +202,9 @@
   border-top: 1px solid var(--nb-divider);
 }
 
+/* BlockNote omits data-level for level 1 (the default), so the base rule sizes H1. */
 .bn-root [data-content-type='heading'] {
   font-weight: 600;
-}
-.bn-root [data-content-type='heading'][data-level='1'] {
   --level: 1.875em;
 }
 .bn-root [data-content-type='heading'][data-level='2'] {
@@ -306,4 +305,12 @@
   padding: 5px 0;
   font-size: 14px;
   color: var(--bn-colors-highlights-gray-text);
+}
+
+/* BlockNote leaves a node selection on a page that starts with a block without text; only show it while editing. */
+.bn-root .bn-editor:not(:focus) .bn-block-content.ProseMirror-selectednode > *::after,
+.bn-root .bn-editor:not(:focus) .ProseMirror-selectednode > .bn-block-content > *::after,
+.bn-root .bn-editor:not(:focus) .bn-block-content .ProseMirror-selectednode::after {
+  box-shadow: none;
+  background-color: transparent;
 }

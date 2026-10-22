@@ -51,7 +51,7 @@ export function TopBar({
                   <PageIconView icon={node.icon} size={14} />
                 </span>
               )}
-              {node.title || 'Untitled'}
+              <span className="breadcrumb-title">{node.title || 'Untitled'}</span>
             </button>
           </Fragment>
         ))}
