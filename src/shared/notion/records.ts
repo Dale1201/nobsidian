@@ -106,6 +106,7 @@ class RecordMapper {
       if (this.path.has(id) || this.path.size >= MAX_DEPTH || this.budget-- <= 0) {
         if (!this.reportedDepth) this.ctx.issue('skipped', 'Block nested too deeply')
         this.reportedDepth = true
+        this.complete = false
         continue
       }
       this.path.add(id)
@@ -133,28 +134,32 @@ class RecordMapper {
    */
   private syncedFromHtml(ids: string[], at: number): Block[] {
     const html = this.names.blocks
-    const textOf = (id: string): string | null => {
+    // Patterns, not text: reading a record's text would consume person-name matches.
+    const anchor = (id: string): Part[] | null => {
       const r = this.records.get(id)
-      return r ? inlineText(this.text(r)).trim() || null : null
+      const pattern = r ? patternOf(segments(r.properties?.title)) : []
+      return pattern.some((p) => typeof p === 'string' && p.replace('@', '').trim() !== '')
+        ? pattern
+        : null
     }
     let before = at - 1
-    while (before >= 0 && textOf(ids[before]) === null) before--
+    while (before >= 0 && anchor(ids[before]) === null) before--
     let after = at + 1
-    while (after < ids.length && textOf(ids[after]) === null) after++
-    const prev = before >= 0 ? textOf(ids[before]) : null
-    const next = after < ids.length ? textOf(ids[after]) : null
+    while (after < ids.length && anchor(ids[after]) === null) after++
+    const prev = before >= 0 ? anchor(ids[before]) : null
+    const next = after < ids.length ? anchor(ids[after]) : null
     if (prev === null && next === null) return this.lostSynced()
     const skippedBefore = at - 1 - before
     const skippedAfter = after - at - 1
     let start = skippedBefore
     if (prev !== null) {
-      const found = html.findIndex((b) => ownText(b) === prev)
+      const found = html.findIndex((b) => matchWhole(prev, ownText(b)) !== null)
       if (found < 0) return this.lostSynced()
       start = found + 1 + skippedBefore
     }
     let end = html.length - skippedAfter
     if (next !== null) {
-      const found = html.findIndex((b, i) => i >= start && ownText(b) === next)
+      const found = html.findIndex((b, i) => i >= start && matchWhole(next, ownText(b)) !== null)
       if (found < 0) return this.lostSynced()
       end = found - skippedAfter
     }
@@ -462,12 +467,7 @@ class RecordMapper {
    */
   private personNames(rich: Segment[]): string[] {
     if (!rich.some(([, marks]) => marks.some(([m]) => m === 'u'))) return []
-    const pattern: Part[] = []
-    for (const [text, marks] of rich) {
-      if (marks.some(([m]) => m === 'u')) pattern.push('@', { person: true })
-      else if (marks.some(([m]) => m === 'p' || m === 'd' || m === 'e')) pattern.push({})
-      else pattern.push(text)
-    }
+    const pattern = patternOf(rich)
     const texts = this.personTexts ?? (this.personTexts = personTexts(this.names.blocks))
     let fallback: string[] | null = null
     for (const [i, text] of texts.entries()) {
@@ -557,17 +557,35 @@ function personTexts(blocks: Block[]): string[] {
 }
 
 /**
- * Matches `text` against literals and gaps from start to end, returning what the person gaps
+ * The text of rich text as literals and gaps: a person is "@" and a captured gap, other
+ * mentions a gap. The HTML block texts are trimmed, so the pattern's ends are too.
+ */
+function patternOf(rich: Segment[]): Part[] {
+  const parts: Part[] = []
+  const add = (part: Part): void => {
+    const last = parts[parts.length - 1]
+    if (typeof part === 'string' && typeof last === 'string') parts[parts.length - 1] = last + part
+    else parts.push(part)
+  }
+  for (const [text, marks] of rich) {
+    if (marks.some(([m]) => m === 'u')) {
+      add('@')
+      add({ person: true })
+    } else if (marks.some(([m]) => m === 'p' || m === 'd' || m === 'e')) add({})
+    else add(text)
+  }
+  const first = parts[0]
+  if (typeof first === 'string') parts[0] = first.trimStart()
+  const last = parts[parts.length - 1]
+  if (typeof last === 'string') parts[parts.length - 1] = last.trimEnd()
+  return parts.filter((part) => part !== '')
+}
+
+/**
+ * Matches `text` against a pattern from start to end, returning what the person gaps
  * captured. A gap runs only to the next literal's first occurrence, so it never backtracks.
  */
-function matchWhole(parts: Part[], text: string): string[] | null {
-  const merged: Part[] = []
-  for (const part of parts) {
-    const last = merged[merged.length - 1]
-    if (typeof part === 'string' && typeof last === 'string')
-      merged[merged.length - 1] = last + part
-    else merged.push(part)
-  }
+function matchWhole(merged: Part[], text: string): string[] | null {
   const people: string[] = []
   let pos = 0
   for (let i = 0; i < merged.length; i++) {
@@ -581,8 +599,11 @@ function matchWhole(parts: Part[], text: string): string[] | null {
     const next = merged[i + 1]
     let end: number
     if (next === undefined) end = text.length
-    else if (typeof next !== 'string') end = pos + min
-    else if (i + 1 === merged.length - 1) end = text.length - next.length
+    // Where a person's name ends is unknowable before another gap.
+    else if (typeof next !== 'string') {
+      if (part.person) return null
+      end = pos
+    } else if (i + 1 === merged.length - 1) end = text.length - next.length
     else end = text.indexOf(next, pos + min)
     if (end < pos + min || end > text.length) return null
     if (part.person) people.push(text.slice(pos, end))

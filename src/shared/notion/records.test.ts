@@ -181,16 +181,16 @@ function rawRecords(top: string[], all: Record<string, unknown>): string {
 }
 
 describe('mapNotionPaste with unreliable records', () => {
-  it('stops at a record that contains itself', () => {
+  it('maps the HTML copy for a record that contains itself', () => {
     const json = rawRecords(['a'], {
       a: { type: 'text', properties: { title: [['Loop']] }, content: ['a'] }
     })
-    const ctx = context()
-    expect(blocksToMarkdown(mapNotionPaste({ records: json }, ctx))).toBe('Loop\n')
-    expect(ctx.issues).toEqual(['skipped: Block nested too deeply'])
+    expect(
+      blocksToMarkdown(mapNotionPaste({ records: json, html: '<p>From HTML</p>' }, context()))
+    ).toBe('From HTML\n')
   })
 
-  it('does not blow up on blocks shared by many parents', () => {
+  it('maps the HTML copy, quickly, for blocks shared by many parents', () => {
     const all: Record<string, unknown> = {}
     for (let i = 0; i < 40; i++) {
       all[`n${i}`] = {
@@ -201,7 +201,11 @@ describe('mapNotionPaste with unreliable records', () => {
     }
     all.n40 = { type: 'text', properties: { title: [['Leaf']] } }
     const started = Date.now()
-    mapNotionPaste({ records: rawRecords(['n0'], all) }, context())
+    const html = '<p>From HTML</p>'
+    const markdown = blocksToMarkdown(
+      mapNotionPaste({ records: rawRecords(['n0'], all), html }, context())
+    )
+    expect(markdown).toBe('From HTML\n')
     expect(Date.now() - started).toBeLessThan(1000)
   })
 
@@ -285,6 +289,46 @@ describe('person mentions', () => {
     const html = '<p>Ask @Ada today.</p><p>Ask @Bob today.</p>'
     expect(blocksToMarkdown(mapNotionPaste({ records: json, html }, context()))).toBe(
       'Ask @Ada today.\n\nAsk @Bob today.\n'
+    )
+  })
+
+  it('keeps a name when a space follows the mention', () => {
+    const json = records([
+      { id: 'a', type: 'text', properties: { title: [['Ask '], mention('u1'), [' ']] } }
+    ])
+    expect(
+      blocksToMarkdown(
+        mapNotionPaste({ records: json, html: '<p>Ask @Ada Lovelace </p>' }, context())
+      )
+    ).toContain('@Ada Lovelace')
+  })
+
+  it('does not guess a name when another mention follows directly', () => {
+    const json = records([
+      {
+        id: 'a',
+        type: 'text',
+        properties: {
+          title: [['Ask '], mention('u1'), ['‣', [['d', { start_date: '2026-03-14' }]]]]
+        }
+      }
+    ])
+    const markdown = blocksToMarkdown(
+      mapNotionPaste({ records: json, html: '<p>Ask @Ada Lovelace@March 14, 2026</p>' }, context())
+    )
+    expect(markdown).toContain('@Someone')
+    expect(markdown).not.toContain('@A ')
+  })
+
+  it('keeps names matched to the right blocks around a synced block', () => {
+    const json = records([
+      { id: 'a', type: 'text', properties: { title: [['Ask '], mention('u1'), [' today.']] } },
+      { id: 's', type: 'transclusion_container', content: ['missing'] },
+      { id: 'b', type: 'text', properties: { title: [['Ask '], mention('u2'), [' today.']] } }
+    ])
+    const html = '<p>Ask @Ada today.</p><p>Synced</p><p>Ask @Bob today.</p>'
+    expect(blocksToMarkdown(mapNotionPaste({ records: json, html }, context()))).toBe(
+      'Ask @Ada today.\n\nSynced\n\nAsk @Bob today.\n'
     )
   })
 

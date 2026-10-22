@@ -150,18 +150,25 @@ export function Editor(props: EditorProps): React.JSX.Element {
       const notion = event.clipboardData && readNotionClipboard(event.clipboardData)
       if (!notion || !props.pasteNotion) return defaultPasteHandler()
       const text = event.clipboardData.getData('text/plain')
-      const insert = (blocks: Block[]): void => {
+      const insertText = (): void => {
         try {
-          if (blocks.length > 0) insertAtCursor(editor, blocks)
-          else insertPlainText(editor, text)
+          insertPlainText(editor, text)
         } catch {
           // The editor changed under the paste; there is nowhere left to put it.
         }
       }
-      props.pasteNotion(notion).then(insert, (err: unknown) => {
-        insert([])
+      const fail = (err: unknown): void => {
+        insertText()
         useApp.getState().showMessage(`Couldn't paste from Notion: ${errorReason(err)}`)
-      })
+      }
+      props.pasteNotion(notion).then((blocks) => {
+        if (blocks.length === 0) return insertText()
+        try {
+          insertAtCursor(editor, blocks)
+        } catch (err) {
+          fail(err)
+        }
+      }, fail)
       return true
     },
     links: {
