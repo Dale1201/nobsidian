@@ -253,4 +253,56 @@ describe('mapNotionFragment', () => {
     ).toBe('Some text\n')
     expect(ctx.issues).toEqual(['unknown: section.mystery', 'skipped: nav.breadcrumb'])
   })
+
+  it('skips a video or audio with no source, and reports it', () => {
+    const ctx = context()
+    expect(md('<video></video>', ctx)).toBe('')
+    expect(ctx.issues).toEqual(['skipped: video'])
+  })
+
+  it('takes a video source from its source child', () => {
+    expect(md('<video><source src="Page/v.mp4"></video>')).toBe(
+      '<video src="/attachments/v.mp4" controls></video>\n'
+    )
+  })
+
+  it('keeps a bare image and an image-only paragraph as image blocks', () => {
+    expect(md('<img src="Page/a.png">')).toBe('![](/attachments/a.png)\n')
+    expect(md('<p><img src="Page/a.png" alt="Pic"></p>')).toBe('![Pic](/attachments/a.png)\n')
+  })
+
+  it('keeps an inline image alt text, and reports an inline image without one', () => {
+    const ctx = context()
+    expect(md('<p>See <img src="x.png" alt="icon"> now</p>', ctx)).toBe('See icon now\n')
+    expect(ctx.issues).toEqual([])
+    expect(md('<p>Hi <img src="x.png"> there</p>', ctx)).toBe('Hi  there\n')
+    expect(ctx.issues).toEqual(['skipped: Inline image'])
+  })
+
+  it('keeps the caption of a bookmark and of a video', () => {
+    expect(
+      md(
+        '<figure><a href="https://w.org" class="bookmark source"><div class="bookmark-title">W</div></a>' +
+          '<figcaption>Cap</figcaption></figure>'
+      )
+    ).toBe('[W](https://w.org)\n\nCap\n')
+    expect(
+      md('<figure><video src="Page/v.mp4"></video><figcaption>Cap</figcaption></figure>')
+    ).toBe('<video src="/attachments/v.mp4" data-caption="Cap" controls></video>\n')
+  })
+
+  it('keeps a figure image source as written, even when it is not valid URI text', () => {
+    expect(md('<figure class="image" data-notion-image="Page/a%ZZ.png"></figure>')).toBe(
+      '![](/attachments/a%ZZ.png)\n'
+    )
+  })
+
+  it('ignores a list start that is not a whole number', () => {
+    const blocks = mapNotionFragment(
+      fromHtml('<ol class="numbered-list" start="x"><li>A</li></ol>', { fragment: true }),
+      context()
+    )
+    expect(blocks[0].props).toEqual({})
+    expect(md('<ol class="numbered-list" start="x"><li>A</li></ol>')).toBe('1. A\n')
+  })
 })

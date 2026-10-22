@@ -45,9 +45,13 @@ function element(el: Element, styles: Styles, out: Inline[], ctx: MapContext): v
     }
     case 'a':
       return link(el, styles, out, ctx)
-    case 'img':
-      // Custom emoji and inline icons: keep their name so no text is lost.
-      return pushText(out, attr(el, 'alt') ?? '', styles)
+    case 'img': {
+      // Custom emoji and inline icons keep their alt text; an image without it is reported.
+      const alt = attr(el, 'alt')
+      if (alt) return pushText(out, alt, styles)
+      ctx.issue('skipped', 'Inline image')
+      return
+    }
     case 'span': {
       const equation = attr(el, 'data-notion-inline-equation')
       if (equation !== undefined || hasClass(el, 'notion-text-equation-token')) {

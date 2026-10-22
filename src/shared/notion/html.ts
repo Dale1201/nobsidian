@@ -72,7 +72,7 @@ export function mapBlocks(nodes: ElementContent[], ctx: MapContext): Block[] {
     }
   }
   for (const node of nodes) {
-    if (isInlineNode(node)) {
+    if (isInlineNode(node) && !isElement(node, 'img')) {
       loose.push(node)
       continue
     }
@@ -97,8 +97,11 @@ function joinNumberedLists(blocks: Block[]): Block[] {
 function mapElement(el: Element, ctx: MapContext): Block[] {
   const colors = blockColors(el)
   switch (el.tagName) {
-    case 'p':
+    case 'p': {
+      const images = paragraphImages(el)
+      if (images) return images.map((img) => imageOf(img, ctx))
       return [paragraph(trimEmpty(mapInline(el.children, ctx)), colors)]
+    }
     case 'h1':
     case 'h2':
     case 'h3':
@@ -131,18 +134,10 @@ function mapElement(el: Element, ctx: MapContext): Block[] {
     case 'div':
       return mapDiv(el, ctx)
     case 'img':
-      return [image(ctx.file(attr(el, 'src') ?? ''), '')]
+      return [imageOf(el, ctx)]
     case 'video':
-    case 'audio': {
-      const src =
-        attr(el, 'src') ??
-        attr(
-          find(el, (e) => e.tagName === 'source')!,
-          'src'
-        ) ??
-        ''
-      return [{ type: el.tagName, props: { url: ctx.file(src), caption: '' }, children: [] }]
-    }
+    case 'audio':
+      return mediaBlock(el, ctx, '')
     case 'script':
     case 'style':
     case 'link':
@@ -191,7 +186,8 @@ function mapList(el: Element, ctx: MapContext): Block[] {
         return { type: 'checkListItem', props: { checked, ...colors }, content, children }
       }
       if (ordered) {
-        const props = i === 0 && start !== 1 ? { start, ...colors } : { ...colors }
+        const props =
+          i === 0 && Number.isInteger(start) && start !== 1 ? { start, ...colors } : { ...colors }
         return { type: 'numberedListItem', props, content, children }
       }
       return { type: 'bulletListItem', props: colors, content, children }
@@ -302,7 +298,7 @@ function mapFigure(el: Element, ctx: MapContext): Block[] {
   }
   if (hasClass(el, 'image') || attr(el, 'data-notion-image') !== undefined) {
     const img = find(el, (e) => e.tagName === 'img')
-    const src = (img && attr(img, 'src')) ?? decodeURI(attr(el, 'data-notion-image') ?? '')
+    const src = (img && attr(img, 'src')) ?? attr(el, 'data-notion-image') ?? ''
     return [image(ctx.file(src), captionText)]
   }
   if (hasClass(el, 'link-to-page')) return [pageLinkBlock(el, ctx)]
@@ -312,10 +308,12 @@ function mapFigure(el: Element, ctx: MapContext): Block[] {
     const href = attr(bookmark, 'href') ?? ''
     const titleEl = find(bookmark, (e) => hasClass(e, 'bookmark-title'))
     const title = (titleEl && textOf(titleEl).trim()) || href
-    return [linkParagraph(href, title, ctx)]
+    const blocks = [linkParagraph(href, title, ctx)]
+    if (captionText) blocks.push(paragraph([{ type: 'text', text: captionText, styles: {} }]))
+    return blocks
   }
   const media = find(el, (e) => e.tagName === 'video' || e.tagName === 'audio')
-  if (media) return mapElement(media, ctx)
+  if (media) return mediaBlock(media, ctx, captionText)
   const source = find(el, (e) => hasClass(e, 'source'))
   const a = source && find(source, (e) => e.tagName === 'a')
   if (a) {
@@ -339,6 +337,25 @@ function mapFigure(el: Element, ctx: MapContext): Block[] {
 
 function image(url: string, caption: string): Block {
   return { type: 'image', props: { url, caption }, children: [] }
+}
+
+function imageOf(el: Element, ctx: MapContext): Block {
+  return image(ctx.file(attr(el, 'src') ?? ''), attr(el, 'alt') ?? '')
+}
+
+/** The `<img>` elements of a paragraph that holds nothing else, or undefined. */
+function paragraphImages(el: Element): Element[] | undefined {
+  const parts = el.children.filter((n) => !(n.type === 'text' && n.value.trim() === ''))
+  if (parts.length === 0 || !parts.every((n): n is Element => isElement(n, 'img'))) return undefined
+  return parts
+}
+
+function mediaBlock(el: Element, ctx: MapContext, caption: string): Block[] {
+  const source = find(el, (e) => e.tagName === 'source')
+  const src = attr(el, 'src') ?? (source && attr(source, 'src'))
+  if (!src) return skipped(el, ctx)
+  const type = el.tagName === 'video' ? 'video' : 'audio'
+  return [{ type, props: { url: ctx.file(src), caption }, children: [] }]
 }
 
 function linkParagraph(href: string, text: string, ctx: MapContext): Block {
