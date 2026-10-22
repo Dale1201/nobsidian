@@ -192,6 +192,7 @@ export function registerHandlers(ctx: AppContext): void {
     return ws().saveAttachment(image.name, image.data)
   })
   handle('import:choose', async () => {
+    if (ctx.imports.running) throw new Error('An import is already running.')
     const win = ctx.window()
     const options: Electron.OpenDialogOptions = {
       title: 'Import from Notion',

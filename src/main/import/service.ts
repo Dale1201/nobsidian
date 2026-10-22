@@ -10,17 +10,23 @@ export interface ImportWorker {
   terminate(): Promise<number>
 }
 
-interface Running {
+/** One import, from the moment it takes the slot until it has ended. */
+interface Run {
   workspace: Workspace
-  worker: ImportWorker
-  staging: string
+  /** A cancel can arrive before the folder exists, so the folder is a promise. */
+  staging: Promise<string>
+  worker: ImportWorker | null
   landing: boolean
+  /** Resolves once the import has landed or ended, before its cleanup finishes. */
   settled: Promise<void>
+  settle: () => void
 }
 
 /** Runs one Notion import at a time and reports its status. */
 export class ImportService {
-  private current: Running | null = null
+  private current: Run | null = null
+  /** Stopping a worker and deleting its folder; a new import and stop() wait for it. */
+  private cleanup: Promise<void> | null = null
 
   constructor(
     private readonly startWorker: (input: WorkerInput) => ImportWorker,
@@ -38,56 +44,61 @@ export class ImportService {
 
   /** Starts importing `zips` into `workspace`; resolves once it has started. */
   async start(workspace: Workspace, zips: string[]): Promise<void> {
+    while (this.cleanup) await this.cleanup
     if (this.current) throw new Error('An import is already running.')
-    const staging = await workspace.createImportStaging()
+    // Taking the slot before the first await makes an overlapping start fail.
+    let settle!: () => void
+    const settled = new Promise<void>((resolve) => (settle = resolve))
+    const run: Run = {
+      workspace,
+      staging: workspace.createImportStaging(),
+      worker: null,
+      landing: false,
+      settled,
+      settle
+    }
+    this.current = run
+    let staging: string
+    try {
+      staging = await run.staging
+    } catch (err) {
+      this.end(run)
+      throw err
+    }
+    if (this.current !== run) return
     let worker: ImportWorker
     try {
       worker = this.startWorker({ zips, staging })
     } catch (err) {
-      await workspace.discardImport(staging)
+      this.end(run)
       throw err
     }
+    run.worker = worker
     this.onStatus({ state: 'running', progress: { phase: 'reading', done: 0, total: 0 } })
-    let finish!: () => void
-    const run: Running = {
-      workspace,
-      worker,
-      staging,
-      landing: false,
-      settled: new Promise((resolve) => (finish = resolve))
-    }
-    this.current = run
-    const end = async (status: ImportStatus, discard: boolean): Promise<void> => {
-      if (this.current !== run) return
-      this.current = null
-      if (discard) await workspace.discardImport(staging).catch(() => {})
-      this.onStatus(status)
-      finish()
-    }
     worker.on('message', (message) => {
       if (this.current !== run || run.landing) return
       if (message.type === 'progress') {
         this.onStatus({ state: 'running', progress: message.progress })
       } else if (message.type === 'error') {
-        void worker.terminate()
-        void end({ state: 'failed', message: message.message }, true)
+        this.end(run, { state: 'failed', message: message.message })
       } else {
         run.landing = true
         void worker.terminate()
         this.onStatus({ state: 'running', progress: { phase: 'finishing', done: 0, total: 0 } })
         void workspace.landImport(message.manifest, staging).then(
-          (result: ImportResult) => end({ state: 'done', ...result }, false),
-          (err: unknown) => end({ state: 'failed', message: landingError(err) }, true)
+          (result: ImportResult) =>
+            this.end(run, { state: 'done', ...result }, () => Promise.resolve()),
+          (err: unknown) => this.end(run, { state: 'failed', message: landingError(err) })
         )
       }
     })
     worker.on('error', (err) => {
       if (!run.landing)
-        void end({ state: 'failed', message: `The import failed: ${err.message}` }, true)
+        this.end(run, { state: 'failed', message: `The import failed: ${err.message}` })
     })
     worker.on('exit', () => {
       if (!run.landing)
-        void end({ state: 'failed', message: 'The import stopped unexpectedly.' }, true)
+        this.end(run, { state: 'failed', message: 'The import stopped unexpectedly.' })
     })
   }
 
@@ -95,19 +106,44 @@ export class ImportService {
   async cancel(): Promise<boolean> {
     const run = this.current
     if (!run || run.landing) return false
-    this.current = null
-    await run.worker.terminate()
-    await run.workspace.discardImport(run.staging).catch(() => {})
-    this.onStatus({ state: 'cancelled' })
+    this.end(run, { state: 'cancelled' })
+    if (this.cleanup) await this.cleanup
     return true
   }
 
   /** Waits for a running import to finish landing, or cancels it before it lands. */
   async stop(): Promise<void> {
     const run = this.current
-    if (!run) return
-    if (run.landing) await run.settled
-    else await this.cancel()
+    if (run?.landing) await run.settled
+    else if (run) await this.cancel()
+    if (this.cleanup) await this.cleanup
+  }
+
+  /**
+   * Frees the slot and reports the final status, then tears the run down in the background.
+   * The status comes first so a new import can never be followed by a stale one.
+   */
+  private end(
+    run: Run,
+    status?: ImportStatus,
+    teardown: () => Promise<void> = () => this.teardown(run)
+  ): void {
+    if (this.current !== run) return
+    this.current = null
+    run.settle()
+    if (status) this.onStatus(status)
+    const cleanup: Promise<void> = teardown()
+      .catch(() => {})
+      .finally(() => {
+        if (this.cleanup === cleanup) this.cleanup = null
+      })
+    this.cleanup = cleanup
+  }
+
+  private async teardown(run: Run): Promise<void> {
+    await run.worker?.terminate()
+    const staging = await run.staging.catch(() => null)
+    if (staging) await run.workspace.discardImport(staging)
   }
 }
 

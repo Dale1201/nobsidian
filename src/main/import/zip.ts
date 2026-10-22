@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { pipeline } from 'node:stream/promises'
 import type { Readable } from 'node:stream'
 import yauzl, { type Entry, type ZipFile } from 'yauzl'
+import type { ZipKind } from '../../shared/ipc'
 import { ImportError } from './types'
 
 /** A file inside the export, by its path in the zip, wherever it was nested. */
@@ -83,7 +84,7 @@ async function readAll(stream: Readable): Promise<Buffer> {
   return Buffer.concat(chunks)
 }
 
-export type ExportKind = 'notion-html' | 'notion-markdown' | 'other'
+export type ExportKind = ZipKind
 
 const NOTION_PAGE = /(^|\/)[^/]* [0-9a-f]{32}\.(html|md)$/
 const NOTION_PART = /(^|\/)[^/]*Export[^/]*\.zip$/i
