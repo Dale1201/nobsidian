@@ -112,3 +112,18 @@ test('hovering moves the highlight, and Enter picks the hovered item', async ({ 
   await page.keyboard.type('Picked')
   await waitForFile(join(nb.workspace, 'Hover.md'), '### Picked')
 })
+
+test('the highlight survives the app updating while the menu is open', async ({ nb }) => {
+  const { page } = nb
+  await newPage(page, 'Steady')
+  await page.keyboard.type('/')
+  await page.locator('.slash-menu').getByRole('option', { name: 'Heading 3', exact: true }).hover()
+  // A new page re-renders the editor, which hands BlockNote a fresh item loader.
+  await writeFile(join(nb.workspace, 'Arrived.md'), 'new\n')
+  await expect(page.getByTestId('sidebar-row-Arrived')).toBeVisible()
+  await page.waitForTimeout(300)
+  await expect(page.locator('.slash-menu .menu-item.active')).toHaveText(/Heading 3/)
+  await page.keyboard.press('Enter')
+  await page.keyboard.type('Kept')
+  await waitForFile(join(nb.workspace, 'Steady.md'), '### Kept')
+})

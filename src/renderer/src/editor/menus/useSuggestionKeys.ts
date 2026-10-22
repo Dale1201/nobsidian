@@ -4,14 +4,16 @@ import { useEffect, useState } from 'react'
  * One highlight for a suggestion menu, moved by both the pointer and the arrow keys, as in Notion.
  * BlockNote's own index ignores the pointer, so its keys are taken first, in the capture phase.
  */
-export function useSuggestionKeys<T>(
+export function useSuggestionKeys<T extends { key: string }>(
   items: T[],
   onItemClick: ((item: T) => void) | undefined
 ): { active: number; setActive: (index: number) => void } {
   const [active, setActive] = useState(0)
-  const [shownItems, setShownItems] = useState(items)
-  if (shownItems !== items) {
-    setShownItems(items)
+  // BlockNote reloads the same list whenever the editor re-renders; only a different list resets.
+  const keys = items.map((item) => item.key).join('\n')
+  const [shownKeys, setShownKeys] = useState(keys)
+  if (shownKeys !== keys) {
+    setShownKeys(keys)
     setActive(0)
   }
 
