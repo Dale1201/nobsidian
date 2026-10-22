@@ -61,8 +61,8 @@ test('the menu flips above the cursor at the bottom of the window', async ({ nb 
   await page.getByTestId('sidebar-row-Long').click()
   const last = page.locator(`${editor} .bn-block-content`).last()
   await last.scrollIntoViewIfNeeded()
+  // Clicking a block's empty right side puts the cursor at its end; End would scroll the page on macOS.
   await last.click()
-  await page.keyboard.press('End')
   await page.keyboard.press('Enter')
   await page.keyboard.type('/')
   const box = (await page.locator('.slash-menu').boundingBox())!
@@ -85,7 +85,6 @@ test('the whole menu stays on screen when it opens mid-window', async ({ nb }) =
       scroller.scrollTop += r.bottom - (innerHeight - gap)
     }, room)
     await line.click()
-    await page.keyboard.press('End')
     await page.keyboard.type(' /')
     const footer = page.locator('.slash-menu-footer')
     await expect(footer).toBeVisible()
