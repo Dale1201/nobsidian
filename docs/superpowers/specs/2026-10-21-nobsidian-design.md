@@ -135,6 +135,7 @@ Body in Markdown.
   It keys history, favorites and ordering, so they survive renames and moves.
 - `icon` is an emoji or a path to an image in `attachments/`.
 - `cover` is a path to an image in `attachments/`.
+- `notionId` is the page's Notion id (32 hex digits), set on pages imported from Notion so pasted Notion links can find them.
 - The page title is the filename without `.md`.
   Characters macOS does not allow, or that we reserve (`/ \ : * ? " < > |`, a leading `.`), are replaced with `-`, and the exact title is stored in a `title` field in the frontmatter.
   Siblings with the same title get ` (2)`, ` (3)` and so on.
@@ -247,36 +248,106 @@ Cmd+N new page, Cmd+K / Cmd+P search, Cmd+\\ toggle sidebar, Cmd+[ / Cmd+] back 
 
 ## 7. Notion import and paste
 
+The importer is built for a one-time migration of a workspace of up to about 1 GB.
+Each run is independent: it never merges with or updates an earlier import.
+
 ### Bulk import
 
-The user exports from Notion (Settings, Export all workspace content, format HTML, include subpages and files) and drops the zip, or several zips, onto the app or uses File > Import from Notion.
+The user exports from Notion (Settings, Export all workspace content, or a page's `···` > Export; format HTML, include subpages, create folders for subpages, include files and images).
+The export is one zip, a zip holding `Part-N.zip` zips, or several zips.
 
-1. The worker unzips into a temporary folder, including zips nested inside zips and multi-part exports.
-2. It walks the export tree.
-   Notion names pages `Title <32-hex-id>.html` with child folders `Title <32-hex-id>/`; the id is used to resolve links and then stripped from names.
-3. Each HTML page is parsed (parse5/hast) and mapped by Notion's CSS classes to BlockNote blocks: headings, lists, to-dos, toggles, callouts, quotes, dividers, code, equations, simple tables, images, files, columns, link-to-page, and the `highlight-*` and `block-color-*` color classes.
-   Page icon and cover come from the page header.
-4. Blocks are serialized with the shared converter and written into the workspace under a new top-level page named "Imported from Notion".
-   Images and files are copied into `attachments/`.
-5. Links between imported pages are rewritten to the new relative paths.
-6. A report lists pages imported and anything not converted exactly.
+**Starting an import**
+
+- File > Import from Notion… opens a file picker for one or more `.zip` files; it is disabled while no workspace is open.
+- Dropping zips anywhere on the window makes the main process peek inside each one without extracting it.
+  If it is a Notion export (`.html` pages named with 32-hex ids, or nested `Part-N.zip` zips), a dialog asks "Import N files from Notion?" with Import and Cancel.
+  Dropped into the editor, the dialog also offers "Attach as file", today's behavior.
+  Other zips behave as they always did.
+- One import runs at a time; starting another while one runs is refused with "An import is already running."
+
+**How it runs**
+
+```
+renderer                      main process                         worker thread
+--------                      ------------                         -------------
+drop zip / File > Import  ->  ImportService.start(zips)  ------->  read zips, nested and multi-part
+progress panel  <-----------  forward progress  <----------------  index entries: pages, files, ids
+Cancel  ------------------->  terminate worker, delete staging     each .html: hast -> blocks (shared mapper)
+                                                                   copy referenced files -> staging
+                              land(manifest) in Workspace.run  <-  done: manifest of pages, files, issues
+sidebar tree event  <-------  wrapper page, subtree, report
+```
+
+1. A Node worker thread reads the zips with yauzl, streaming entries from disk; a nested zip is copied to a temporary file and opened the same way.
+   Entry names are never used as paths on disk: staged files get generated names, so an entry like `../x` cannot escape.
+2. It builds the page tree from Notion's names: pages are `Title <32-hex-id>.html` with child folders `Title <32-hex-id>/`.
+   The ids resolve links and are then stripped from names.
+   Each imported page gets a new UUID, and stores its Notion id as `notionId` in its frontmatter.
+3. Each page is parsed into a hast tree (`hast-util-from-html`) and mapped to blocks by a pure mapper in `src/shared/notion/`, shared with paste.
+   Links in the mapped blocks use internal hrefs (`nobsidian://page/<uuid>`, `/attachments/<key>`), so the worker never needs final file names.
+4. Images and files the pages reference are copied into the staging folder `.nobsidian/import-<timestamp>/`.
+   External images and covers (including Notion's own gallery covers) are downloaded once, with a timeout and a size cap, because the app does not load remote images.
+   A failed download keeps a link to the URL and is reported.
+5. Landing runs as one task on the workspace queue:
+   pick the wrapper title ("Imported from Notion", or "Imported from Notion (2)" on a later run);
+   move the staged files into `attachments/` with a numeric suffix where a name is taken;
+   write the whole tree with final relative links into staging, rename that folder into the workspace, then write the wrapper's `.md`;
+   register the pages, order and search index, and emit one tree change.
+   A crash in the middle leaves at worst the complete tree under a stub wrapper page; nothing is lost.
+6. Cancel works until landing starts: it terminates the worker and deletes the staging folder.
+   Leftover `import-*` staging folders are deleted when a workspace opens.
+   Quitting during an import asks "An import is running. Quit and discard it?"
+
+**Mapping**
+
+| Notion export HTML | Nobsidian block |
+|---|---|
+| `h1`, `h2`, `h3`, `h4` (`h1.page-title` is the page title) | Heading 1-4 |
+| `p`; an empty `p` | Paragraph; empty paragraph |
+| `ul.bulleted-list`, `ol.numbered-list` (with `start`), `ul.to-do-list` (`.checkbox-on` is checked) | Bulleted, numbered, to-do list items, nested by `li` children |
+| `ul.toggle > li > details`; a heading as the summary | Toggle; toggle heading |
+| `blockquote`; `figure.callout` (icon and body) | Quote; callout |
+| `hr`; `pre > code` with its language; `figure.equation` (TeX from the KaTeX annotation) | Divider; code block; math |
+| `table.simple-table` (header row and column) | Table |
+| `figure.image` with caption; a file figure | Image; file |
+| `div.column-list > div.column` (width from its style) | Columns |
+| `figure.link-to-page`; `nav.table_of_contents` | Sub-page link; table of contents |
+| `strong`, `em`, underline span, `del`, `code`, `a`, `.notion-text-equation-token` | Bold, italic, underline, strike, code, link, inline math |
+| `.highlight-<color>` and `.highlight-<color>_background`; `.block-color-<color>` and `.block-color-<color>_background` | Text color and highlight; block text and background color |
+| Page header icon (emoji or image) and cover | `icon` and `cover` |
 
 Special cases:
 
-- Databases become a page containing a static GFM table of the database view, with each row imported as a child page.
-- Bookmarks and embeds become links.
+- A database becomes a page holding a static table of its view, with titles linking to the rows, each row imported as a child page.
+  Select and multi-select values keep their Notion color as a highlight, so they look like Notion's pills.
+- A database row page starts with a two-column table of its properties.
+- Bookmarks, embeds and video embeds become a paragraph holding a link (the title, or the URL).
 - Synced blocks become their content.
-- Page mentions become page links; date and person mentions become plain text.
-- Table of contents blocks become Nobsidian table of contents blocks.
-- Breadcrumb and button blocks are skipped and listed in the report.
-- A page that fails to convert is skipped and listed; the import continues.
-- Progress is shown in a non-blocking panel; the import can be cancelled, leaving no partial pages behind.
+- Page mentions become links to the imported page; date and person mentions become plain text (`@Name`).
+- Links to Notion pages outside the export keep their `notion.so` URL and are reported.
+- Breadcrumb and button blocks are skipped and reported.
+- Anything unrecognized that holds text becomes plain paragraphs with that text and is reported; text is never dropped.
+- A file a page references but the zips do not contain (for example a missing part) is reported and its link kept.
+- A page that fails to convert is reported and becomes a page holding its plain text; the import continues.
+- A zip that is corrupt or is not a Notion export fails the import before anything is written.
+
+**Progress and report**
+
+- A small card fixed at the bottom right shows progress without blocking editing: "Reading export…", "Converting pages · 120 of 480", "Copying images · 31 of 52", "Finishing…".
+  Cancel shows until "Finishing…", then the card says "Cancelled, nothing was imported."
+- At the end it says "Imported 480 pages. 3 things need a look." with Open (opens the wrapper page, expanded in the sidebar) and Open report.
+  A failure shows a one-line reason ("This zip isn't a Notion HTML export.", "Not enough disk space.") and Dismiss; the workspace is untouched.
+- The "Import report" page is the last child of the wrapper.
+  It starts with a summary (pages, files, time taken, source zip names), then one bulleted list per kind of issue, such as "Buttons skipped (2)" or "Links to pages outside the export (4)", each item linking to the imported page it is on.
 
 ### Paste from Notion
 
-Pasting runs clipboard content through the same mapping as the importer, so formatting survives.
-Notion places `text/html` and a private block format on the clipboard.
-An early spike compares both and picks whichever preserves more; `text/html` is the fallback.
+- The editor's paste handler recognizes Notion content (Notion's private clipboard type, or `text/html` carrying Notion's markers), maps it through the same shared mapper, and inserts the blocks at the cursor.
+  Other pastes behave as before.
+- Notion places `text/html` and a private block format on the clipboard.
+  A spike compares both against the exported fixture and picks whichever preserves more; `text/html` is the fallback.
+- Pasted images (Notion's signed URLs) are downloaded by the main process into `attachments/`; a failed download keeps a link and shows a toast.
+- A pasted link or mention of a page that was imported earlier points to that page, found through its `notionId`; other Notion links keep their URL.
 
 ## 8. History, trash, favorites, search
 
@@ -356,11 +427,13 @@ An early spike compares both and picks whichever preserves more; `text/html` is 
 
 ## 10. Testing
 
-- **Unit (Vitest):** converter round-trip invariants for every block, style and color; Notion HTML mapping against a real export fixture; filename sanitization; link rewriting.
+- **Unit (Vitest):** converter round-trip invariants for every block, style and color; Notion HTML mapping against a real export fixture (each fixture page's Markdown output reviewed once by hand, then pinned); export tree building and id stripping; nested and multi-part zips assembled in the test from the fixture's files; filename sanitization; link rewriting.
+- **Integration (Vitest, import):** landing an import in a temp workspace (wrapper ` (2)`, attachment name clashes, every link resolving, report page); cancel leaving nothing behind; leftover staging deleted on open; external image downloads against a local HTTP server.
 - **Integration (Vitest, temp folders):** workspace service create, rename, move, duplicate, delete, restore (missing parent, name conflict), delete forever and purge; history snapshot timing, dedupe, pruning and restore after renames; search ranking and snippets; external change handling (edit, add, rename, delete, conflicted copy, own writes ignored, stale save refused).
-- **End-to-end (Playwright, Electron):** first run and workspace creation; create and nest pages; slash menu and Markdown shortcuts; table of contents; drag to reorder; duplicate and move to; search with recents and keyboard; favorites; trash, opening a trashed page, restore and delete forever; page history; edits made outside the app, with and without unsaved edits; the highlight shortcut; import the fixture zip and check pages, images, colors and links; dark mode.
+- **End-to-end (Playwright, Electron):** first run and workspace creation; create and nest pages; slash menu and Markdown shortcuts; table of contents; drag to reorder; duplicate and move to; search with recents and keyboard; favorites; trash, opening a trashed page, restore and delete forever; page history; edits made outside the app, with and without unsaved edits; the highlight shortcut; import the fixture zip through File > Import (dialog stubbed) and by dropping it, and check pages, images, colors, links and the report; cancel an import; paste the fixture's captured Notion clipboard; dark mode.
   Screenshot comparisons are checked against reference screenshots of the same content in Notion.
-- **Fixture:** a small Notion test page (not personal notes, since it is committed to the public repo) containing every block type, every color, a sub-page, an image, a file and a small database, exported as HTML.
+- **Fixture:** a small Notion test page (not personal notes, since it is committed to the public repo) containing every block type, every color, a sub-page, an image, a file and a small database, exported as HTML (`tests/fixtures/notion-export.zip`), plus the clipboard formats Notion produces when the same page is copied (`tests/fixtures/notion-clipboard/`).
+- **Acceptance:** the imported fixture is compared side by side with the page in Notion; any gap goes back into the mapper and its fixture tests.
 
 ## 11. Early risks to check first
 
