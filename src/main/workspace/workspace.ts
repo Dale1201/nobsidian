@@ -17,6 +17,7 @@ import { blocksText } from '../../shared/core/text'
 import type {
   FileChange,
   HistoryVersion,
+  ImportResult,
   PageDoc,
   PageMetaPatch,
   PageNode,
@@ -29,6 +30,8 @@ import { ExternalChanges, SETTLE_MS } from './external'
 import { removeDirIfEmpty, uniqueName, writeFileAtomic } from './fs-utils'
 import { LinkRewriter } from './links'
 import { PageHistory } from './page-history'
+import { PageImports } from './page-import'
+import type { ImportManifest } from '../import/types'
 import { PageTrash } from './page-trash'
 import { APP_DIR, STATE_FILE, loadState, type WorkspaceState } from './state'
 
@@ -48,6 +51,7 @@ export class Workspace {
   private readonly external: ExternalChanges
   private readonly links: LinkRewriter
   private readonly trash: PageTrash
+  private readonly imports: PageImports
 
   private constructor(
     readonly root: string,
@@ -67,6 +71,7 @@ export class Workspace {
     )
     this.links = new LinkRewriter(this.core, this.history)
     this.trash = new PageTrash(this.core, this.external, this.links, this.history)
+    this.imports = new PageImports(this.core)
   }
 
   static async open(root: string, options: WorkspaceOptions = {}): Promise<Workspace> {
@@ -119,6 +124,7 @@ export class Workspace {
     await this.history.store.prune()
     await this.run(async () => {
       for (const entry of await this.trash.store.expired()) await this.trash.delete(entry.entry)
+      await this.imports.removeStale()
     })
   }
 
@@ -403,6 +409,44 @@ export class Workspace {
       const rest = this.core.state.favorites.filter((f) => f !== id)
       this.core.state.favorites = favorite ? [...rest, id] : rest
       await this.core.persist()
+    })
+  }
+
+  // ---------- import ----------
+
+  /** Pages imported from Notion, by the Notion id in their frontmatter. */
+  findNotionPages(notionIds: string[]): Record<string, string> {
+    const wanted = new Set(notionIds)
+    const found: Record<string, string> = {}
+    for (const r of this.core.pages.values()) {
+      // YAML quotes an id that would otherwise read as a number.
+      const id = /^notionId: ['"]?([0-9a-f]{32})['"]?$/m.exec(
+        this.core.texts.get(r.path) ?? ''
+      )?.[1]
+      if (id && wanted.has(id)) found[id] = r.id
+    }
+    return found
+  }
+
+  /** A folder for an import to stage its pages and files in, until it lands or is discarded. */
+  createImportStaging(): Promise<string> {
+    return this.imports.createStaging()
+  }
+
+  discardImport(staging: string): Promise<void> {
+    return this.imports.discard(staging)
+  }
+
+  /** Adds a staged import as a new top-level page, then deletes its staging folder. */
+  landImport(manifest: ImportManifest, staging: string): Promise<ImportResult> {
+    return this.run(async () => {
+      try {
+        const result = await this.imports.land(manifest, staging)
+        this.core.emit({ type: 'tree' })
+        return result
+      } finally {
+        await this.imports.discard(staging)
+      }
     })
   }
 
