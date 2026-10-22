@@ -23,12 +23,15 @@ export function SidebarRow({
   node,
   depth,
   draggable = true,
-  expandable = true
+  expandable = true,
+  scope = 'pages'
 }: {
   node: PageNode
   depth: number
   draggable?: boolean
   expandable?: boolean
+  /** Favorites keep their own expansion, apart from the page tree. */
+  scope?: 'pages' | 'favorites'
 }): React.JSX.Element {
   // A trashed page on screen is not in the sidebar, so no row is the current one.
   const currentId = useApp((s) => (s.trashEntry ? null : s.currentId))
@@ -45,7 +48,8 @@ export function SidebarRow({
     if (isCurrent) rowRef.current?.scrollIntoView({ block: 'nearest' })
   }, [isCurrent])
 
-  const expanded = expandable && expandedIds.includes(node.id)
+  const expandKey = scope === 'favorites' ? `fav:${node.id}` : node.id
+  const expanded = expandable && expandedIds.includes(expandKey)
   const isFavorite = favorites.includes(node.id)
   const indent = 6 + depth * 14
 
@@ -100,7 +104,7 @@ export function SidebarRow({
               aria-label={expanded ? 'Collapse' : 'Expand'}
               onClick={(e) => {
                 e.stopPropagation()
-                void app().setExpanded(node.id, !expanded)
+                void app().setExpanded(expandKey, !expanded)
               }}
             >
               <ChevronRightIcon size={12} className={`toggle-arrow ${expanded ? 'open' : ''}`} />
@@ -183,7 +187,15 @@ export function SidebarRow({
       )}
       {expanded &&
         (node.children.length ? (
-          node.children.map((child) => <SidebarRow key={child.id} node={child} depth={depth + 1} />)
+          node.children.map((child) => (
+            <SidebarRow
+              key={child.id}
+              node={child}
+              depth={depth + 1}
+              scope={scope}
+              draggable={draggable}
+            />
+          ))
         ) : (
           <div className="sidebar-empty" style={{ paddingLeft: indent + 14 + 28 }}>
             No pages inside

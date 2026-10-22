@@ -84,13 +84,7 @@ export function Sidebar(): React.JSX.Element {
           <div className="sidebar-section">
             <div className="sidebar-section-title">Favorites</div>
             {favoriteNodes.map((node) => (
-              <SidebarRow
-                key={node.id}
-                node={node}
-                depth={0}
-                draggable={false}
-                expandable={false}
-              />
+              <SidebarRow key={node.id} node={node} depth={0} draggable={false} scope="favorites" />
             ))}
           </div>
         )}
