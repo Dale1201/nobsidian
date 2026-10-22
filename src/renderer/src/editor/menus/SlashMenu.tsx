@@ -34,6 +34,7 @@ export function SlashMenu({
             <button
               type="button"
               role="option"
+              aria-label={item.title}
               id={`bn-suggestion-menu-item-${i}`}
               aria-selected={i === selectedIndex}
               className={`menu-item ${i === selectedIndex ? 'active' : ''}`}

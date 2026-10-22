@@ -132,6 +132,7 @@ export function Menu(props: MenuProps): React.JSX.Element {
               }}
               type="button"
               role="menuitem"
+              aria-label={entry.label}
               className={`menu-item ${i === active ? 'active' : ''} ${entry.danger ? 'danger' : ''}`}
               onMouseDown={(e) => e.preventDefault()}
               onMouseEnter={(e) => {

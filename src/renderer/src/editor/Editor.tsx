@@ -13,6 +13,7 @@ import {
   getFormattingToolbarItems,
   LinkToolbar,
   LinkToolbarController,
+  SideMenuController,
   SuggestionMenuController,
   useBlockNoteEditor,
   useComponentsContext,
@@ -37,6 +38,7 @@ import { AppColorStyleButton } from './ColorButton'
 import { ColorPickContext, type PickedColor } from './colors'
 import { AppCreateLinkButton, AppEditLinkButton } from './LinkButtons'
 import { isValidLink, linkHrefFromEvent } from './links'
+import { blockSelection } from './blockSelection'
 import { listMarkers } from './listMarkersPlugin'
 import type { WebImage } from './notionPaste'
 import {
@@ -47,6 +49,8 @@ import {
   type AppPartialBlock,
   type PageLinkContextValue
 } from './schema'
+import { AppSideMenu } from './menus/AppSideMenu'
+import { BlockMenuHost } from './menus/BlockMenu'
 import { SlashMenu } from './menus/SlashMenu'
 import { querySlashItems, type SlashItem } from './slashItems'
 
@@ -162,7 +166,7 @@ export function Editor(props: EditorProps): React.JSX.Element {
       }
     },
     dropCursor: multiColumnDropCursor,
-    extensions: [syntaxHighlighter, listMarkers],
+    extensions: [syntaxHighlighter, listMarkers, blockSelection],
     uploadFile: (file) => props.uploadFile(file),
     resolveFileUrl: (url) => props.resolveFileUrl(url),
     pasteHandler: ({ event, editor, defaultPasteHandler }) => {
@@ -253,18 +257,22 @@ export function Editor(props: EditorProps): React.JSX.Element {
             slashMenu={false}
             formattingToolbar={false}
             linkToolbar={false}
+            sideMenu={false}
             onChange={(ed) => props.onChange(ed.document)}
           >
-            <SuggestionMenuController
-              triggerCharacter="/"
-              getItems={(query: string): Promise<SlashItem[]> =>
-                querySlashItems(editor, { createSubPage: props.createSubPage }, query)
-              }
-              suggestionMenuComponent={SlashMenu}
-            />
-            <FormattingToolbarController formattingToolbar={AppFormattingToolbar} />
-            <LinkToolbarController linkToolbar={AppLinkToolbar} />
-            <HighlightShortcut color={props.lastColor ?? DEFAULT_COLOR} />
+            <BlockMenuHost>
+              <SuggestionMenuController
+                triggerCharacter="/"
+                getItems={(query: string): Promise<SlashItem[]> =>
+                  querySlashItems(editor, { createSubPage: props.createSubPage }, query)
+                }
+                suggestionMenuComponent={SlashMenu}
+              />
+              <SideMenuController sideMenu={AppSideMenu} />
+              <FormattingToolbarController formattingToolbar={AppFormattingToolbar} />
+              <LinkToolbarController linkToolbar={AppLinkToolbar} />
+              <HighlightShortcut color={props.lastColor ?? DEFAULT_COLOR} />
+            </BlockMenuHost>
           </BlockNoteView>
         </ColorPickContext.Provider>
       </OpenLinkContext.Provider>
