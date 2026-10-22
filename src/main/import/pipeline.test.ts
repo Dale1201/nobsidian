@@ -290,4 +290,20 @@ describe('plainTextBlocks', () => {
       }
     ])
   })
+
+  it('makes one paragraph per block in minified markup', () => {
+    const html =
+      '<article><header><h1 class="page-title">Title</h1></header><div class="page-body"><p>One</p><h2>Two</h2><ul><li>a</li><li>b <strong>bold</strong></li></ul></div></article>'
+    expect(plainTextBlocks(html).map(paragraphText)).toEqual(['One', 'Two', 'a', 'b bold'])
+  })
+
+  it('keeps loose text, line breaks and nested lists apart', () => {
+    const html =
+      '<div class="page-body">Loose <em>text</em><p>Para<br>line</p><ul><li>a<ul><li>b</li></ul></li></ul></div>'
+    expect(plainTextBlocks(html).map(paragraphText)).toEqual(['Loose text', 'Para\nline', 'a', 'b'])
+  })
 })
+
+function paragraphText(block: { content?: unknown }): string {
+  return (block.content as { text: string }[]).map((c) => c.text).join('')
+}

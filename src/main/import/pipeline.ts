@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { extname, join } from 'node:path'
-import type { Root } from 'hast'
+import type { Element, ElementContent, Root, RootContent } from 'hast'
 import { fromHtml } from 'hast-util-from-html'
 import type { Block, Inline } from '../../shared/core/blocks'
 import { pageLinkHref } from '../../shared/core/links'
@@ -149,7 +149,7 @@ async function convert(
         notionId: page.notionId,
         parentId: null,
         title: stemOf(page.path),
-        blocks: html === undefined ? [] : plainTextBlocks(html)
+        blocks: fallbackBlocks(html)
       })
     }
   }
@@ -220,9 +220,39 @@ function propertiesTable(properties: { name: string; value: Inline[] }[]): Block
   }
 }
 
+const INLINE_TAGS = new Set([
+  'a',
+  'abbr',
+  'b',
+  'bdi',
+  'bdo',
+  'br',
+  'cite',
+  'code',
+  'data',
+  'del',
+  'dfn',
+  'em',
+  'i',
+  'ins',
+  'kbd',
+  'mark',
+  'q',
+  's',
+  'samp',
+  'small',
+  'span',
+  'strong',
+  'sub',
+  'sup',
+  'time',
+  'u',
+  'var'
+])
+
 /**
- * A failed page's text as plain paragraphs, one per blank-line-separated run, for a page that
- * cannot be mapped. The header (title and properties) is left out.
+ * A failed page's text as plain paragraphs, one per block (and per run of loose text between
+ * blocks), for a page that cannot be mapped. The header (title and properties) is left out.
  */
 export function plainTextBlocks(html: string): Block[] {
   const root = fromHtml(html)
@@ -230,16 +260,54 @@ export function plainTextBlocks(html: string): Block[] {
     findAll(root, (el) => hasClass(el, 'page-body'))[0] ??
     findAll(root, (el) => el.tagName === 'body')[0] ??
     root
-  return textOf(body)
-    .split(/\n\s*\n/)
-    .map((text) => text.trim())
-    .filter((text) => text.length > 0)
-    .map((text): Block => ({
-      type: 'paragraph',
-      props: {},
-      children: [],
-      content: [{ type: 'text', text, styles: {} }]
-    }))
+  const texts: string[] = []
+  collectParagraphs(body, texts)
+  return texts.map((text): Block => ({
+    type: 'paragraph',
+    props: {},
+    children: [],
+    content: [{ type: 'text', text, styles: {} }]
+  }))
+}
+
+/** A block element with no block children is one paragraph; otherwise its children are read in turn. */
+function collectParagraphs(parent: Root | Element, texts: string[]): void {
+  let loose = ''
+  const flush = (): void => {
+    addText(texts, loose)
+    loose = ''
+  }
+  for (const child of parent.children) {
+    if (child.type !== 'element') {
+      loose += textOf(child)
+    } else if (INLINE_TAGS.has(child.tagName)) {
+      loose += textOf(child)
+    } else {
+      flush()
+      if (child.children.some(isBlockElement)) collectParagraphs(child, texts)
+      else addText(texts, textOf(child))
+    }
+  }
+  flush()
+}
+
+function isBlockElement(node: RootContent | ElementContent): boolean {
+  return node.type === 'element' && !INLINE_TAGS.has(node.tagName)
+}
+
+function addText(texts: string[], raw: string): void {
+  const text = raw.trim()
+  if (text) texts.push(text)
+}
+
+/** The fallback's blocks, or none when even the fallback fails; the page's issue is reported either way. */
+function fallbackBlocks(html: string | undefined): Block[] {
+  if (html === undefined) return []
+  try {
+    return plainTextBlocks(html)
+  } catch {
+    return []
+  }
 }
 
 function messageOf(error: unknown): string {
