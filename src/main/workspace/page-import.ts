@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { mkdir, readdir, rename, rm } from 'node:fs/promises'
+import { mkdir, readdir, rename, rm, unlink } from 'node:fs/promises'
 import { basename, dirname, extname, join } from 'node:path'
 import type { Block, Inline } from '../../shared/core/blocks'
 import { mapBlockLinks, pageLinkHref } from '../../shared/core/links'
@@ -29,8 +29,8 @@ export class PageImports {
       APP_DIR,
       `${STAGING_PREFIX}${Date.now()}-${randomUUID().slice(0, 8)}`
     )
-    await mkdir(dir, { recursive: true })
     this.active.add(dir)
+    await mkdir(dir, { recursive: true })
     return dir
   }
 
@@ -54,12 +54,6 @@ export class PageImports {
   /** Moves a staged import into the workspace under a new top-level page. */
   async land(manifest: ImportManifest, staging: string): Promise<ImportResult> {
     const core = this.core
-    const fileHrefs = await this.moveFiles(manifest)
-    const remap = (href: string): string =>
-      href.startsWith(STAGED_FILE_PREFIX)
-        ? (fileHrefs.get(href.slice(STAGED_FILE_PREFIX.length)) ?? '')
-        : href
-
     const rootId = randomUUID()
     const reportId = randomUUID()
     const rootStem = await core.pageStem('', IMPORT_TITLE)
@@ -69,7 +63,7 @@ export class PageImports {
       {
         id: rootId,
         parentId: null,
-        title: IMPORT_TITLE,
+        title: rootStem,
         blocks: [...top, { id: reportId }].map((p) => pageLinkBlock(p.id))
       },
       ...manifest.pages.map((p) => ({ ...p, parentId: p.parentId ?? rootId })),
@@ -87,44 +81,61 @@ export class PageImports {
       const dir = childDirOf(paths.get(page.parentId!)!)
       const names = taken.get(dir) ?? new Set<string>()
       taken.set(dir, names)
-      const stem = uniqueStem(names, sanitizeTitle(page.title))
+      const stem = uniqueStem(names, sanitizeTitle(page.title).normalize('NFC'))
       paths.set(page.id, joinPath(dir, `${stem}.md`))
     }
-    for (const [id, path] of paths) core.knownPaths.set(id, path)
 
-    // Everything below the root page is written in staging, then moved in with one rename.
+    // Pages are written under staging and moved in by renames; a failure before the last rename is undone.
     const out = join(staging, 'out')
+    const undo: Array<() => Promise<void>> = []
     const texts = new Map<string, string>()
-    for (const page of all) {
-      const path = paths.get(page.id)!
-      const blocks = mapBlockLinks(page.blocks, remap)
-      const meta: PageMeta = {
-        id: page.id,
-        extra: page.notionId ? { notionId: page.notionId } : {},
-        ...(stemOf(path) !== page.title ? { title: page.title } : {})
+    const indexed = new Map<string, string>()
+    const icons = new Map<string, string>()
+    try {
+      const fileHrefs = await this.moveFiles(manifest, undo)
+      const remap = (href: string): string =>
+        href.startsWith(STAGED_FILE_PREFIX)
+          ? (fileHrefs.get(href.slice(STAGED_FILE_PREFIX.length)) ?? '')
+          : href
+      for (const [id, path] of paths) core.knownPaths.set(id, path)
+
+      for (const page of all) {
+        const path = paths.get(page.id)!
+        const blocks = mapBlockLinks(page.blocks, remap)
+        const meta: PageMeta = {
+          id: page.id,
+          extra: page.notionId ? { notionId: page.notionId } : {},
+          ...(stemOf(path) !== page.title ? { title: page.title } : {})
+        }
+        const icon = page.icon && remap(page.icon)
+        if (icon) {
+          meta.icon = core.metaHrefToFile(path, icon)
+          icons.set(page.id, icon)
+        }
+        const cover = page.cover && remap(page.cover)
+        if (cover) meta.cover = core.toFileHref(path, cover)
+        const text = serializePage(
+          meta,
+          mapBlockLinks(blocks, (href) => core.toFileHref(path, href))
+        )
+        texts.set(page.id, text)
+        if (page.id !== rootId) indexed.set(page.id, blocksText(blocks))
+        const file = join(out, ...path.split('/'))
+        await mkdir(dirname(file), { recursive: true })
+        await writeFileAtomic(file, text)
       }
-      const icon = page.icon && remap(page.icon)
-      if (icon) meta.icon = core.metaHrefToFile(path, icon)
-      const cover = page.cover && remap(page.cover)
-      if (cover) meta.cover = core.toFileHref(path, cover)
-      const text = serializePage(
-        meta,
-        mapBlockLinks(blocks, (href) => core.toFileHref(path, href))
-      )
-      texts.set(page.id, text)
-      if (page.id === rootId) continue
-      const file = join(out, ...path.split('/'))
-      await mkdir(dirname(file), { recursive: true })
-      await writeFileAtomic(file, text)
-      core.index.set(page.id, page.title, blocksText(blocks))
+      await rename(join(out, rootStem), core.abs(rootStem))
+      undo.push(() => rename(core.abs(rootStem), join(out, rootStem)))
+      await rename(join(out, rootPath), core.abs(rootPath))
+    } catch (err) {
+      for (const step of undo.reverse()) await step().catch(() => {})
+      for (const id of paths.keys()) core.knownPaths.delete(id)
+      throw err
     }
-    await rename(join(out, rootStem), core.abs(rootStem))
-    await core.writeText(rootPath, texts.get(rootId)!)
-    core.index.set(rootId, IMPORT_TITLE, '')
 
     for (const page of all) {
       const path = paths.get(page.id)!
-      const icon = page.icon && remap(page.icon)
+      const icon = icons.get(page.id)
       const record: PageRecord = {
         id: page.id,
         title: page.title,
@@ -134,6 +145,7 @@ export class PageImports {
       }
       core.pages.set(page.id, record)
       core.remember(path, texts.get(page.id)!)
+      core.index.set(page.id, page.title, indexed.get(page.id) ?? '')
       if (page.parentId) (core.state.order[page.parentId] ??= []).push(page.id)
     }
     core.insertOrder(null, rootId)
@@ -147,34 +159,45 @@ export class PageImports {
   }
 
   /** Gives each staged file its final name in attachments/; returns key -> internal href. */
-  private async moveFiles(manifest: ImportManifest): Promise<Map<string, string>> {
+  private async moveFiles(
+    manifest: ImportManifest,
+    undo: Array<() => Promise<void>>
+  ): Promise<Map<string, string>> {
     const dir = this.core.abs(ATTACHMENTS_DIR)
     await mkdir(dir, { recursive: true })
     const hrefs = new Map<string, string>()
     for (const file of manifest.files) {
-      if (!file.path) {
+      const from = file.path
+      if (!from) {
         hrefs.set(file.key, file.url ?? '')
         continue
       }
-      const ext = extname(file.name)
-      const base = sanitizeTitle(basename(file.name, ext)) || 'file'
-      const stem = await uniqueName(dir, base, ext)
-      await rename(file.path, join(dir, stem + ext))
+      const raw = extname(file.name)
+      const ext = /^\.[a-z0-9]{1,8}$/i.test(raw) ? raw.toLowerCase() : ''
+      const stemName = sanitizeTitle(ext ? basename(file.name, raw) : file.name) || 'file'
+      const stem = await uniqueName(dir, stemName, ext)
+      const dest = join(dir, stem + ext)
+      await rename(from, dest)
+      undo.push(() => rename(dest, from).catch(() => unlink(dest)))
       hrefs.set(file.key, '/' + encodeHref(`${ATTACHMENTS_DIR}/${stem}${ext}`))
     }
     return hrefs
   }
 }
 
+/** A name is taken if it is a file or a folder: a page's file and its children's folder share a stem. */
 function uniqueStem(taken: Set<string>, stem: string): string {
   for (let n = 1; ; n++) {
     const candidate = n === 1 ? stem : `${stem} (${n})`
-    if (!taken.has(candidate.toLowerCase())) {
-      taken.add(candidate.toLowerCase())
-      return candidate
-    }
+    const keys = [nameKey(candidate), nameKey(`${candidate}.md`)]
+    if (keys.some((k) => taken.has(k))) continue
+    for (const k of keys) taken.add(k)
+    return candidate
   }
 }
+
+// macOS compares names without regard to case and Unicode form, so siblings must too.
+const nameKey = (name: string): string => name.normalize('NFC').toLowerCase()
 
 function pageLinkBlock(id: string): Block {
   return { type: 'pageLink', props: { href: pageLinkHref(id) }, children: [] }

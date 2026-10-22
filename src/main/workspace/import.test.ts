@@ -5,7 +5,9 @@ import { join } from 'node:path'
 import type { WorkspaceEvent } from './core'
 import { runImport } from '../import/pipeline'
 import { FIXTURE_ZIP } from '../import/test-zips'
-import type { ImportManifest } from '../import/types'
+import type { Block } from '../../shared/core/blocks'
+import { sanitizeTitle } from '../../shared/core/paths'
+import type { ImportManifest, StagedFile, StagedPage } from '../import/types'
 import { Workspace } from './workspace'
 
 let root: string
@@ -27,6 +29,17 @@ async function importFixture(ws: Workspace): Promise<ImportManifest & { staging:
   const staging = await ws.createImportStaging()
   const manifest = await runImport({ zips: [FIXTURE_ZIP], staging, fetch: png })
   return { ...manifest, staging }
+}
+
+const paragraph = (value: string): Block => ({
+  type: 'paragraph',
+  props: {},
+  content: [{ type: 'text', text: value, styles: {} }],
+  children: []
+})
+
+function manifestOf(pages: StagedPage[], files: StagedFile[] = []): ImportManifest {
+  return { pages, files, issues: [], sources: ['notion-export.zip'], startedAt: Date.now() }
 }
 
 describe('landing an import', () => {
@@ -107,6 +120,10 @@ describe('landing an import', () => {
       'Imported from Notion.md',
       'Imported from Notion (2).md'
     ])
+    expect(ws.tree().map((n) => n.title)).toEqual([
+      'Imported from Notion',
+      'Imported from Notion (2)'
+    ])
     expect(await read('Imported from Notion (2)/Nobsidian import fixture.md')).toContain(
       '(../attachments/fixture-image%20\\(2\\).png)'
     )
@@ -157,6 +174,117 @@ describe('landing an import', () => {
       '12345678901234567890123456789012': 'digits'
     })
     reopened.close()
+  })
+
+  it('ignores a notionId line in a page body rather than its frontmatter', async () => {
+    const ws = await Workspace.open(root)
+    await writeFile(
+      join(root, 'Body.md'),
+      '---\nid: body\n---\n\nnotionId: aaaaaaaabbbbccccddddeeeeffff0000\n'
+    )
+    const reopened = (ws.close(), await Workspace.open(root))
+    expect(reopened.findNotionPages(['aaaaaaaabbbbccccddddeeeeffff0000'])).toEqual({})
+    reopened.close()
+  })
+
+  it('leaves attachments and the tree as they were when landing fails', async () => {
+    const ws = await Workspace.open(root)
+    const manifest = await importFixture(ws)
+    const attachmentsBefore = await readdir(join(root, 'attachments')).catch(() => [])
+    const treeBefore = JSON.stringify(ws.tree())
+    // A file where the output folder should be makes the page writes fail after the files moved.
+    await writeFile(join(manifest.staging, 'out'), 'not a folder')
+    await expect(ws.landImport(manifest, manifest.staging)).rejects.toThrow()
+    expect(await readdir(join(root, 'attachments')).catch(() => [])).toEqual(attachmentsBefore)
+    expect(JSON.stringify(ws.tree())).toBe(treeBefore)
+    expect((await readdir(root)).filter((n) => n.startsWith('Imported'))).toEqual([])
+    ws.close()
+  })
+
+  it('tells the window the tree changed when landing fails after the pages are added', async () => {
+    const ws = await Workspace.open(root)
+    const manifest = await importFixture(ws)
+    // A folder where the state file should be makes saving the state fail after the pages are added.
+    await rm(join(root, '.nobsidian', 'workspace.json'), { force: true })
+    await mkdir(join(root, '.nobsidian', 'workspace.json'))
+    const events: WorkspaceEvent[] = []
+    ws.onEvent((e) => events.push(e))
+    await expect(ws.landImport(manifest, manifest.staging)).rejects.toThrow()
+    expect(events).toContainEqual({ type: 'tree' })
+    ws.close()
+  })
+
+  it('keeps sibling pages apart when their names differ only in Unicode form', async () => {
+    const ws = await Workspace.open(root)
+    const staging = await ws.createImportStaging()
+    await ws.landImport(
+      manifestOf([
+        {
+          id: 'cafe-nfc',
+          parentId: null,
+          title: 'Caf\u00e9',
+          blocks: [paragraph('composed body')]
+        },
+        {
+          id: 'cafe-nfd',
+          parentId: null,
+          title: 'Cafe\u0301',
+          blocks: [paragraph('decomposed body')]
+        }
+      ]),
+      staging
+    )
+    const dir = 'Imported from Notion'
+    expect((await readdir(join(root, dir))).filter((n) => n.startsWith('Caf')).sort()).toEqual([
+      'Caf\u00e9 (2).md',
+      'Caf\u00e9.md'
+    ])
+    expect(await read(`${dir}/Caf\u00e9.md`)).toContain('composed body')
+    expect(await read(`${dir}/Caf\u00e9 (2).md`)).toContain('decomposed body')
+    ws.close()
+  })
+
+  it('keeps a page file and the folder of a sibling named like that file apart', async () => {
+    const ws = await Workspace.open(root)
+    const staging = await ws.createImportStaging()
+    await ws.landImport(
+      manifestOf([
+        { id: 'foo', parentId: null, title: 'Foo', blocks: [paragraph('foo body')] },
+        { id: 'foo-kid', parentId: 'foo', title: 'Kid of Foo', blocks: [paragraph('kid body')] },
+        { id: 'foo-md', parentId: null, title: 'Foo.md', blocks: [paragraph('foo md body')] },
+        {
+          id: 'foo-md-kid',
+          parentId: 'foo-md',
+          title: 'Kid of Foo md',
+          blocks: [paragraph('md kid body')]
+        }
+      ]),
+      staging
+    )
+    const dir = 'Imported from Notion'
+    expect(await read(`${dir}/Foo.md`)).toContain('foo body')
+    expect(await read(`${dir}/Foo/Kid of Foo.md`)).toContain('kid body')
+    expect(await read(`${dir}/Foo.md (2).md`)).toContain('foo md body')
+    expect(await read(`${dir}/Foo.md (2)/Kid of Foo md.md`)).toContain('md kid body')
+    ws.close()
+  })
+
+  it('drops an attachment extension that is not short and plain', async () => {
+    const ws = await Workspace.open(root)
+    const staging = await ws.createImportStaging()
+    const name = `notes.${'x'.repeat(300)}`
+    await mkdir(join(staging, 'files'), { recursive: true })
+    const path = join(staging, 'files', 'key-1')
+    await writeFile(path, 'bytes')
+    await ws.landImport(
+      manifestOf(
+        [{ id: 'p', parentId: null, title: 'Page', blocks: [] }],
+        [{ key: 'key-1', name, path }]
+      ),
+      staging
+    )
+    expect(await readdir(join(root, 'attachments'))).toEqual([sanitizeTitle(name)])
+    ws.close()
   })
 })
 

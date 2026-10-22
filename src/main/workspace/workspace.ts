@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { basename, extname, join } from 'node:path'
 import type { Block } from '../../shared/core/blocks'
 import { mapBlockLinks, pageIdFromHref, pageLinkHref } from '../../shared/core/links'
-import { parsePage, serializePage, type PageMeta } from '../../shared/core/page'
+import { parsePage, serializePage, splitFrontmatter, type PageMeta } from '../../shared/core/page'
 import {
   childDirOf,
   decodeHref,
@@ -419,11 +419,10 @@ export class Workspace {
     const wanted = new Set(notionIds)
     const found: Record<string, string> = {}
     for (const r of this.core.pages.values()) {
-      // YAML quotes an id that would otherwise read as a number.
-      const id = /^notionId: ['"]?([0-9a-f]{32})['"]?$/m.exec(
-        this.core.texts.get(r.path) ?? ''
-      )?.[1]
-      if (id && wanted.has(id)) found[id] = r.id
+      const { data } = splitFrontmatter(this.core.texts.get(r.path) ?? '')
+      const id = data?.notionId
+      // YAML quotes an id that would otherwise read as a number, so only strings are ids.
+      if (typeof id === 'string' && wanted.has(id)) found[id] = r.id
     }
     return found
   }
@@ -441,10 +440,10 @@ export class Workspace {
   landImport(manifest: ImportManifest, staging: string): Promise<ImportResult> {
     return this.run(async () => {
       try {
-        const result = await this.imports.land(manifest, staging)
-        this.core.emit({ type: 'tree' })
-        return result
+        return await this.imports.land(manifest, staging)
       } finally {
+        // Also on failure: pages may already be in the tree when a later step throws.
+        this.core.emit({ type: 'tree' })
         await this.imports.discard(staging)
       }
     })
