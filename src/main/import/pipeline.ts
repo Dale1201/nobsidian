@@ -6,7 +6,7 @@ import { fromHtml } from 'hast-util-from-html'
 import type { Block, Inline } from '../../shared/core/blocks'
 import { pageLinkHref } from '../../shared/core/links'
 import { isExternalHref, resolveHref } from '../../shared/core/paths'
-import { attr, findAll, hasClass } from '../../shared/notion/hast'
+import { attr, findAll, hasClass, textOf } from '../../shared/notion/hast'
 import { mapNotionPage } from '../../shared/notion/html'
 import type { IssueKind, MapContext } from '../../shared/notion/types'
 import type { ImportProgress } from '../../shared/types'
@@ -97,22 +97,32 @@ async function convert(
         const target = resolveHref(page.path, href)
         const linked = byPath.get(target)
         if (linked) return pageLinkHref(ids.get(linked)!)
-        if (archive.entries.has(target)) return fileHref(id, target, baseName(target))
+        if (archive.entries.has(target)) return fileHref(id, target, exportName(target))
         if (notionId) issue('outsideLink', href)
         return href
       },
       file: (src) => {
-        if (/^https?:/i.test(src)) return fileHref(id, src, baseName(new URL(src).pathname), src)
+        if (/^https?:/i.test(src)) {
+          let url: URL
+          try {
+            url = new URL(src)
+          } catch {
+            issue('missingFile', src)
+            return src
+          }
+          return fileHref(id, src, urlName(url), src)
+        }
         if (/^data:/i.test(src)) return src
         const target = resolveHref(page.path, src)
-        if (archive.entries.has(target)) return fileHref(id, target, baseName(target))
+        if (archive.entries.has(target)) return fileHref(id, target, exportName(target))
         issue('missingFile', target)
         return src
       },
       issue
     }
+    let html: string | undefined
     try {
-      const html = (await archive.entries.get(page.path)!.read()).toString('utf8')
+      html = (await archive.entries.get(page.path)!.read()).toString('utf8')
       const root = fromHtml(html)
       links.set(page.notionId, subPageLinks(root))
       const mapped = mapNotionPage(root, ctx)
@@ -132,18 +142,19 @@ async function convert(
         cover: mapped.cover,
         blocks
       })
-    } catch {
-      issue('failedPage', page.path)
+    } catch (error) {
+      issue('failedPage', `${page.path}: ${messageOf(error)}`)
       staged.set(page.notionId, {
         id,
         notionId: page.notionId,
         parentId: null,
         title: stemOf(page.path),
-        blocks: []
+        blocks: html === undefined ? [] : plainTextBlocks(html)
       })
     }
   }
 
+  progress({ phase: 'converting', done: pages.length, total: pages.length })
   const { nodes, order } = buildTree(pages, links)
   const groups = [...new Set([...nodes.values()].filter((n) => !n.parent).map((n) => n.group))]
   const groupIds = new Map<string, string>()
@@ -188,7 +199,7 @@ function subPageLinks(root: Root): string[] {
   }).flatMap((box) => findAll(box, (el) => el.tagName === 'a'))
   for (const a of anchors) {
     const id = attr(a, 'data-notion-page-id')?.replace(/-/g, '')
-    const fromHref = /([0-9a-f]{32})\.html$/.exec(decodeURIComponent(attr(a, 'href') ?? ''))?.[1]
+    const fromHref = /([0-9a-f]{32})\.html$/.exec(safeDecode(attr(a, 'href') ?? ''))?.[1]
     const notionId = id ?? fromHref
     if (notionId) out.push(notionId)
   }
@@ -207,6 +218,32 @@ function propertiesTable(properties: { name: string; value: Inline[] }[]): Block
     },
     children: []
   }
+}
+
+/**
+ * A failed page's text as plain paragraphs, one per blank-line-separated run, for a page that
+ * cannot be mapped. The header (title and properties) is left out.
+ */
+export function plainTextBlocks(html: string): Block[] {
+  const root = fromHtml(html)
+  const body =
+    findAll(root, (el) => hasClass(el, 'page-body'))[0] ??
+    findAll(root, (el) => el.tagName === 'body')[0] ??
+    root
+  return textOf(body)
+    .split(/\n\s*\n/)
+    .map((text) => text.trim())
+    .filter((text) => text.length > 0)
+    .map((text): Block => ({
+      type: 'paragraph',
+      props: {},
+      children: [],
+      content: [{ type: 'text', text, styles: {} }]
+    }))
+}
+
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }
 
 interface PendingFile {
@@ -230,25 +267,45 @@ async function stageFiles(
   for (const [i, file] of files.entries()) {
     progress({ phase: 'copying', done: i, total: files.length })
     const dest = join(options.staging, 'files', file.key + safeExt(file.name))
-    if (file.url) {
-      const image = await downloadImage(file.url, options.fetch).catch(() => null)
-      if (image) {
-        await writeFile(dest, image.data)
-        out.push({ key: file.key, name: image.name, path: dest })
+    try {
+      if (file.url) {
+        const image = await downloadImage(file.url, options.fetch).catch(() => null)
+        if (image) {
+          await writeFile(dest, image.data)
+          out.push({ key: file.key, name: image.name, path: dest })
+        } else {
+          issues.push({ kind: 'download', detail: file.url, pageId: file.pageId })
+          out.push({ key: file.key, name: file.name, url: file.url })
+        }
       } else {
-        issues.push({ kind: 'download', detail: file.url, pageId: file.pageId })
-        out.push({ key: file.key, name: file.name, url: file.url })
+        await archive.entries.get(file.source)!.copyTo(dest)
+        out.push({ key: file.key, name: file.name, path: dest })
       }
-      continue
+    } catch {
+      issues.push({ kind: 'missingFile', detail: file.source, pageId: file.pageId })
+      out.push({ key: file.key, name: file.name })
     }
-    await archive.entries.get(file.source)!.copyTo(dest)
-    out.push({ key: file.key, name: file.name, path: dest })
   }
+  progress({ phase: 'copying', done: files.length, total: files.length })
   return out
 }
 
-function baseName(path: string): string {
-  return decodeURIComponent(path.split('/').pop() ?? '') || 'file'
+/** The last segment of a path in the export; the path is already decoded. */
+function exportName(path: string): string {
+  return path.split('/').pop() || 'file'
+}
+
+/** The file name in a web address, decoded when it can be. */
+function urlName(url: URL): string {
+  return safeDecode(url.pathname.split('/').pop() ?? '') || 'file'
+}
+
+function safeDecode(text: string): string {
+  try {
+    return decodeURIComponent(text)
+  } catch {
+    return text
+  }
 }
 
 function stemOf(path: string): string {

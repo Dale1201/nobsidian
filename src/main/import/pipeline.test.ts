@@ -1,11 +1,11 @@
-import { mkdtemp, readFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { mapBlockLinks, pageLinkHref } from '../../shared/core/links'
 import { blocksToMarkdown } from '../../shared/core/serialize'
 import { sanitizeTitle } from '../../shared/core/paths'
-import { runImport } from './pipeline'
+import { plainTextBlocks, runImport } from './pipeline'
 import { FIXTURE_ZIP, notionPage, subPageLink, writeZip } from './test-zips'
 import { ImportError, type ImportManifest } from './types'
 
@@ -170,16 +170,124 @@ describe('runImport', () => {
     )
   })
 
-  it('reports progress through each phase', async () => {
+  it('reports progress through each phase, ending each at its total', async () => {
     const phases: string[] = []
+    const events: { phase: string; done: number; total: number }[] = []
     await runImport({
       zips: [FIXTURE_ZIP],
       staging: await staging(),
       fetch: fakeFetch(),
       onProgress: (p) => {
+        events.push(p)
         if (phases[phases.length - 1] !== p.phase) phases.push(p.phase)
       }
     })
     expect(phases).toEqual(['reading', 'converting', 'copying'])
+    const last = (phase: string): unknown => events.filter((e) => e.phase === phase).pop()
+    expect(last('converting')).toEqual({ phase: 'converting', done: 10, total: 10 })
+    expect(last('copying')).toEqual({ phase: 'copying', done: 4, total: 4 })
+  })
+
+  it('stages a file whose name has a percent sign', async () => {
+    const dir = await staging()
+    const zip = await writeZip(join(dir, 'e.zip'), {
+      [`S/A ${id(1)}.html`]: notionPage(
+        'A',
+        '<p>Kept text</p><figure class="image"><img src="A/50%25%20off.png"></figure>'
+      ),
+      'S/A/50% off.png': 'png'
+    })
+    const manifest = await runImport({ zips: [zip], staging: dir })
+    expect(manifest.issues).toEqual([])
+    expect(manifest.files.map((f) => f.name)).toEqual(['50% off.png'])
+    expect(JSON.stringify(manifest.pages[0].blocks)).toContain('Kept text')
+  })
+
+  it('keeps a sub-page link whose address has a broken escape', async () => {
+    const dir = await staging()
+    const zip = await writeZip(join(dir, 'e.zip'), {
+      [`S/A ${id(1)}.html`]: notionPage(
+        'A',
+        `<figure class="link-to-page"><a href="B%.html" data-notion-page-id="${id(2)}">B</a></figure>`
+      ),
+      [`S/A/B ${id(2)}.html`]: notionPage('B', '<p>Inside</p>')
+    })
+    const manifest = await runImport({ zips: [zip], staging: dir })
+    expect(manifest.issues).toEqual([])
+    expect(manifest.pages[1].parentId).toBe(manifest.pages[0].id)
+  })
+
+  it('reports an image address it cannot parse and keeps the page', async () => {
+    const dir = await staging()
+    const zip = await writeZip(join(dir, 'e.zip'), {
+      [`S/A ${id(1)}.html`]: notionPage(
+        'A',
+        '<p>Kept text</p><figure class="image"><img src="http://["></figure>'
+      )
+    })
+    const manifest = await runImport({ zips: [zip], staging: dir })
+    expect(manifest.issues.map((i) => [i.kind, i.detail])).toEqual([['missingFile', 'http://[']])
+    expect(JSON.stringify(manifest.pages[0].blocks)).toContain('Kept text')
+  })
+
+  it('keeps the name of a web image whose address has a broken escape', async () => {
+    const dir = await staging()
+    const zip = await writeZip(join(dir, 'e.zip'), {
+      [`S/A ${id(1)}.html`]: notionPage(
+        'A',
+        '<figure class="image"><img src="https://example.com/a%E0%A4%A.png"></figure>'
+      )
+    })
+    const manifest = await runImport({ zips: [zip], staging: dir, fetch: fakeFetch() })
+    expect(manifest.issues).toEqual([])
+    expect(manifest.files.map((f) => f.name)).toEqual(['a%E0%A4%A.png'])
+  })
+
+  it('reports a file it cannot stage and keeps the rest of the import', async () => {
+    const dir = await staging()
+    // A directory where the staged copy should go makes the copy fail.
+    await mkdir(join(dir, 'files', '1.png'), { recursive: true })
+    const zip = await writeZip(join(dir, 'e.zip'), {
+      [`S/A ${id(1)}.html`]: notionPage(
+        'A',
+        '<figure class="image"><img src="A/pic.png"></figure>'
+      ),
+      'S/A/pic.png': 'png'
+    })
+    const manifest = await runImport({ zips: [zip], staging: dir })
+    expect(manifest.pages.map((p) => p.title)).toEqual(['A'])
+    expect(manifest.files).toEqual([{ key: '1', name: 'pic.png' }])
+    expect(manifest.issues.map((i) => [i.kind, i.detail])).toEqual([['missingFile', 'S/A/pic.png']])
+  })
+})
+
+describe('plainTextBlocks', () => {
+  it('keeps the page body as paragraphs and leaves out the header', () => {
+    const html = notionPage(
+      'Page title',
+      '<p>First</p>\n\n<p>Second</p>\n\n\n<p></p>\n\n<p>Third</p>',
+      '<p>Header note</p>'
+    )
+    expect(plainTextBlocks(html)).toEqual(
+      ['First', 'Second', 'Third'].map((text) => ({
+        type: 'paragraph',
+        props: {},
+        children: [],
+        content: [{ type: 'text', text, styles: {} }]
+      }))
+    )
+  })
+
+  it('reads the body of a page without Notion markup', () => {
+    expect(
+      plainTextBlocks('<html><head><title>Title</title></head><body><p>Only</p></body></html>')
+    ).toEqual([
+      {
+        type: 'paragraph',
+        props: {},
+        children: [],
+        content: [{ type: 'text', text: 'Only', styles: {} }]
+      }
+    ])
   })
 })
