@@ -1,5 +1,4 @@
 import type { Block } from '../../shared/core/blocks'
-import { mapBlockLinks } from '../../shared/core/links'
 import { parsePage, serializePage, splitFrontmatter, type PageMeta } from '../../shared/core/page'
 import { blocksText } from '../../shared/core/text'
 import type { HistoryVersion, PageDoc } from '../../shared/types'
@@ -52,7 +51,7 @@ export class PageHistory {
     const path = r?.path ?? core.knownPaths.get(id) ?? `${id}.md`
     const base = r ? core.texts.get(r.path) : undefined
     const meta = base ? parsePage(base).meta : { extra: {} }
-    const fileBlocks = mapBlockLinks(blocks, (href) => core.toFileHref(path, href))
+    const fileBlocks = core.toFileBlocks(path, blocks)
     await this.snapshot(id, serializePage({ ...meta, id }, fileBlocks), path)
   }
 
@@ -128,7 +127,7 @@ export class PageHistory {
       icon: doc.meta.icon ? core.metaHrefToFile(r.path, doc.meta.icon) : undefined,
       cover: doc.meta.cover ? core.toFileHref(r.path, doc.meta.cover) : undefined
     }
-    const fileBlocks = mapBlockLinks(doc.blocks, (href) => core.toFileHref(r.path, href))
+    const fileBlocks = core.toFileBlocks(r.path, doc.blocks)
     await core.writeText(r.path, serializePage(meta, fileBlocks))
     r.icon = doc.meta.icon
     const revision = core.revision(id) + 1

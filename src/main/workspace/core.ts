@@ -1,6 +1,12 @@
 import { readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
-import { mapBlockLinks, pageIdFromHref, pageLinkHref } from '../../shared/core/links'
+import type { Block } from '../../shared/core/blocks'
+import {
+  mapBlockLinks,
+  pageIdFromHref,
+  pageLinkHref,
+  refreshMentionTitles
+} from '../../shared/core/links'
 import { parsePage, type PageMeta } from '../../shared/core/page'
 import {
   decodeHref,
@@ -212,6 +218,15 @@ export class WorkspaceCore {
     const target = resolveHref(pagePath, href)
     const id = byPath.get(target)
     return id ? pageLinkHref(id) : '/' + encodeHref(target)
+  }
+
+  /** Blocks as written to `pagePath`: page links become relative and mentions carry current titles. */
+  toFileBlocks(pagePath: string, blocks: Block[]): Block[] {
+    const titled = refreshMentionTitles(blocks, (href) => {
+      const id = pageIdFromHref(href)
+      return id ? this.pages.get(id)?.title : undefined
+    })
+    return mapBlockLinks(titled, (href) => this.toFileHref(pagePath, href))
   }
 
   toFileHref(pagePath: string, href: string): string {

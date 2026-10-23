@@ -193,7 +193,7 @@ export class Workspace {
         return { ok: false, reason: 'conflict' }
       }
       const { meta } = parsePage(disk)
-      const fileBlocks = mapBlockLinks(blocks, (href) => this.core.toFileHref(r.path, href))
+      const fileBlocks = this.core.toFileBlocks(r.path, blocks)
       await this.history.writeOwn(r, disk, serializePage({ ...meta, id }, fileBlocks))
       this.core.index.set(id, r.title, blocksText(blocks))
       return { ok: true, revision }
@@ -257,7 +257,7 @@ export class Workspace {
       const path = joinPath(dir, `${stem}.md`)
       const id = randomUUID()
       const meta: PageMeta = { id, extra: {}, ...(stem !== title ? { title } : {}) }
-      const fileBlocks = mapBlockLinks(blocks, (href) => core.toFileHref(path, href))
+      const fileBlocks = core.toFileBlocks(path, blocks)
       await core.writeText(path, serializePage(meta, fileBlocks))
       const record: PageRecord = { id, title, path, parentId }
       core.pages.set(id, record)
@@ -317,7 +317,7 @@ export class Workspace {
         }
         const blocks = mapBlockLinks(doc.blocks, remap)
         await mkdir(core.abs(dirOf(c.path)), { recursive: true })
-        const fileBlocks = mapBlockLinks(blocks, (href) => core.toFileHref(c.path, href))
+        const fileBlocks = core.toFileBlocks(c.path, blocks)
         await core.writeText(c.path, serializePage(meta, fileBlocks))
         core.index.set(c.id, c.title, blocksText(blocks))
         const order = core.state.order[c.from.id]

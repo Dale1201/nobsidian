@@ -114,10 +114,7 @@ export class PageImports {
         }
         const cover = page.cover && remap(page.cover)
         if (cover) meta.cover = core.toFileHref(path, cover)
-        const text = serializePage(
-          meta,
-          mapBlockLinks(blocks, (href) => core.toFileHref(path, href))
-        )
+        const text = serializePage(meta, core.toFileBlocks(path, blocks))
         texts.set(page.id, text)
         if (page.id !== rootId) indexed.set(page.id, blocksText(blocks))
         const file = join(out, ...path.split('/'))

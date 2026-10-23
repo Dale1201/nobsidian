@@ -110,6 +110,29 @@ describe('Workspace page operations', () => {
     })
   })
 
+  it('keeps mentions pointing at a renamed page, with its new title on save', async () => {
+    const ws = await Workspace.open(root, { settleMs: 0 })
+    const target = await ws.createPage(null)
+    await ws.renamePage(target.id, 'Plans')
+    const other = await ws.createPage(null)
+    const blocks: Block[] = [
+      {
+        type: 'paragraph',
+        props: {},
+        content: [
+          { type: 'pageMention', props: { href: pageLinkHref(target.id), title: 'Plans' } }
+        ],
+        children: []
+      }
+    ]
+    await ws.writePage(other.id, blocks)
+    expect(await read(other.path)).toContain('[Plans](Plans.md "mention")')
+    await ws.renamePage(target.id, 'Roadmap')
+    expect(await read(other.path)).toContain('(Roadmap.md "mention")')
+    await ws.writePage(other.id, blocks)
+    expect(await read(other.path)).toContain('[Roadmap](Roadmap.md "mention")')
+  })
+
   it('moves a page and keeps its relative links working', async () => {
     const ws = await Workspace.open(root, { settleMs: 0 })
     const target = await ws.createPage(null)
