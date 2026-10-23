@@ -107,7 +107,8 @@ test('Cmd+Enter ticks a to-do and opens a toggle', async ({ nb }) => {
   await page.locator(`${editor} .bn-inline-content`, { hasText: 'task' }).click()
   await page.keyboard.press('Meta+Enter')
   await waitForFile(join(nb.workspace, 'Enter.md'), '- [x] task')
-  await page.locator(`${editor} .bn-inline-content`, { hasText: 'fold' }).click()
+  // Arrow keys move ProseMirror's selection at once; a click lands a moment later than a key press.
+  await page.keyboard.press('ArrowDown')
   await page.keyboard.press('Meta+Enter')
   await expect(page.locator(`${editor} .bn-toggle-button`)).toHaveAttribute('aria-expanded', 'true')
 })
@@ -124,7 +125,8 @@ test('Cmd+/ opens the block menu with search focused', async ({ nb }) => {
 
 test('Cmd+Shift+Up moves the block, and Cmd+K opens search', async ({ nb }) => {
   const page = await openFile(nb, 'Move', 'One\n\nTwo\n')
-  await page.locator(`${editor} .bn-inline-content`, { hasText: 'Two' }).click()
+  await page.locator(`${editor} .bn-inline-content`, { hasText: 'One' }).click()
+  await page.keyboard.press('ArrowDown')
   await page.keyboard.press('Meta+Shift+ArrowUp')
   await expect(page.locator(`${editor} .bn-block-content`)).toHaveText([/Two/, /One/])
   await page.keyboard.press('Meta+k')
