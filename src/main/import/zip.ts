@@ -11,7 +11,7 @@ export interface ExportEntry {
   path: string
   size: number
   read(): Promise<Buffer>
-  copyTo(dest: string): Promise<void>
+  copyTo(dest: string, signal?: AbortSignal): Promise<void>
 }
 
 export interface ExportArchive {
@@ -23,11 +23,16 @@ export interface ExportArchive {
  * Opens one or more zips as one export: zips inside them (Notion's `Part-N.zip`) are copied to
  * `tempDir` and opened in turn, and every part's files share one tree of paths.
  */
-export async function openExport(zips: string[], tempDir: string): Promise<ExportArchive> {
+export async function openExport(
+  zips: string[],
+  tempDir: string,
+  signal?: AbortSignal
+): Promise<ExportArchive> {
   const entries = new Map<string, ExportEntry>()
   const open: ZipFile[] = []
   let nested = 0
   const add = async (path: string): Promise<void> => {
+    signal?.throwIfAborted()
     let zip: ZipFile
     try {
       zip = await yauzl.openPromise(path, { lazyEntries: true, autoClose: false })
@@ -43,7 +48,7 @@ export async function openExport(zips: string[], tempDir: string): Promise<Expor
       // Only the export's own part zips sit at its root; a zip attached to a page stays a file.
       if (!name.includes('/') && /\.zip$/i.test(name)) {
         const copy = join(tempDir, `nested-${++nested}.zip`)
-        await pipeline(await zip.openReadStreamPromise(entry), createWriteStream(copy))
+        await pipeline(await zip.openReadStreamPromise(entry), createWriteStream(copy), { signal })
         await add(copy)
         continue
       }
@@ -51,8 +56,8 @@ export async function openExport(zips: string[], tempDir: string): Promise<Expor
         path: name,
         size: entry.uncompressedSize,
         read: async () => readAll(await zip.openReadStreamPromise(entry)),
-        copyTo: async (dest) =>
-          pipeline(await zip.openReadStreamPromise(entry), createWriteStream(dest))
+        copyTo: async (dest, signal) =>
+          pipeline(await zip.openReadStreamPromise(entry), createWriteStream(dest), { signal })
       })
     }
   }

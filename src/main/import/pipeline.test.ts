@@ -40,6 +40,36 @@ function byTitle(manifest: ImportManifest, title: string): ImportManifest['pages
 }
 
 describe('runImport on the fixture export', () => {
+  it('stops at the next step once its signal is aborted', async () => {
+    const controller = new AbortController()
+    const converted: number[] = []
+    const run = runImport({
+      zips: [FIXTURE_ZIP],
+      staging: await staging(),
+      fetch: fakeFetch(),
+      signal: controller.signal,
+      onProgress: (p) => {
+        if (p.phase !== 'converting') return
+        converted.push(p.done)
+        if (p.done === 2) controller.abort()
+      }
+    })
+    await expect(run).rejects.toMatchObject({ name: 'AbortError' })
+    expect(converted).toEqual([0, 1, 2])
+  })
+
+  it('does nothing with a signal aborted before it starts', async () => {
+    const controller = new AbortController()
+    controller.abort()
+    const run = runImport({
+      zips: [FIXTURE_ZIP],
+      staging: await staging(),
+      fetch: fakeFetch(),
+      signal: controller.signal
+    })
+    await expect(run).rejects.toMatchObject({ name: 'AbortError' })
+  })
+
   it('converts every page as reviewed', async () => {
     const asked: string[] = []
     const manifest = await runImport({

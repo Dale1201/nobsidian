@@ -6,10 +6,13 @@ const MAX_BYTES = 25 * 1024 * 1024
 /** An image from the web, with a file name for it; throws when it is not a reasonable image. */
 export async function downloadImage(
   url: string,
-  fetchFn: typeof fetch = fetch
+  fetchFn: typeof fetch = fetch,
+  cancel?: AbortSignal
 ): Promise<{ name: string; data: Uint8Array }> {
   if (!/^https?:/i.test(url)) throw new Error('Not a web address')
-  const response = await fetchFn(testOrigin(url), { signal: AbortSignal.timeout(TIMEOUT_MS) })
+  const timeout = AbortSignal.timeout(TIMEOUT_MS)
+  const signal = cancel ? AbortSignal.any([cancel, timeout]) : timeout
+  const response = await fetchFn(testOrigin(url), { signal })
   if (!response.ok) {
     await response.body?.cancel()
     throw new Error(`HTTP ${response.status}`)

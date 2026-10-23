@@ -1,12 +1,13 @@
 import type { ImportResult, ImportStatus } from '../../shared/types'
 import type { Workspace } from '../workspace/workspace'
-import type { WorkerInput, WorkerMessage } from './types'
+import type { WorkerCommand, WorkerInput, WorkerMessage } from './types'
 
 /** The part of a `worker_threads` Worker the service uses, so tests can run imports in-process. */
 export interface ImportWorker {
   on(event: 'message', listener: (message: WorkerMessage) => void): unknown
   on(event: 'error', listener: (err: Error) => void): unknown
   on(event: 'exit', listener: (code: number) => void): unknown
+  postMessage(command: WorkerCommand): void
   terminate(): Promise<number>
 }
 
@@ -16,6 +17,7 @@ interface Run {
   /** A cancel can arrive before the folder exists, so the folder is a promise. */
   staging: Promise<string>
   worker: ImportWorker | null
+  exited: Promise<void>
   landing: boolean
   /** Resolves once the import has landed or ended, before its cleanup finishes. */
   settled: Promise<void>
@@ -30,7 +32,8 @@ export class ImportService {
 
   constructor(
     private readonly startWorker: (input: WorkerInput) => ImportWorker,
-    private readonly onStatus: (status: ImportStatus) => void
+    private readonly onStatus: (status: ImportStatus) => void,
+    private readonly stopTimeoutMs = 10_000
   ) {}
 
   get running(): boolean {
@@ -53,6 +56,7 @@ export class ImportService {
       workspace,
       staging: workspace.createImportStaging(),
       worker: null,
+      exited: Promise.resolve(),
       landing: false,
       settled,
       settle
@@ -74,6 +78,7 @@ export class ImportService {
       throw err
     }
     run.worker = worker
+    run.exited = new Promise((resolve) => worker.on('exit', () => resolve()))
     this.onStatus({ state: 'running', progress: { phase: 'reading', done: 0, total: 0 } })
     worker.on('message', (message) => {
       if (this.current !== run || run.landing) return
@@ -83,7 +88,7 @@ export class ImportService {
         this.end(run, { state: 'failed', message: message.message })
       } else {
         run.landing = true
-        void worker.terminate()
+        worker.postMessage({ type: 'stop' })
         this.onStatus({ state: 'running', progress: { phase: 'finishing', done: 0, total: 0 } })
         void workspace.landImport(message.manifest, staging).then(
           (result: ImportResult) =>
@@ -141,9 +146,23 @@ export class ImportService {
   }
 
   private async teardown(run: Run): Promise<void> {
-    await run.worker?.terminate()
+    if (run.worker) await this.stopWorker(run.worker, run.exited)
     const staging = await run.staging.catch(() => null)
     if (staging) await run.workspace.discardImport(staging)
+  }
+
+  /**
+   * Asks the worker to stop and waits for it to exit. Terminating it mid-unzip aborts the whole
+   * app in Node's zlib, so terminate is only a last resort for a worker that is stuck.
+   */
+  private async stopWorker(worker: ImportWorker, exited: Promise<void>): Promise<void> {
+    worker.postMessage({ type: 'stop' })
+    let timer: NodeJS.Timeout | undefined
+    const stuck = new Promise<'stuck'>((resolve) => {
+      timer = setTimeout(() => resolve('stuck'), this.stopTimeoutMs)
+    })
+    if ((await Promise.race([exited, stuck])) === 'stuck') await worker.terminate()
+    clearTimeout(timer)
   }
 }
 

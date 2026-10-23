@@ -47,6 +47,9 @@ export type WorkerMessage =
   | { type: 'done'; manifest: ImportManifest }
   | { type: 'error'; message: string }
 
+/** Sent to the worker, which aborts its run and exits on its own. */
+export type WorkerCommand = { type: 'stop' }
+
 export interface WorkerInput {
   zips: string[]
   staging: string

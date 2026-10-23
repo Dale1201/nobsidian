@@ -28,6 +28,8 @@ export interface ImportOptions {
   onProgress?(progress: ImportProgress): void
   /** Downloads an external image; tests replace the network. */
   fetch?: typeof fetch
+  /** Checked at every step; an aborted run rejects with an AbortError. */
+  signal?: AbortSignal
 }
 
 const NOTION_URL = /^https?:\/\/([\w-]+\.)*(notion\.so|notion\.site|notion\.com)\//i
@@ -35,10 +37,13 @@ const NOTION_URL = /^https?:\/\/([\w-]+\.)*(notion\.so|notion\.site|notion\.com)
 /** Reads a Notion HTML export and stages its pages and files; nothing in the workspace changes. */
 export async function runImport(options: ImportOptions): Promise<ImportManifest> {
   const startedAt = Date.now()
-  const progress = (p: ImportProgress): void => options.onProgress?.(p)
+  const progress = (p: ImportProgress): void => {
+    options.signal?.throwIfAborted()
+    options.onProgress?.(p)
+  }
   progress({ phase: 'reading', done: 0, total: 0 })
   await mkdir(join(options.staging, 'files'), { recursive: true })
-  const archive = await openExport(options.zips, options.staging)
+  const archive = await openExport(options.zips, options.staging, options.signal)
   try {
     const paths = [...archive.entries.keys()]
     const pages = exportPages(paths)
@@ -346,7 +351,7 @@ async function stageFiles(
     const dest = join(options.staging, 'files', file.key + safeExt(file.name))
     try {
       if (file.url) {
-        const image = await downloadImage(file.url, options.fetch).catch(() => null)
+        const image = await downloadImage(file.url, options.fetch, options.signal).catch(() => null)
         if (image) {
           await writeFile(dest, image.data)
           out.push({ key: file.key, name: image.name, path: dest })
@@ -355,10 +360,11 @@ async function stageFiles(
           out.push({ key: file.key, name: file.name, url: file.url })
         }
       } else {
-        await archive.entries.get(file.source)!.copyTo(dest)
+        await archive.entries.get(file.source)!.copyTo(dest, options.signal)
         out.push({ key: file.key, name: file.name, path: dest })
       }
     } catch {
+      options.signal?.throwIfAborted()
       issues.push({ kind: 'missingFile', detail: file.source, pageId: file.pageId })
       out.push({ key: file.key, name: file.name })
     }
