@@ -79,18 +79,20 @@ export function Sidebar(): React.JSX.Element {
           <span className="sidebar-row-title">Search</span>
         </button>
       </div>
-      <div className="sidebar-scroll">
+      <div
+        className="sidebar-scroll"
+        onDragOver={(e) => {
+          const el = e.currentTarget
+          const { top, bottom } = el.getBoundingClientRect()
+          if (e.clientY < top + 32) el.scrollTop -= 8
+          else if (e.clientY > bottom - 32) el.scrollTop += 8
+        }}
+      >
         {favoriteNodes.length > 0 && (
           <div className="sidebar-section">
             <div className="sidebar-section-title">Favorites</div>
             {favoriteNodes.map((node) => (
-              <SidebarRow
-                key={node.id}
-                node={node}
-                depth={0}
-                draggable={false}
-                expandable={false}
-              />
+              <SidebarRow key={node.id} node={node} depth={0} draggable={false} scope="favorites" />
             ))}
           </div>
         )}

@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import type { Block } from '@shared/core/blocks'
 import { RECENT_LIMIT, type Settings, type TreeSnapshot } from '@shared/ipc'
 import type { ImportStatus, PageNode, WorkspaceInfo } from '@shared/types'
-import { findNode, firstPageId } from './lib/tree'
+import { findNode, firstPageId, pathTo } from './lib/tree'
 
 const api = window.api
 
@@ -58,10 +58,15 @@ interface AppState {
   init: () => Promise<void>
   chooseWorkspace: () => Promise<void>
   applySnapshot: (snapshot: TreeSnapshot) => void
-  openPage: (id: string) => void
+  /** `scroll: false` when the page was picked in the sidebar, which is already showing it. */
+  openPage: (id: string, options?: { scroll?: boolean }) => void
   back: () => void
   forward: () => void
-  createPage: (parentId: string | null, index?: number) => Promise<string>
+  createPage: (
+    parentId: string | null,
+    index?: number,
+    options?: { expandKey?: string; scroll?: boolean }
+  ) => Promise<string>
   renamePage: (id: string, title: string) => Promise<void>
   movePage: (id: string, parentId: string | null, index: number) => Promise<void>
   trashPage: (id: string) => Promise<void>
@@ -74,6 +79,10 @@ interface AppState {
   toggleFavorite: (id: string) => Promise<void>
   updateSettings: (patch: Partial<Settings>) => Promise<void>
   setExpanded: (id: string, open: boolean) => Promise<void>
+  revealInSidebar: (id: string) => Promise<void>
+  /** The page whose sidebar row should scroll into view once it shows, or null. */
+  revealRequest: string | null
+  takeReveal: (id: string) => void
   setRenaming: (id: string | null) => void
   reportError: (action: string, err: unknown) => Promise<void>
   rescue: (id: string, rescue: Rescue) => Promise<void>
@@ -100,6 +109,7 @@ export const useApp = create<AppState>((set, get) => ({
   currentId: null,
   history: [],
   historyIndex: -1,
+  revealRequest: null,
   renamingId: null,
   error: null,
   overlay: null,
@@ -158,12 +168,23 @@ export const useApp = create<AppState>((set, get) => ({
     }
   },
 
-  openPage: (id) => {
+  openPage: (id, options) => {
     const { history, historyIndex, currentId, workspace, settings, trashEntry } = get()
     if (trashEntry) set({ trashEntry: null })
-    if (id === currentId) return
+    // The page is already open, but a search or link to it still shows it in the sidebar.
+    if (id === currentId) {
+      if (options?.scroll !== false) set({ revealRequest: id })
+      void get().revealInSidebar(id)
+      return
+    }
     const nextHistory = [...history.slice(0, historyIndex + 1), id]
-    set({ currentId: id, history: nextHistory, historyIndex: nextHistory.length - 1 })
+    set({
+      currentId: id,
+      history: nextHistory,
+      historyIndex: nextHistory.length - 1,
+      revealRequest: options?.scroll === false ? null : id
+    })
+    void get().revealInSidebar(id)
     if (workspace && settings) {
       const recent = [id, ...(settings.recent[workspace.root] ?? []).filter((r) => r !== id)]
       void get().updateSettings({
@@ -176,23 +197,29 @@ export const useApp = create<AppState>((set, get) => ({
   back: () => {
     const { history, historyIndex, tree } = get()
     for (let i = historyIndex - 1; i >= 0; i--) {
-      if (findNode(tree, history[i]))
-        return set({ currentId: history[i], historyIndex: i, trashEntry: null })
+      if (findNode(tree, history[i])) {
+        set({ currentId: history[i], historyIndex: i, trashEntry: null, revealRequest: history[i] })
+        void get().revealInSidebar(history[i])
+        return
+      }
     }
   },
 
   forward: () => {
     const { history, historyIndex, tree } = get()
     for (let i = historyIndex + 1; i < history.length; i++) {
-      if (findNode(tree, history[i]))
-        return set({ currentId: history[i], historyIndex: i, trashEntry: null })
+      if (findNode(tree, history[i])) {
+        set({ currentId: history[i], historyIndex: i, trashEntry: null, revealRequest: history[i] })
+        void get().revealInSidebar(history[i])
+        return
+      }
     }
   },
 
-  createPage: async (parentId, index) => {
+  createPage: async (parentId, index, options) => {
     const node = await api.invoke('page:create', { parentId, index })
-    if (parentId) await get().setExpanded(parentId, true)
-    get().openPage(node.id)
+    if (parentId) await get().setExpanded(options?.expandKey ?? parentId, true)
+    get().openPage(node.id, { scroll: options?.scroll })
     return node.id
   },
 
@@ -277,6 +304,24 @@ export const useApp = create<AppState>((set, get) => ({
     else current.delete(id)
     await get().updateSettings({
       expanded: { ...settings.expanded, [workspace.root]: [...current] }
+    })
+  },
+
+  takeReveal: (id) => {
+    if (get().revealRequest === id) set({ revealRequest: null })
+  },
+
+  revealInSidebar: async (id) => {
+    const { settings, workspace, tree } = get()
+    if (!settings || !workspace) return
+    const current = settings.expanded[workspace.root] ?? []
+    const missing = pathTo(tree, id)
+      .slice(0, -1)
+      .map((n) => n.id)
+      .filter((a) => !current.includes(a))
+    if (missing.length === 0) return
+    await get().updateSettings({
+      expanded: { ...settings.expanded, [workspace.root]: [...current, ...missing] }
     })
   },
 

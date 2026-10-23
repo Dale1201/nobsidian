@@ -1,4 +1,4 @@
-import { useState, type DragEvent } from 'react'
+import { useEffect, useRef, useState, type DragEvent } from 'react'
 import type { PageNode } from '@shared/types'
 import { dropTarget, type DropPosition } from '../lib/tree'
 import { useApp } from '../store'
@@ -23,12 +23,15 @@ export function SidebarRow({
   node,
   depth,
   draggable = true,
-  expandable = true
+  expandable = true,
+  scope = 'pages'
 }: {
   node: PageNode
   depth: number
   draggable?: boolean
   expandable?: boolean
+  /** Favorites keep their own expansion, apart from the page tree. */
+  scope?: 'pages' | 'favorites'
 }): React.JSX.Element {
   // A trashed page on screen is not in the sidebar, so no row is the current one.
   const currentId = useApp((s) => (s.trashEntry ? null : s.currentId))
@@ -39,7 +42,25 @@ export function SidebarRow({
   const [menu, setMenu] = useState<DOMRect | null>(null)
   const [drop, setDrop] = useState<DropPosition | null>(null)
 
-  const expanded = expandable && expandedIds.includes(node.id)
+  const rowRef = useRef<HTMLDivElement>(null)
+  const isCurrent = currentId === node.id
+  // Only the page tree answers a reveal, once, so favorites and remounts never move the list.
+  const revealRequest = useApp((s) => s.revealRequest)
+  useEffect(() => {
+    if (scope !== 'pages' || revealRequest !== node.id) return
+    rowRef.current?.scrollIntoView({ block: 'nearest' })
+    useApp.getState().takeReveal(node.id)
+  }, [revealRequest, node.id, scope])
+
+  const expandKey = scope === 'favorites' ? `fav:${node.id}` : node.id
+  const expanded = expandable && expandedIds.includes(expandKey)
+
+  const expandTimer = useRef<number | null>(null)
+  const stopExpandTimer = (): void => {
+    if (expandTimer.current !== null) window.clearTimeout(expandTimer.current)
+    expandTimer.current = null
+  }
+  useEffect(() => stopExpandTimer, [])
   const isFavorite = favorites.includes(node.id)
   const indent = 6 + depth * 14
 
@@ -54,16 +75,17 @@ export function SidebarRow({
   return (
     <>
       <div
+        ref={rowRef}
         className={[
           'sidebar-row',
-          currentId === node.id ? 'active' : '',
+          isCurrent ? 'active' : '',
           menu ? 'menu-open' : '',
           drop ? `drop-${drop}` : ''
         ].join(' ')}
         style={{ paddingLeft: indent }}
         data-testid={`sidebar-row-${node.title || 'Untitled'}`}
         draggable={draggable && renamingId !== node.id}
-        onClick={() => app().openPage(node.id)}
+        onClick={() => app().openPage(node.id, { scroll: false })}
         onDragStart={(e) => {
           e.dataTransfer.setData(DRAG_TYPE, node.id)
           e.dataTransfer.effectAllowed = 'move'
@@ -71,11 +93,24 @@ export function SidebarRow({
         onDragOver={(e) => {
           if (!draggable || !e.dataTransfer.types.includes(DRAG_TYPE)) return
           e.preventDefault()
-          setDrop(positionFor(e))
+          const position = positionFor(e)
+          setDrop(position)
+          if (position === 'inside' && expandable && !expanded && node.children.length) {
+            expandTimer.current ??= window.setTimeout(() => {
+              expandTimer.current = null
+              void app().setExpanded(expandKey, true)
+            }, 500)
+          } else {
+            stopExpandTimer()
+          }
         }}
-        onDragLeave={() => setDrop(null)}
+        onDragLeave={() => {
+          setDrop(null)
+          stopExpandTimer()
+        }}
         onDrop={(e) => {
           e.preventDefault()
+          stopExpandTimer()
           setDrop(null)
           const dragged = e.dataTransfer.getData(DRAG_TYPE)
           const target = dragged && dropTarget(app().tree, dragged, node.id, positionFor(e))
@@ -93,7 +128,7 @@ export function SidebarRow({
               aria-label={expanded ? 'Collapse' : 'Expand'}
               onClick={(e) => {
                 e.stopPropagation()
-                void app().setExpanded(node.id, !expanded)
+                void app().setExpanded(expandKey, !expanded)
               }}
             >
               <ChevronRightIcon size={12} className={`toggle-arrow ${expanded ? 'open' : ''}`} />
@@ -121,7 +156,10 @@ export function SidebarRow({
             aria-label="Add a page inside"
             onClick={(e) => {
               e.stopPropagation()
-              void app().createPage(node.id)
+              void app().createPage(node.id, undefined, {
+                expandKey,
+                scroll: scope === 'pages'
+              })
             }}
           >
             <PlusIcon size={14} />
@@ -176,7 +214,15 @@ export function SidebarRow({
       )}
       {expanded &&
         (node.children.length ? (
-          node.children.map((child) => <SidebarRow key={child.id} node={child} depth={depth + 1} />)
+          node.children.map((child) => (
+            <SidebarRow
+              key={child.id}
+              node={child}
+              depth={depth + 1}
+              scope={scope}
+              draggable={draggable}
+            />
+          ))
         ) : (
           <div className="sidebar-empty" style={{ paddingLeft: indent + 14 + 28 }}>
             No pages inside
