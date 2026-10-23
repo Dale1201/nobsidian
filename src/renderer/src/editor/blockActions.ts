@@ -51,3 +51,23 @@ export function deleteBlocks(editor: AppEditor, ids: string[]): void {
   const blocks = blocksOf(editor, ids)
   if (blocks.length) editor.removeBlocks(blocks)
 }
+
+/** Moves contiguous sibling blocks past their neighbour, or out of their parent at an edge. */
+export function moveBlocks(editor: AppEditor, ids: string[], direction: 'up' | 'down'): void {
+  const blocks = blocksOf(editor, ids)
+  if (blocks.length === 0) return
+  const edge = direction === 'up' ? blocks[0] : blocks[blocks.length - 1]
+  const target =
+    (direction === 'up' ? editor.getPrevBlock(edge) : editor.getNextBlock(edge)) ??
+    editor.getParentBlock(edge)
+  if (!target) return
+  editor.transact(() => {
+    editor.removeBlocks(blocks)
+    // Same ids, so a block selection still points at the moved blocks.
+    editor.insertBlocks(
+      blocks as unknown as AppPartialBlock[],
+      target,
+      direction === 'up' ? 'before' : 'after'
+    )
+  })
+}

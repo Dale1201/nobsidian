@@ -40,6 +40,7 @@ import { ColorPickContext, type PickedColor } from './colors'
 import { AppCreateLinkButton, AppEditLinkButton } from './LinkButtons'
 import { isValidLink, linkHrefFromEvent } from './links'
 import { blockSelection } from './blockSelection'
+import { BlockSelectionKeys } from './BlockSelectionKeys'
 import { listMarkers } from './listMarkersPlugin'
 import { markdownShortcuts, tildeStrike } from './markdownShortcuts'
 import { notionKeys } from './notionKeys'
@@ -307,6 +308,7 @@ export function Editor(props: EditorProps): React.JSX.Element {
               <FormattingToolbarController formattingToolbar={AppFormattingToolbar} />
               <LinkToolbarController linkToolbar={AppLinkToolbar} />
               <HighlightShortcut color={props.lastColor ?? DEFAULT_COLOR} />
+              <BlockSelectionKeys />
             </BlockMenuHost>
           </BlockNoteView>
         </ColorPickContext.Provider>
