@@ -59,7 +59,7 @@ import { BlockMenuHost } from './menus/BlockMenu'
 import { SlashMenu } from './menus/SlashMenu'
 import { TurnIntoButton } from './menus/TurnIntoButton'
 import { querySlashItems, type SlashItem } from './slashItems'
-import { usePickerItems } from './usePickerItems'
+import { opensAtWordStart, usePickerItems } from './usePickerItems'
 
 export type EditorProps = {
   initialBlocks: AppPartialBlock[]
@@ -307,6 +307,7 @@ export function Editor(props: EditorProps): React.JSX.Element {
                 <>
                   <SuggestionMenuController
                     triggerCharacter="@"
+                    shouldOpen={opensAtWordStart}
                     getItems={pickerItems}
                     suggestionMenuComponent={PagePicker}
                     onItemClick={(item) => item.onItemClick()}

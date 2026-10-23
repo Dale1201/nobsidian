@@ -1,3 +1,4 @@
+import type { Transaction } from 'prosemirror-state'
 import { useCallback } from 'react'
 import { pageLinkHref } from '@shared/core/links'
 import type { PageNode } from '@shared/types'
@@ -14,6 +15,14 @@ function flattenPages(nodes: PageNode[], parents: string[] = []): PickerPage[] {
     { id: n.id, title: n.title, icon: n.icon, path: parents.join(' / ') },
     ...flattenPages(n.children, [...parents, n.title || 'Untitled'])
   ])
+}
+
+/** `@` opens the picker only at the start of a word, as in Notion, so email addresses stay text. */
+export function opensAtWordStart(tr: Transaction): boolean {
+  const { $from } = tr.selection
+  if ($from.parentOffset === 0) return true
+  const before = $from.parent.textBetween($from.parentOffset - 1, $from.parentOffset, '\n', ' ')
+  return /\s/.test(before)
 }
 
 /** Items for the `@` and `[[` page picker: matching pages, then a new page with the query as title. */

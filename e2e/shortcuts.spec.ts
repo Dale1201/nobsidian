@@ -173,3 +173,45 @@ test('a click or Enter returns to typing; copy takes the selected blocks', async
   await page.locator(`${editor} .bn-inline-content`, { hasText: 'Beta' }).click()
   await expect(page.locator(`${editor} .nb-block-selected`)).toHaveCount(0)
 })
+
+test('a selection holding a parent and its child deletes both, and nothing else', async ({
+  nb
+}) => {
+  const page = await openFile(nb, 'Nested', '- parent\n  - child\n- after\n')
+  await page.locator(`${editor} .bn-inline-content`, { hasText: 'parent' }).click()
+  await page.keyboard.press('Escape')
+  await page.keyboard.press('Shift+ArrowDown')
+  await expect(page.locator(`${editor} .nb-block-selected`).first()).toContainText('child')
+  await page.keyboard.press('Backspace')
+  await expect(page.locator(`${editor} .bn-block-content`)).toHaveText(['after'])
+})
+
+test('arrow keys skip blocks hidden in a closed toggle', async ({ nb }) => {
+  const page = await openFile(
+    nb,
+    'Hidden',
+    '<details>\n<summary>fold</summary>\n\nsecret\n\n</details>\n\nvisible\n'
+  )
+  await expect(page.locator(`${editor} .bn-toggle-button`)).toHaveAttribute(
+    'aria-expanded',
+    'false'
+  )
+  await page.locator(`${editor} .bn-inline-content`, { hasText: 'fold' }).click()
+  await page.keyboard.press('Escape')
+  await page.keyboard.press('ArrowDown')
+  await expect(page.locator(`${editor} .nb-block-selected`)).toHaveText(['visible'])
+  await page.keyboard.press('Backspace')
+  await waitForFile(join(nb.workspace, 'Hidden.md'), /^(?![\s\S]*visible)/)
+  expect(await waitForFile(join(nb.workspace, 'Hidden.md'), 'secret')).toContain('secret')
+})
+
+test('tildes in ordinary text are left alone', async ({ nb }) => {
+  const { page } = nb
+  await newPage(page, 'Tildes')
+  const text = 'takes ~5 to ~10 minutes, copy ~/a to ~/b, a ~ b ~ c'
+  await page.keyboard.type(text)
+  await expect(page.locator(`${editor} .bn-inline-content`).first()).toHaveText(text)
+  await expect(page.locator(`${editor} s`)).toHaveCount(0)
+  // Markdown escapes the tildes so they are not read back as strikethrough.
+  await waitForFile(join(nb.workspace, 'Tildes.md'), text.replaceAll('~', '\\~'))
+})

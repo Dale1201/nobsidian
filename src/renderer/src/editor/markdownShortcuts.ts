@@ -37,7 +37,9 @@ const singleTildeStrike = Extension.create({
   name: 'nbSingleTildeStrike',
   addInputRules() {
     const strike = this.editor.schema.marks.strike
-    return strike ? [markInputRule({ find: /(?:^|\s)(~(?!~)([^~]+)~)$/, type: strike })] : []
+    // Text must hug both tildes, so "~5 to ~10" and "~/a to ~/b" stay as typed.
+    const find = /(?:^|\s)(~(?![~\s])((?:[^~]*[^~\s])?)~)$/
+    return strike ? [markInputRule({ find, type: strike })] : []
   }
 })
 

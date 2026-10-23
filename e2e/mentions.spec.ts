@@ -53,3 +53,25 @@ test('a mention shows the new title after a rename, and goes grey when the page 
   await page.getByRole('menuitem', { name: 'Delete' }).click()
   await expect(page.locator(`${editor} .nb-mention`)).toHaveAttribute('data-missing', 'true')
 })
+
+test('@ inside an email address or before a space does not create pages', async ({ nb }) => {
+  const { page } = nb
+  await newPage(page, 'Mail')
+  const rows = page.locator('[data-testid^="sidebar-row-"]')
+  const before = await rows.count()
+  await page.keyboard.type('mail dale@easygo.io')
+  await expect(page.locator('.page-picker')).toHaveCount(0)
+  await page.keyboard.press('Enter')
+  await page.keyboard.type('meet @ 5pm')
+  await expect(page.locator('.page-picker')).toHaveCount(0)
+  await page.keyboard.press('Enter')
+  await expect(page.locator(`${editor} .bn-inline-content`)).toHaveText([
+    'mail dale@easygo.io',
+    'meet @ 5pm',
+    ''
+  ])
+  await expect(page.locator(`${editor} .nb-mention`)).toHaveCount(0)
+  const saved = await waitForFile(join(nb.workspace, 'Mail.md'), 'meet @ 5pm')
+  expect(saved).not.toContain('"mention"')
+  await expect(rows).toHaveCount(before)
+})

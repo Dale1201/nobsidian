@@ -1,5 +1,11 @@
-import type { DefaultReactSuggestionItem, SuggestionMenuProps } from '@blocknote/react'
-import { Fragment } from 'react'
+import { SuggestionMenu } from '@blocknote/core/extensions'
+import {
+  useExtension,
+  useExtensionState,
+  type DefaultReactSuggestionItem,
+  type SuggestionMenuProps
+} from '@blocknote/react'
+import { Fragment, useEffect } from 'react'
 import { PlusIcon } from '../../components/icons'
 import { PageIconView } from '../../components/PageIconView'
 import { useSuggestionKeys } from './useSuggestionKeys'
@@ -15,6 +21,16 @@ export function PagePicker({
   onItemClick
 }: SuggestionMenuProps<PickerItem>): React.JSX.Element {
   const { active, setActive } = useSuggestionKeys(items, onItemClick)
+  const menu = useExtension(SuggestionMenu)
+  const query = useExtensionState(SuggestionMenu, { selector: (s) => s?.query ?? '' })
+  const trigger = useExtensionState(SuggestionMenu, { selector: (s) => s?.triggerCharacter })
+  const hasPages = items.some((item) => item.key !== 'create')
+
+  // After "@", a space first or a phrase naming no page is ordinary writing; "[[" always means a link.
+  useEffect(() => {
+    if (trigger !== '@') return
+    if (query.startsWith(' ') || (query.includes(' ') && !hasPages)) menu.closeMenu()
+  }, [trigger, query, hasPages, menu])
   return (
     <div className="menu page-picker" role="listbox">
       <div className="menu-section">Link to page</div>
