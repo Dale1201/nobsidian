@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   chmod,
   mkdtemp,
@@ -182,11 +182,10 @@ describe('Edits made outside the app', () => {
     await ws.reconcile([change('Note.md'), { kind: 'add', path: 'Other.md' }])
     expect(ws.tree()[0].id).toBe(id)
     expect(ws.favorites()).toEqual([id])
-    const restored = new Promise<void>((resolve) =>
-      ws.onEvent((e) => e.type === 'tree' && resolve())
+    // Every rescan reports a tree change, and an unsettled file waits for a later one.
+    await vi.waitFor(async () =>
+      expect(await read('Note.md')).toBe(`---\nid: ${id}\n---\n\nRewritten without frontmatter\n`)
     )
-    await restored
-    expect(await read('Note.md')).toBe(`---\nid: ${id}\n---\n\nRewritten without frontmatter\n`)
     ws.close()
   })
 
@@ -196,13 +195,12 @@ describe('Edits made outside the app', () => {
     const before = (await ws.readPage(id)).revision
     await write('Note.md', 'Rewritten without frontmatter\n')
     await ws.reconcile([change('Note.md'), { kind: 'add', path: 'Other.md' }])
-    const restored = new Promise<void>((resolve) =>
-      ws.onEvent((e) => e.type === 'tree' && resolve())
-    )
-    await restored
-    expect(await read('Note.md')).toContain(`id: ${id}`)
+    // The revision moves once the restored text is taken in, just after the file is written.
+    await vi.waitFor(async () => {
+      expect(await read('Note.md')).toContain(`id: ${id}`)
+      expect((await ws.readPage(id)).revision).toBe(before + 1)
+    })
     const doc = await ws.readPage(id)
-    expect(doc.revision).toBe(before + 1)
     expect(await ws.writePage(id, [text('mine')], { revision: doc.revision })).toMatchObject({
       ok: true
     })
