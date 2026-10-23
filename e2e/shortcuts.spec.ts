@@ -1,3 +1,4 @@
+import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Page } from '@playwright/test'
 import { expect, test } from './fixtures'
@@ -214,4 +215,28 @@ test('tildes in ordinary text are left alone', async ({ nb }) => {
   await expect(page.locator(`${editor} s`)).toHaveCount(0)
   // Markdown escapes the tildes so they are not read back as strikethrough.
   await waitForFile(join(nb.workspace, 'Tildes.md'), text.replaceAll('~', '\\~'))
+})
+
+test('Cmd+Enter acts on the selected block, not the hidden caret', async ({ nb }) => {
+  const page = await openFile(nb, 'Ticks', '- [ ] one\n- [ ] two\n')
+  await page.locator(`${editor} .bn-inline-content`, { hasText: 'one' }).click()
+  await page.keyboard.press('Escape')
+  await page.keyboard.press('ArrowDown')
+  await expect(page.locator(`${editor} .nb-block-selected`)).toHaveText(['two'])
+  await page.keyboard.press('Meta+Enter')
+  await waitForFile(join(nb.workspace, 'Ticks.md'), '- [ ] one\n- [x] two')
+})
+
+test('Enter leaves a selected page link selected, as it has no text to type in', async ({ nb }) => {
+  await writeFile(join(nb.workspace, 'Target.md'), 't\n')
+  await writeFile(join(nb.workspace, 'Links.md'), 'One\n\n[Target](Target.md "page")\n')
+  const page = await nb.relaunch()
+  await page.getByTestId('sidebar-row-Links').click()
+  await page.locator(`${editor} .bn-inline-content`, { hasText: 'One' }).click()
+  await page.keyboard.press('Escape')
+  await page.keyboard.press('ArrowDown')
+  const selected = page.locator(`${editor} .nb-block-selected`)
+  await expect(selected).toHaveText([/Target/])
+  await page.keyboard.press('Enter')
+  await expect(selected).toHaveText([/Target/])
 })

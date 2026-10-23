@@ -195,7 +195,7 @@ export class Workspace {
       const { meta } = parsePage(disk)
       const fileBlocks = this.core.toFileBlocks(r.path, blocks)
       await this.history.writeOwn(r, disk, serializePage({ ...meta, id }, fileBlocks))
-      this.core.index.set(id, r.title, blocksText(blocks))
+      this.core.index.set(id, r.title, blocksText(fileBlocks))
       return { ok: true, revision }
     })
   }
@@ -262,7 +262,7 @@ export class Workspace {
       const record: PageRecord = { id, title, path, parentId }
       core.pages.set(id, record)
       core.knownPaths.set(id, path)
-      core.index.set(id, title, blocksText(blocks))
+      core.index.set(id, title, blocksText(fileBlocks))
       core.insertOrder(parentId, id, index)
       await core.persist()
       return { id, title, path, children: [] }
@@ -319,7 +319,7 @@ export class Workspace {
         await mkdir(core.abs(dirOf(c.path)), { recursive: true })
         const fileBlocks = core.toFileBlocks(c.path, blocks)
         await core.writeText(c.path, serializePage(meta, fileBlocks))
-        core.index.set(c.id, c.title, blocksText(blocks))
+        core.index.set(c.id, c.title, blocksText(fileBlocks))
         const order = core.state.order[c.from.id]
         if (order) core.state.order[c.id] = order.map((child) => newIds.get(child) ?? child)
       }

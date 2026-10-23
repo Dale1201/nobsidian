@@ -132,7 +132,7 @@ export class PageHistory {
     r.icon = doc.meta.icon
     const revision = core.revision(id) + 1
     core.revisions.set(id, revision)
-    core.index.set(id, r.title, blocksText(doc.blocks))
+    core.index.set(id, r.title, blocksText(fileBlocks))
     core.emit({ type: 'page', id, revision })
   }
 }

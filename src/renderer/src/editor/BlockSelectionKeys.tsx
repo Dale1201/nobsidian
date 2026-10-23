@@ -14,6 +14,21 @@ function onScreen(dom: HTMLElement, id: string): boolean {
   return el !== null && el.getClientRects().length > 0
 }
 
+function clipboardHTML(editor: AppEditor, ids: string[]): string {
+  const view = editor.prosemirrorView
+  const wanted = new Set(ids)
+  let from = Infinity
+  let to = -Infinity
+  view.state.doc.descendants((node, pos) => {
+    if (node.type.name !== 'blockContainer' || !wanted.has(node.attrs.id)) return true
+    from = Math.min(from, pos)
+    to = Math.max(to, pos + node.nodeSize)
+    return false
+  })
+  if (from > to) return ''
+  return view.serializeForClipboard(view.state.doc.slice(from, to)).dom.innerHTML
+}
+
 function onSelectionKey(
   editor: AppEditor,
   dom: HTMLElement,
@@ -27,11 +42,12 @@ function onSelectionKey(
     return true
   }
   if (e.key === 'Enter' && !mod) {
-    selectBlocks(editor, [])
-    try {
-      editor.setTextCursorPosition(ids[ids.length - 1], 'end')
-    } catch {
-      // A block without text has nowhere to put the cursor; it stays unselected.
+    const last = editor.getBlock(ids[ids.length - 1])
+    // A block without text, such as a page link, would be left invisibly node-selected,
+    // and the next paste would replace it; it stays selected instead.
+    if (last?.content !== undefined) {
+      selectBlocks(editor, [])
+      editor.setTextCursorPosition(last, 'end')
     }
     return true
   }
@@ -80,7 +96,10 @@ export function BlockSelectionKeys(): null {
     const onClipboard = (e: ClipboardEvent): void => {
       const ids = selectedBlockIds(editor)
       if (!ids.length || !e.clipboardData) return
-      const blocks = blocksOf(editor, topLevelIds(editor.document, ids))
+      const roots = topLevelIds(editor.document, ids)
+      const blocks = blocksOf(editor, roots)
+      // BlockNote's own format, so a paste back into the app keeps mentions and custom blocks.
+      e.clipboardData.setData('blocknote/html', clipboardHTML(editor, roots))
       e.clipboardData.setData('text/html', editor.blocksToHTMLLossy(blocks))
       e.clipboardData.setData('text/plain', editor.blocksToMarkdownLossy(blocks))
       e.preventDefault()

@@ -24,18 +24,27 @@ const TURN_KEYS: Record<string, TurnIntoId> = {
   'Mod-Alt-8': 'code'
 }
 
-function toggleBlock(editor: AppEditor): boolean {
-  const { block } = editor.getTextCursorPosition()
-  if (block.type === 'checkListItem') {
-    editor.updateBlock(block, { props: { checked: !block.props.checked } })
-    return true
+/** Ticks to-dos and opens or closes toggles: the selected blocks, or the one with the caret. */
+function toggleBlocks(editor: AppEditor): boolean {
+  let handled = false
+  for (const id of targetBlockIds(editor)) {
+    const block = editor.getBlock(id)
+    if (!block) continue
+    if (block.type === 'checkListItem') {
+      editor.updateBlock(block, { props: { checked: !block.props.checked } })
+      handled = true
+      continue
+    }
+    // Its own button, not one of a nested toggle child.
+    const button = editor.domElement?.querySelector<HTMLElement>(
+      `.bn-block-outer[data-id="${id}"] > .bn-block > .bn-toggle-frame > .bn-toggle-button`
+    )
+    if (button) {
+      button.click()
+      handled = true
+    }
   }
-  const button = editor.domElement?.querySelector<HTMLElement>(
-    `.bn-block-outer[data-id="${block.id}"] .bn-toggle-button`
-  )
-  if (!button) return false
-  button.click()
-  return true
+  return handled
 }
 
 export const notionKeys = createExtension({
@@ -58,6 +67,6 @@ export const notionKeys = createExtension({
       if (wasSelected) selectBlocks(app, copies)
       return true
     },
-    'Mod-Enter': ({ editor }) => toggleBlock(editor as AppEditor)
+    'Mod-Enter': ({ editor }) => toggleBlocks(editor as AppEditor)
   }
 })
