@@ -54,6 +54,13 @@ export function phrasingToInline(nodes: PhrasingContent[]): ParsedInline {
           target.push({ type: 'inlineMath', props: { latex: node.value } })
           break
         case 'link': {
+          if (node.title === 'mention') {
+            const inner: Inline[] = []
+            walk(node.children, {}, inner)
+            const title = inner.map((i) => (i.type === 'text' ? i.text : '')).join('')
+            target.push({ type: 'pageMention', props: { href: node.url, title } })
+            break
+          }
           const link: LinkInline = { type: 'link', href: node.url, content: [] }
           const inner: Inline[] = []
           walk(node.children, styles, inner)
@@ -192,6 +199,16 @@ function toSegments(content: Inline[], options: InlineToPhrasingOptions): Segmen
   for (const item of content) {
     if (item.type === 'inlineMath') {
       segments.push({ kind: 'atom', node: { type: 'inlineMath', value: item.props.latex } })
+    } else if (item.type === 'pageMention') {
+      segments.push({
+        kind: 'atom',
+        node: {
+          type: 'link',
+          url: item.props.href,
+          title: 'mention',
+          children: [{ type: 'text', value: item.props.title || 'Untitled' }]
+        }
+      })
     } else if (item.type === 'link') {
       const children = segmentsToPhrasing(toSegments(item.content, options), options)
       segments.push({ kind: 'atom', node: { type: 'link', url: item.href, children } })

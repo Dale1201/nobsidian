@@ -565,3 +565,41 @@
   padding: 0 6px;
   font-size: 14px;
 }
+
+/* ---------- Page mentions ---------- */
+.nb-mention {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 2px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.nb-mention:hover {
+  background-color: var(--bn-colors-hovered-background);
+}
+.nb-mention-icon {
+  display: inline-flex;
+  align-self: center;
+  font-size: 0.95em;
+}
+.nb-mention-icon img {
+  width: 14px;
+  height: 14px;
+  border-radius: 2px;
+}
+.nb-mention-title {
+  font-weight: 500;
+  text-decoration: underline;
+  text-decoration-color: var(--nb-link-underline);
+  text-underline-offset: 2px;
+}
+.nb-mention[data-missing] {
+  color: var(--nb-muted);
+  cursor: default;
+}
+.menu.page-picker {
+  position: static;
+  width: 324px;
+  max-width: none;
+  overflow-y: auto;
+}

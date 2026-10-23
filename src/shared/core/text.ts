@@ -45,6 +45,7 @@ export function inlineText(content: Inline[]): string {
     .map((item) => {
       if (item.type === 'text') return item.text
       if (item.type === 'link') return item.content.map((c) => c.text).join('')
+      if (item.type === 'pageMention') return item.props.title
       return item.props.latex
     })
     .join('')

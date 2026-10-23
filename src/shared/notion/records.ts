@@ -1,5 +1,6 @@
 import type { Block, BlockColors, Inline, StyledText, Styles } from '../core/blocks'
 import { DEFAULT_CALLOUT_ICON } from '../core/blocks'
+import { pageIdFromHref } from '../core/links'
 import { normalizeInline } from '../core/normalize'
 import { inlineText } from '../core/text'
 import { notionColor } from './colors'
@@ -448,8 +449,14 @@ class RecordMapper {
           case 'p': {
             const id = String(arg)
             const notionId = id.replace(/-/g, '')
-            href = this.ctx.link(`https://www.notion.so/${notionId}`, id)
-            replaced = this.styled(this.names.pages.get(notionId) ?? 'Untitled', styles)
+            const link = this.ctx.link(`https://www.notion.so/${notionId}`, id)
+            const title = this.names.pages.get(notionId) ?? 'Untitled'
+            if (pageIdFromHref(link)) {
+              replaced = { type: 'pageMention', props: { href: link, title } }
+            } else {
+              href = link
+              replaced = this.styled(title, styles)
+            }
             break
           }
           case 'u':

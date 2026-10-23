@@ -210,6 +210,12 @@ export function PageEditor({
         void useApp.getState().setExpanded(doc.id, true)
         return pageLinkHref(node.id)
       }}
+      createLinkedPage={async (title) => {
+        await save('auto')
+        const node = await api.invoke('page:create', { parentId: doc.id, title })
+        void useApp.getState().setExpanded(doc.id, true)
+        return pageLinkHref(node.id)
+      }}
       openLink={openHref}
       pageLink={pageLink}
       lastColor={lastColor}

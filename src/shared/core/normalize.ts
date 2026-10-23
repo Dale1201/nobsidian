@@ -99,6 +99,8 @@ export function normalizeInline(content: Inline[]): Inline[] {
         href: item.href,
         content: linkText(normalizeInline(item.content) as StyledText[])
       })
+    } else if (item.type === 'pageMention') {
+      out.push({ type: 'pageMention', props: { href: item.props.href, title: item.props.title } })
     } else {
       out.push({ type: 'inlineMath', props: { latex: item.props.latex } })
     }

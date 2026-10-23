@@ -40,7 +40,10 @@ import { ColorPickContext, type PickedColor } from './colors'
 import { AppCreateLinkButton, AppEditLinkButton } from './LinkButtons'
 import { isValidLink, linkHrefFromEvent } from './links'
 import { blockSelection } from './blockSelection'
+import { BlockSelectionKeys } from './BlockSelectionKeys'
 import { listMarkers } from './listMarkersPlugin'
+import { markdownShortcuts, tildeStrike } from './markdownShortcuts'
+import { notionKeys } from './notionKeys'
 import type { WebImage } from './notionPaste'
 import {
   PageLinkContext,
@@ -51,10 +54,12 @@ import {
   type PageLinkContextValue
 } from './schema'
 import { AppSideMenu } from './menus/AppSideMenu'
+import { PagePicker } from './menus/PagePicker'
 import { BlockMenuHost } from './menus/BlockMenu'
 import { SlashMenu } from './menus/SlashMenu'
 import { TurnIntoButton } from './menus/TurnIntoButton'
 import { querySlashItems, type SlashItem } from './slashItems'
+import { opensAtWordStart, usePickerItems } from './usePickerItems'
 
 export type EditorProps = {
   initialBlocks: AppPartialBlock[]
@@ -63,6 +68,8 @@ export type EditorProps = {
   uploadFile(file: File): Promise<string>
   resolveFileUrl(url: string): Promise<string>
   createSubPage(): Promise<string>
+  /** Creates a sub-page with this title for a mention, and returns its link. */
+  createLinkedPage?(title: string): Promise<string>
   openLink(href: string): void
   pageLink: PageLinkContextValue
   editable?: boolean
@@ -192,7 +199,14 @@ export function Editor(props: EditorProps): React.JSX.Element {
       }
     },
     dropCursor: multiColumnDropCursor,
-    extensions: [syntaxHighlighter, listMarkers, blockSelection],
+    extensions: [
+      syntaxHighlighter,
+      listMarkers,
+      blockSelection,
+      markdownShortcuts,
+      tildeStrike,
+      notionKeys
+    ],
     uploadFile: (file) => props.uploadFile(file),
     resolveFileUrl: (url) => props.resolveFileUrl(url),
     pasteHandler: ({ event, editor, defaultPasteHandler }) => {
@@ -253,6 +267,8 @@ export function Editor(props: EditorProps): React.JSX.Element {
     }
   })
 
+  const pickerItems = usePickerItems(editor, props.createLinkedPage)
+
   const { uploadFile, editable } = props
   useEffect(() => {
     if (editable === false) return
@@ -287,6 +303,23 @@ export function Editor(props: EditorProps): React.JSX.Element {
             onChange={(ed) => props.onChange(ed.document)}
           >
             <BlockMenuHost>
+              {props.editable !== false && (
+                <>
+                  <SuggestionMenuController
+                    triggerCharacter="@"
+                    shouldOpen={opensAtWordStart}
+                    getItems={pickerItems}
+                    suggestionMenuComponent={PagePicker}
+                    onItemClick={(item) => item.onItemClick()}
+                  />
+                  <SuggestionMenuController
+                    triggerCharacter="[["
+                    getItems={pickerItems}
+                    suggestionMenuComponent={PagePicker}
+                    onItemClick={(item) => item.onItemClick()}
+                  />
+                </>
+              )}
               <SuggestionMenuController
                 triggerCharacter="/"
                 getItems={(query: string): Promise<SlashItem[]> =>
@@ -298,6 +331,7 @@ export function Editor(props: EditorProps): React.JSX.Element {
               <FormattingToolbarController formattingToolbar={AppFormattingToolbar} />
               <LinkToolbarController linkToolbar={AppLinkToolbar} />
               <HighlightShortcut color={props.lastColor ?? DEFAULT_COLOR} />
+              <BlockSelectionKeys />
             </BlockMenuHost>
           </BlockNoteView>
         </ColorPickContext.Provider>

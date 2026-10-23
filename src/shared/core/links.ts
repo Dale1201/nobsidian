@@ -57,9 +57,51 @@ function mapBlock(block: Block, map: (href: string) => string): Block {
 }
 
 function mapInline(content: Inline[], map: (href: string) => string): Inline[] {
-  return content.map((item) =>
-    item.type === 'link' ? { ...item, href: mapNonEmpty(item.href, map) } : item
-  )
+  return content.map((item) => {
+    if (item.type === 'link') return { ...item, href: mapNonEmpty(item.href, map) }
+    if (item.type === 'pageMention') {
+      return { ...item, props: { ...item.props, href: mapNonEmpty(item.props.href, map) } }
+    }
+    return item
+  })
+}
+
+/** Returns copies of `blocks` with every inline item, table cells included, passed through `map`. */
+export function mapBlockInline(blocks: Block[], map: (item: Inline) => Inline): Block[] {
+  return blocks.map((block) => {
+    const children = mapBlockInline(block.children, map)
+    if (block.type === 'table') {
+      return {
+        ...block,
+        content: {
+          ...block.content,
+          rows: block.content.rows.map((row) => ({
+            cells: row.cells.map((cell) =>
+              Array.isArray(cell) ? cell.map(map) : { ...cell, content: cell.content.map(map) }
+            )
+          }))
+        },
+        children
+      }
+    }
+    if ('content' in block && Array.isArray(block.content) && block.type !== 'codeBlock') {
+      return { ...block, content: (block.content as Inline[]).map(map), children } as Block
+    }
+    return { ...block, children } as Block
+  })
+}
+
+export function refreshMentionTitles(
+  blocks: Block[],
+  titleOf: (href: string) => string | undefined
+): Block[] {
+  return mapBlockInline(blocks, (item) => {
+    if (item.type !== 'pageMention') return item
+    const title = titleOf(item.props.href)
+    return title === undefined || title === item.props.title
+      ? item
+      : { ...item, props: { ...item.props, title } }
+  })
 }
 
 function mapNonEmpty(href: string, map: (href: string) => string): string {

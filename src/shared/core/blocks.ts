@@ -41,7 +41,12 @@ export interface InlineMath {
   props: { latex: string }
 }
 
-export type Inline = StyledText | LinkInline | InlineMath
+export interface PageMentionInline {
+  type: 'pageMention'
+  props: { href: string; title: string }
+}
+
+export type Inline = StyledText | LinkInline | InlineMath | PageMentionInline
 
 export interface TableCell {
   type: 'tableCell'
