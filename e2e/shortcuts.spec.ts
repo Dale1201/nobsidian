@@ -68,3 +68,65 @@ test('files with > quotes still open as quotes', async ({ nb }) => {
   const page = await openFile(nb, 'Quoted', '> Quoted text\n')
   await expect(page.locator(`${editor} [data-content-type="quote"]`)).toHaveCount(1)
 })
+
+test('Cmd+D duplicates the block', async ({ nb }) => {
+  const page = await openFile(nb, 'Dup', 'Copy me\n')
+  await page.locator(`${editor} .bn-inline-content`, { hasText: 'Copy me' }).click()
+  await page.keyboard.press('Meta+d')
+  await expect(page.locator(`${editor} .bn-block-content`, { hasText: 'Copy me' })).toHaveCount(2)
+})
+
+const turnKeys: [string, string][] = [
+  ['4', 'checkListItem'],
+  ['5', 'bulletListItem'],
+  ['6', 'numberedListItem'],
+  ['7', 'toggleListItem'],
+  ['8', 'codeBlock'],
+  ['1', 'heading'],
+  ['0', 'paragraph']
+]
+
+test('Cmd+Option+number turns the block into Notion types', async ({ nb }) => {
+  const page = await openFile(nb, 'Turns', 'Shape shifter\n')
+  for (const [key, type] of turnKeys) {
+    await page.locator(`${editor} .bn-block-content`).first().click()
+    await page.keyboard.press(`Meta+Alt+${key}`)
+    await expect(page.locator(`${editor} .bn-block-content`).first()).toHaveAttribute(
+      'data-content-type',
+      type
+    )
+  }
+})
+
+test('Cmd+Enter ticks a to-do and opens a toggle', async ({ nb }) => {
+  const page = await openFile(
+    nb,
+    'Enter',
+    '- [ ] task\n\n<details>\n<summary>fold</summary>\n\ninside\n\n</details>\n'
+  )
+  await page.locator(`${editor} .bn-inline-content`, { hasText: 'task' }).click()
+  await page.keyboard.press('Meta+Enter')
+  await waitForFile(join(nb.workspace, 'Enter.md'), '- [x] task')
+  await page.locator(`${editor} .bn-inline-content`, { hasText: 'fold' }).click()
+  await page.keyboard.press('Meta+Enter')
+  await expect(page.locator(`${editor} .bn-toggle-button`)).toHaveAttribute('aria-expanded', 'true')
+})
+
+test('Cmd+/ opens the block menu with search focused', async ({ nb }) => {
+  const page = await openFile(nb, 'Slash', 'Change me\n')
+  await page.locator(`${editor} .bn-inline-content`, { hasText: 'Change me' }).click()
+  await page.keyboard.press('Meta+/')
+  await expect(page.getByPlaceholder('Search actions…')).toBeFocused()
+  await page.keyboard.type('heading 2')
+  await page.keyboard.press('Enter')
+  await waitForFile(join(nb.workspace, 'Slash.md'), '## Change me')
+})
+
+test('Cmd+Shift+Up moves the block, and Cmd+K opens search', async ({ nb }) => {
+  const page = await openFile(nb, 'Move', 'One\n\nTwo\n')
+  await page.locator(`${editor} .bn-inline-content`, { hasText: 'Two' }).click()
+  await page.keyboard.press('Meta+Shift+ArrowUp')
+  await expect(page.locator(`${editor} .bn-block-content`)).toHaveText([/Two/, /One/])
+  await page.keyboard.press('Meta+k')
+  await expect(page.getByRole('dialog', { name: 'Search' })).toBeVisible()
+})

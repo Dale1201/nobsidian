@@ -15,18 +15,7 @@ export const headingShortcuts = createExtension({
   inputRules: [1, 2, 3].map((level) => ({
     find: new RegExp(`^#{${level}}\\s$`),
     replace: () => ({ type: 'heading', props: { level, isToggleable: false } })
-  })),
-  keyboardShortcuts: Object.fromEntries(
-    [1, 2, 3].map((level) => [
-      `Mod-Alt-${level}`,
-      ({ editor }) => {
-        const { block } = editor.getTextCursorPosition()
-        if (editor.schema.blockSchema[block.type].content !== 'inline') return false
-        editor.updateBlock(block, { type: 'heading', props: { level, isToggleable: false } })
-        return true
-      }
-    ])
-  )
+  }))
 })
 
 export const markdownShortcuts = createExtension({
