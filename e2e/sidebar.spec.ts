@@ -206,3 +206,14 @@ test('+ on a favorite adds the page inside the favorite', async ({ nb }) => {
   await favRow.getByRole('button', { name: 'Add a page inside' }).click()
   await expect(favorites.getByTestId('sidebar-row-Untitled')).toBeVisible()
 })
+
+test('searching for the page you are on reveals it again', async ({ nb }) => {
+  const page = await nestedWorkspace(nb)
+  await search(page, 'Deep')
+  const top = page.getByTestId('sidebar-row-Top')
+  await top.hover()
+  await top.getByRole('button', { name: 'Collapse' }).click()
+  await expect(page.getByTestId('sidebar-row-Deep')).toBeHidden()
+  await search(page, 'Deep')
+  await expect(page.getByTestId('sidebar-row-Deep')).toHaveClass(/active/)
+})

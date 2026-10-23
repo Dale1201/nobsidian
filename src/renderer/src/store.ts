@@ -171,7 +171,12 @@ export const useApp = create<AppState>((set, get) => ({
   openPage: (id, options) => {
     const { history, historyIndex, currentId, workspace, settings, trashEntry } = get()
     if (trashEntry) set({ trashEntry: null })
-    if (id === currentId) return
+    // The page is already open, but a search or link to it still shows it in the sidebar.
+    if (id === currentId) {
+      if (options?.scroll !== false) set({ revealRequest: id })
+      void get().revealInSidebar(id)
+      return
+    }
     const nextHistory = [...history.slice(0, historyIndex + 1), id]
     set({
       currentId: id,
