@@ -16,6 +16,7 @@ import { codeBlockOptions } from '@blocknote/code-block'
 import { withMultiColumn } from '@blocknote/xl-multi-column'
 import { createContext, useContext, useState } from 'react'
 import { Katex } from './Katex'
+import { dividerShortcut, headingShortcuts, quoteShortcut } from './markdownShortcuts'
 
 export type PageLinkContextValue = {
   resolve(href: string): { title: string; icon?: string } | null
@@ -220,6 +221,9 @@ export const schema = withMultiColumn(
   BlockNoteSchema.create({
     blockSpecs: {
       ...defaultBlockSpecs,
+      quote: { ...defaultBlockSpecs.quote, extensions: [quoteShortcut] },
+      heading: { ...defaultBlockSpecs.heading, extensions: [headingShortcuts] },
+      divider: { ...defaultBlockSpecs.divider, extensions: [dividerShortcut()] },
       codeBlock: createCodeBlockSpec(codeBlockOptions),
       callout: createCallout(),
       math: createMath(),

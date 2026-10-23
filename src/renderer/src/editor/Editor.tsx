@@ -41,6 +41,7 @@ import { AppCreateLinkButton, AppEditLinkButton } from './LinkButtons'
 import { isValidLink, linkHrefFromEvent } from './links'
 import { blockSelection } from './blockSelection'
 import { listMarkers } from './listMarkersPlugin'
+import { markdownShortcuts, tildeStrike } from './markdownShortcuts'
 import type { WebImage } from './notionPaste'
 import {
   PageLinkContext,
@@ -192,7 +193,7 @@ export function Editor(props: EditorProps): React.JSX.Element {
       }
     },
     dropCursor: multiColumnDropCursor,
-    extensions: [syntaxHighlighter, listMarkers, blockSelection],
+    extensions: [syntaxHighlighter, listMarkers, blockSelection, markdownShortcuts, tildeStrike],
     uploadFile: (file) => props.uploadFile(file),
     resolveFileUrl: (url) => props.resolveFileUrl(url),
     pasteHandler: ({ event, editor, defaultPasteHandler }) => {
