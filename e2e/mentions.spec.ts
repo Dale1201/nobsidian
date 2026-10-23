@@ -87,7 +87,12 @@ test('copied blocks paste back with their mentions, callouts and page links', as
   const types = page.locator(`${editor} .bn-block-content`)
   await expect(types).toHaveCount(4)
   // A click on the first line would land on the mention and open it.
-  await page.locator(`${editor} .bn-inline-content`, { hasText: 'Note' }).click()
+  const note = page.locator(`${editor} .bn-inline-content`, { hasText: 'Note' })
+  await note.click()
+  // Typing reads the clicked caret at once; a bare key press can beat ProseMirror to it.
+  await page.keyboard.type('!')
+  await expect(note).toContainText('!')
+  await page.keyboard.press('Backspace')
   await page.keyboard.press('Escape')
   const selected = page.locator(`${editor} .nb-block-selected`)
   await expect(selected).toHaveText([/Note/])
