@@ -54,10 +54,12 @@ import {
   type PageLinkContextValue
 } from './schema'
 import { AppSideMenu } from './menus/AppSideMenu'
+import { PagePicker } from './menus/PagePicker'
 import { BlockMenuHost } from './menus/BlockMenu'
 import { SlashMenu } from './menus/SlashMenu'
 import { TurnIntoButton } from './menus/TurnIntoButton'
 import { querySlashItems, type SlashItem } from './slashItems'
+import { usePickerItems } from './usePickerItems'
 
 export type EditorProps = {
   initialBlocks: AppPartialBlock[]
@@ -66,6 +68,8 @@ export type EditorProps = {
   uploadFile(file: File): Promise<string>
   resolveFileUrl(url: string): Promise<string>
   createSubPage(): Promise<string>
+  /** Creates a sub-page with this title for a mention, and returns its link. */
+  createLinkedPage?(title: string): Promise<string>
   openLink(href: string): void
   pageLink: PageLinkContextValue
   editable?: boolean
@@ -263,6 +267,8 @@ export function Editor(props: EditorProps): React.JSX.Element {
     }
   })
 
+  const pickerItems = usePickerItems(editor, props.createLinkedPage)
+
   const { uploadFile, editable } = props
   useEffect(() => {
     if (editable === false) return
@@ -297,6 +303,22 @@ export function Editor(props: EditorProps): React.JSX.Element {
             onChange={(ed) => props.onChange(ed.document)}
           >
             <BlockMenuHost>
+              {props.editable !== false && (
+                <>
+                  <SuggestionMenuController
+                    triggerCharacter="@"
+                    getItems={pickerItems}
+                    suggestionMenuComponent={PagePicker}
+                    onItemClick={(item) => item.onItemClick()}
+                  />
+                  <SuggestionMenuController
+                    triggerCharacter="[["
+                    getItems={pickerItems}
+                    suggestionMenuComponent={PagePicker}
+                    onItemClick={(item) => item.onItemClick()}
+                  />
+                </>
+              )}
               <SuggestionMenuController
                 triggerCharacter="/"
                 getItems={(query: string): Promise<SlashItem[]> =>

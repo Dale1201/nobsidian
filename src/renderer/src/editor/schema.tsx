@@ -15,6 +15,7 @@ import {
 import { codeBlockOptions } from '@blocknote/code-block'
 import { withMultiColumn } from '@blocknote/xl-multi-column'
 import { createContext, useContext, useState } from 'react'
+import { PageIconView } from '../components/PageIconView'
 import { Katex } from './Katex'
 import { dividerShortcut, headingShortcuts, quoteShortcut } from './markdownShortcuts'
 
@@ -217,6 +218,33 @@ export const InlineMath = createReactInlineContentSpec(
   }
 )
 
+export const PageMention = createReactInlineContentSpec(
+  {
+    type: 'pageMention',
+    propSchema: { href: { default: '' }, title: { default: '' } },
+    content: 'none'
+  },
+  {
+    render: function PageMentionChip({ inlineContent }) {
+      const ctx = useContext(PageLinkContext)
+      const { href, title } = inlineContent.props
+      const target = ctx?.resolve(href)
+      return (
+        <span
+          className="nb-mention"
+          data-missing={target ? undefined : 'true'}
+          onClick={() => target && ctx?.open(href)}
+        >
+          <span className="nb-mention-icon">
+            <PageIconView icon={target?.icon} size={14} />
+          </span>
+          <span className="nb-mention-title">{target?.title ?? (title || 'Untitled')}</span>
+        </span>
+      )
+    }
+  }
+)
+
 export const schema = withMultiColumn(
   BlockNoteSchema.create({
     blockSpecs: {
@@ -233,7 +261,8 @@ export const schema = withMultiColumn(
     },
     inlineContentSpecs: {
       ...defaultInlineContentSpecs,
-      inlineMath: InlineMath
+      inlineMath: InlineMath,
+      pageMention: PageMention
     }
   })
 )
