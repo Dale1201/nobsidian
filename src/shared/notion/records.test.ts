@@ -85,7 +85,7 @@ describe('mapNotionPaste', () => {
     const ctx = context({ '11111111222233334444555555555555': 'page-1' })
     expect(blocksToMarkdown(mapNotionPaste({ records: json, html }, ctx))).toBe(
       '**bold** <span data-color="red">red</span> <span data-bg="green">green</span> ' +
-        '[Plans](nobsidian://page/page-1) @March 14, 2026 $x^2$\n'
+        '[Plans](nobsidian://page/page-1 "mention") @March 14, 2026 $x^2$\n'
     )
   })
 
