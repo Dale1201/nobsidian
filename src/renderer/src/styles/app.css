@@ -252,6 +252,19 @@ button {
     display: none;
   }
 }
+.tab-conflict {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  margin-top: -3px;
+  border-radius: 50%;
+  background: var(--color-yellow);
+}
+.tab:hover .tab-conflict {
+  display: none;
+}
 .tab-bar-new {
   flex: none;
   display: flex;

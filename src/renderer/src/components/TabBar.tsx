@@ -30,6 +30,7 @@ export function TabBar(): React.JSX.Element {
   const tree = useApp((s) => s.tree)
   const collapsed = useApp((s) => s.settings?.sidebarCollapsed ?? false)
   const width = useApp((s) => s.sidebarDrag ?? s.settings?.sidebarWidth ?? 240)
+  const conflicts = useApp((s) => s.conflictTabs)
   const fullscreen = useFullscreen()
   const app = useApp.getState
   const listRef = useRef<HTMLDivElement>(null)
@@ -153,6 +154,7 @@ export function TabBar(): React.JSX.Element {
           {tabs.map((t, i) => {
             const { title, icon } = tabLabel(t, tree)
             const active = t.id === state?.activeId
+            const conflict = !active && conflicts.includes(t.id)
             return (
               <div
                 key={t.id}
@@ -165,7 +167,8 @@ export function TabBar(): React.JSX.Element {
                   'tab no-drag',
                   active ? 'active' : '',
                   i === tabs.length - 1 ? 'last' : '',
-                  menu?.tabId === t.id ? 'menu-open' : ''
+                  menu?.tabId === t.id ? 'menu-open' : '',
+                  conflict ? 'conflict' : ''
                 ].join(' ')}
                 onPointerDown={(e) => onTabPointerDown(e, t.id)}
                 onMouseDown={(e) => {
@@ -183,6 +186,9 @@ export function TabBar(): React.JSX.Element {
                   <PageIconView icon={icon} size={14} />
                 </span>
                 <span className="tab-title">{title}</span>
+                {conflict && (
+                  <span className="tab-conflict" aria-label="Changed outside Nobsidian" />
+                )}
                 <span className="tab-close">
                   <button
                     aria-label={`Close ${title}`}

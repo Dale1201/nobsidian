@@ -78,6 +78,8 @@ interface AppState {
   importStatus: ImportStatus | null
   /** The sidebar's width while it is being dragged, before it is saved. */
   sidebarDrag: number | null
+  /** Tabs whose page shows the conflict banner. */
+  conflictTabs: string[]
 
   init: () => Promise<void>
   chooseWorkspace: () => Promise<void>
@@ -131,6 +133,7 @@ interface AppState {
   cancelImport: () => Promise<void>
   setImportStatus: (status: ImportStatus | null) => void
   setSidebarDrag: (width: number | null) => void
+  setTabConflict: (tabId: string, conflict: boolean) => void
 }
 
 export function errorReason(err: unknown): string {
@@ -286,6 +289,7 @@ export const useApp = create<AppState>((set, get) => {
     rescued: {},
     importStatus: null,
     sidebarDrag: null,
+    conflictTabs: [],
 
     init: async () => {
       const [settings, workspace] = await Promise.all([
@@ -587,6 +591,11 @@ export const useApp = create<AppState>((set, get) => {
     setImportStatus: (importStatus) => set({ importStatus }),
 
     setSidebarDrag: (sidebarDrag) => set({ sidebarDrag }),
+
+    setTabConflict: (tabId, conflict) => {
+      const tabs = get().conflictTabs.filter((t) => t !== tabId)
+      set({ conflictTabs: conflict ? [...tabs, tabId] : tabs })
+    },
 
     /** Shows what failed and re-syncs the sidebar with what is actually on disk. */
     reportError: async (action, err) => {

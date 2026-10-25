@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { PageDoc, PageMetaPatch } from '@shared/types'
 import { findNode } from '../lib/tree'
+import { emitPageEvent, onPageEvent } from '../lib/pageEvents'
 import { registerScroller, useApp } from '../store'
 import { Banner } from './Banner'
 import { PageCover, PageIconAndControls } from './PageHeader'
@@ -79,7 +80,10 @@ export function PageView({
     }
     if (docRef.current?.id !== id) return
     // Typing that started while the page was being read is not thrown away.
-    if (editorRef.current?.hasUnsaved()) return setConflict(true)
+    if (editorRef.current?.hasUnsaved()) {
+      editorRef.current.markConflicted()
+      return setConflict(true)
+    }
     keepScroll.current = scrollRef.current?.scrollTop ?? null
     setDoc(fresh)
     setGeneration((g) => g + 1)
@@ -94,22 +98,36 @@ export function PageView({
     keepScroll.current = null
   }, [generation, ready])
 
-  useEffect(
-    () =>
-      window.api.on('page:changed', ({ id, revision }) => {
-        const current = docRef.current
-        if (!current || current.id !== id) return
-        if (revision <= (editorRef.current?.revision() ?? current.revision)) return
-        if (editorRef.current?.hasUnsaved()) setConflict(true)
-        else void reload()
-      }),
-    [reload]
-  )
+  useEffect(() => {
+    const offOutside = window.api.on('page:changed', ({ id, revision }) => {
+      const current = docRef.current
+      if (!current || current.id !== id) return
+      if (revision <= (editorRef.current?.revision() ?? current.revision)) return
+      if (editorRef.current?.hasUnsaved()) setConflict(true)
+      else void reload()
+    })
+    // Icon, cover and width changes made in another tab showing this page.
+    const offTabs = onPageEvent((event) => {
+      if (event.type === 'meta' && event.id === docRef.current?.id)
+        setDoc((d) => (d?.id === event.id ? applyPatch(d, event.patch) : d))
+    })
+    return () => {
+      offOutside()
+      offTabs()
+    }
+  }, [reload])
+  const onStale = useCallback(() => void reload(), [reload])
+
+  useEffect(() => {
+    useApp.getState().setTabConflict(tabId, Boolean(ready && conflict))
+  }, [tabId, ready, conflict])
+  useEffect(() => () => useApp.getState().setTabConflict(tabId, false), [tabId])
 
   const updateMeta = (patch: PageMetaPatch): void => {
     if (!doc) return
     const before = doc
     setDoc(applyPatch(doc, patch))
+    emitPageEvent({ type: 'meta', id: doc.id, patch })
     api.invoke('page:meta', { id: doc.id, patch }).catch((e) => {
       setDoc((d) => (d?.id === before.id ? { ...d, meta: before.meta } : d))
       void useApp.getState().reportError('update', e)
@@ -179,6 +197,7 @@ export function PageView({
                   theme={theme}
                   active={active}
                   onConflict={onConflict}
+                  onStale={onStale}
                 />
               </EditorErrorBoundary>
             </div>

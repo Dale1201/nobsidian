@@ -18,6 +18,7 @@ import type { AppBlock, AppPartialBlock } from '../editor/schema'
 import { resolveAssetUrl } from '../lib/assets'
 import { usePageLink } from '../lib/pageLink'
 import { prepareNotionPaste } from '../editor/notionPaste'
+import { emitPageEvent, onPageEvent } from '../lib/pageEvents'
 import { registerFlusher, useApp } from '../store'
 
 const SAVE_DELAY_MS = 500
@@ -38,6 +39,8 @@ export interface PageEditorHandle {
   discard(): Promise<boolean>
   /** Saves pending edits now instead of after the typing pause. */
   saveNow(): Promise<void>
+  /** Holds back saves until the user picks a version, as after a conflicting outside edit. */
+  markConflicted(): void
 }
 
 export function PageEditor({
@@ -45,6 +48,7 @@ export function PageEditor({
   theme,
   active,
   onConflict,
+  onStale,
   ref
 }: {
   doc: PageDoc
@@ -52,6 +56,8 @@ export function PageEditor({
   /** False while the editor's tab is hidden. */
   active: boolean
   onConflict: () => void
+  /** Another tab saved this page and nothing here is unsaved: show the file again. */
+  onStale: () => void
   ref?: Ref<PageEditorHandle>
 }): React.JSX.Element {
   // Edits this page's previous editor could not save; this editor carries on with them.
@@ -66,6 +72,7 @@ export function PageEditor({
   const mounted = useRef(false)
   const lastColor = useApp((s) => s.settings?.lastColor)
   const pageLink = usePageLink()
+  const [source] = useState(() => ({}))
 
   const keepDraft = useCallback(
     (blocks: Block[]) => api.invoke('history:draft', { id: doc.id, blocks }),
@@ -95,6 +102,7 @@ export function PageEditor({
           if (result.ok) {
             revision.current = result.revision
             conflicted.current = false
+            emitPageEvent({ type: 'saved', id: doc.id, source })
           } else if (result.reason === 'conflict') {
             conflicted.current = true
             if (mode === 'leave') return await keepDraft(blocks)
@@ -112,7 +120,7 @@ export function PageEditor({
       })
       await inFlight.current
     },
-    [doc.id, onConflict, keepDraft]
+    [doc.id, onConflict, keepDraft, source]
   )
 
   useImperativeHandle(
@@ -121,6 +129,9 @@ export function PageEditor({
       hasUnsaved: () => pending.current !== null || inFlight.current !== null || conflicted.current,
       revision: () => revision.current,
       saveNow: () => save('auto'),
+      markConflicted: () => {
+        conflicted.current = true
+      },
       keepMine: async () => {
         pending.current = latest.current ?? pending.current
         await save('force')
@@ -146,6 +157,18 @@ export function PageEditor({
       }
     }),
     [save, keepDraft]
+  )
+
+  useEffect(
+    () =>
+      onPageEvent((event) => {
+        if (event.type !== 'saved' || event.id !== doc.id || event.source === source) return
+        if (pending.current !== null || inFlight.current !== null || conflicted.current) {
+          conflicted.current = true
+          onConflict()
+        } else onStale()
+      }),
+    [doc.id, source, onConflict, onStale]
   )
 
   useEffect(() => {
