@@ -1,3 +1,5 @@
+import { pageIdFromHref } from '@shared/core/links'
+import { decodeHref } from '@shared/core/paths'
 import type { PageNode } from '@shared/types'
 
 export function findNode(nodes: PageNode[], id: string): PageNode | null {
@@ -7,6 +9,26 @@ export function findNode(nodes: PageNode[], id: string): PageNode | null {
     if (found) return found
   }
   return null
+}
+
+function findNodeByPath(nodes: PageNode[], path: string): PageNode | null {
+  for (const node of nodes) {
+    if (node.path === path) return node
+    const found = findNodeByPath(node.children, path)
+    if (found) return found
+  }
+  return null
+}
+
+/**
+ * The page a link points to. Main sends links to pages it did not know yet as workspace paths
+ * ("/Notes/Plan.md"), so they work once the page appears.
+ */
+export function pageIdForHref(nodes: PageNode[], href: string): string | null {
+  const id = pageIdFromHref(href)
+  if (id) return id
+  if (!href.startsWith('/') || href.startsWith('//')) return null
+  return findNodeByPath(nodes, decodeHref(href.slice(1)))?.id ?? null
 }
 
 /** Nodes from the root down to (and including) `id`. */
