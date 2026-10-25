@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, unlink, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, readdir, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { ElectronApplication, Locator, Page } from '@playwright/test'
@@ -459,4 +459,128 @@ test('typing in one tab updates the same page in another', async ({ nb }) => {
   await page.locator('.tab').first().click()
   await expect(pane(page).locator(editor)).toHaveText('Start. More.')
   await expect(pane(page).getByRole('status')).toHaveCount(0)
+})
+
+// Found by the whole-branch review.
+
+test('a page open in two tabs keeps one history version and the other tab in place while typing', async ({
+  nb
+}) => {
+  const page = await pages(nb, { Shared: 'Start.\n' })
+  await open(page, 'Shared')
+  await menu(nb.app, 'New Tab')
+  await pane(page).locator(editor).getByText('Start.').click()
+  await page.keyboard.press('Meta+ArrowRight')
+  for (const word of [' one', ' two', ' three', ' four', ' five']) {
+    await page.keyboard.type(word)
+    await page.waitForTimeout(800)
+  }
+  const file = join(nb.workspace, 'Shared.md')
+  await waitForFile(file, 'Start. one two three four five')
+  const id = /id: (\S+)/.exec(await readFile(file, 'utf8'))![1]
+  const versions = await readdir(join(nb.workspace, '.nobsidian', 'history', id)).catch(() => [])
+  expect(versions.filter((v) => v.endsWith('.md')).length).toBeLessThanOrEqual(1)
+  await page.locator('.tab').first().click()
+  await expect(pane(page).locator(editor)).toHaveText('Start. one two three four five')
+  await pane(page).locator(editor).getByText('Start.', { exact: false }).click()
+  await page.keyboard.press('Meta+ArrowRight')
+  await page.keyboard.type(' six')
+  await expect(pane(page).locator(editor)).toContainText(' six')
+  const text = await pane(page).locator(editor).textContent()
+  expect(text!.replace(' six', '')).toBe('Start. one two three four five')
+})
+
+test('Cmd+Shift-click on a link in a page opens it in a tab in front', async ({ nb }) => {
+  const page = await pages(nb, { Hub: 'Read [the plan](Plan.md).\n', Plan: 'Plan.\n' })
+  await open(page, 'Hub')
+  await pane(page)
+    .locator(editor)
+    .getByRole('link', { name: 'the plan' })
+    .click({ modifiers: ['Meta', 'Shift'] })
+  await expect.poll(() => tabTitles(page)).toEqual(['Hub', 'Plan'])
+  expect(await activeTitle(page)).toBe('Plan')
+})
+
+test('moving a tab keeps the scroll position of a hidden tab', async ({ nb }) => {
+  const page = await pages(nb, { Long: long, Short: 'Short.\n' })
+  await open(page, 'Long')
+  await pane(page)
+    .getByTestId('page-scroll')
+    .evaluate((el) => (el.scrollTop = 700))
+  await page.getByTestId('sidebar-row-Short').click({ modifiers: ['Meta', 'Shift'] })
+  await expect(pane(page).getByTestId('page-title')).toHaveText('Short')
+  const short = (await page.getByTestId('tab-Short').boundingBox())!
+  const longTab = (await page.getByTestId('tab-Long').boundingBox())!
+  await page.mouse.move(short.x + 20, short.y + 18)
+  await page.mouse.down()
+  await page.mouse.move(short.x - 10, short.y + 18, { steps: 4 })
+  await page.mouse.move(longTab.x + 5, longTab.y + 18, { steps: 8 })
+  await page.mouse.up()
+  expect(await tabTitles(page)).toEqual(['Short', 'Long'])
+  await page.getByTestId('tab-Long').click()
+  expect(
+    await pane(page)
+      .getByTestId('page-scroll')
+      .evaluate((el) => el.scrollTop)
+  ).toBe(700)
+})
+
+test('reopening a tab whose page was deleted since shows the Trash banner or steps away', async ({
+  nb
+}) => {
+  const page = await pages(nb, { Keep: 'Keep.\n', Doomed: 'Doomed.\n', Gone: 'Gone.\n' })
+  await open(page, 'Keep')
+  await tabOn(nb.app, page, 'Doomed')
+  await menu(nb.app, 'Close Tab')
+  await rowAction(page, 'Doomed', 'Delete')
+  await expect(page.getByTestId('sidebar-row-Doomed')).toHaveCount(0)
+  await menu(nb.app, 'Reopen Closed Tab')
+  await expect.poll(() => tabTitles(page)).toEqual(['Keep', 'Doomed'])
+  await expect(pane(page).getByRole('status')).toContainText('This page is in Trash.')
+
+  // Deleted outside the app, it steps back to the page the tab showed before.
+  await page.getByTestId('tab-Keep').click()
+  await tabOn(nb.app, page, 'Gone')
+  await menu(nb.app, 'Close Tab')
+  await unlink(join(nb.workspace, 'Gone.md'))
+  await expect(page.getByTestId('sidebar-row-Gone')).toHaveCount(0)
+  await menu(nb.app, 'Reopen Closed Tab')
+  await expect.poll(() => tabTitles(page)).toEqual(['Keep', 'Keep', 'Doomed'])
+  await expect(pane(page).getByTestId('page-title')).toHaveText('Keep')
+})
+
+test('a tab squeezed to 36px shows only its icon, centred', async ({ nb }) => {
+  const page = await pages(nb, { Alpha: '---\nicon: 🚀\n---\n\nA.\n' })
+  await open(page, 'Alpha')
+  for (let i = 0; i < 30; i++) await menu(nb.app, 'New Tab')
+  const tab = (await page.locator('.tab').first().boundingBox())!
+  const icon = (await page.locator('.tab').first().locator('.tab-icon').boundingBox())!
+  expect(tab.width).toBe(36)
+  expect(Math.abs(icon.x + icon.width / 2 - (tab.x + tab.width / 2))).toBeLessThanOrEqual(0.5)
+  await expect(page.locator('.tab').first().locator('.tab-title')).toBeHidden()
+})
+
+test('Cmd+K opens Search after leaving a tab with selected text', async ({ nb }) => {
+  const page = await pages(nb, { Alpha: 'Some words here.\n', Beta: 'B.\n' })
+  await open(page, 'Alpha')
+  await pane(page).locator(editor).getByText('Some words here.').dblclick()
+  await page.getByTestId('sidebar-row-Beta').click({ modifiers: ['Meta', 'Shift'] })
+  await expect(pane(page).getByTestId('page-title')).toHaveText('Beta')
+  await page.keyboard.press('Meta+K')
+  await expect(page.getByRole('dialog', { name: 'Search' })).toBeVisible()
+})
+
+test('coming back to a tab puts the caret back where it was', async ({ nb }) => {
+  const page = await pages(nb, { Alpha: 'A.\n', Beta: 'B.\n' })
+  await open(page, 'Alpha')
+  await tabOn(nb.app, page, 'Beta')
+  await page.locator('.tab').first().click()
+  await pane(page).locator(editor).getByText('A.').click()
+  await page.keyboard.press('Meta+ArrowRight')
+  await menu(nb.app, 'Show Next Tab')
+  await expect(pane(page).getByTestId('page-title')).toHaveText('Beta')
+  await menu(nb.app, 'Show Previous Tab')
+  await expect(pane(page).getByTestId('page-title')).toHaveText('Alpha')
+  await page.keyboard.type(' typed')
+  await expect(pane(page).locator(editor)).toHaveText('A. typed')
 })

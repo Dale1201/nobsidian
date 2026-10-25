@@ -134,8 +134,6 @@ button {
   max-width: 200px;
   height: 100%;
   display: flex;
-  align-items: center;
-  padding-inline: clamp(9px, 25%, 16px);
   background: var(--tab-bg);
   color: var(--text-secondary);
   box-shadow:
@@ -164,6 +162,26 @@ button {
   box-shadow:
     inset 1px 0 0 var(--divider),
     inset -1px 0 0 var(--divider);
+}
+.tab-inner {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  padding-inline: clamp(9px, 25cqw, 16px);
+}
+/* Too narrow for any of the title: the icon alone, centred. */
+@container (max-width: 44px) {
+  .tab-inner {
+    justify-content: center;
+    padding-inline: 0;
+  }
+  .tab-inner .tab-icon {
+    margin-right: 0;
+  }
+  .tab-inner .tab-title {
+    display: none;
+  }
 }
 .tab-icon {
   width: 16px;

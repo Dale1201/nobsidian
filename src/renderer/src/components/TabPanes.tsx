@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { currentEntry, type Tab } from '../lib/tabs'
 import { useApp } from '../store'
 import { PageView } from './PageView'
@@ -7,15 +7,18 @@ import { TrashedPageView } from './TrashedPageView'
 /** Every tab shown so far stays mounted, hidden while inactive, so it keeps its place and undo. */
 export function TabPanes({ theme }: { theme: 'light' | 'dark' }): React.JSX.Element {
   const state = useApp((s) => s.tabs)
-  const [shown] = useState(() => new Set<string>())
-  if (state) shown.add(state.activeId)
+  // Panes keep the order they were first shown in: moving a pane's node would reset its scroll.
+  const [shown] = useState<string[]>(() => [])
+  if (state && !shown.includes(state.activeId)) shown.push(state.activeId)
+  const byId = new Map(state?.tabs.map((t) => [t.id, t]))
   return (
     <div className="tab-panes">
-      {state?.tabs
-        .filter((t) => shown.has(t.id))
-        .map((tab) => (
-          <TabPane key={tab.id} tab={tab} active={tab.id === state.activeId} theme={theme} />
-        ))}
+      {shown.flatMap((id) => {
+        const tab = byId.get(id)
+        return tab
+          ? [<TabPane key={id} tab={tab} active={id === state?.activeId} theme={theme} />]
+          : []
+      })}
     </div>
   )
 }
@@ -30,8 +33,18 @@ function TabPane({
   theme: 'light' | 'dark'
 }): React.JSX.Element {
   const entry = currentEntry(tab)
+  const lastFocus = useRef<HTMLElement | null>(null)
+  useEffect(() => {
+    if (active && lastFocus.current?.isConnected) lastFocus.current.focus({ preventScroll: true })
+  }, [active])
   return (
-    <div className={`tab-pane ${active ? 'active' : ''}`} inert={!active}>
+    <div
+      className={`tab-pane ${active ? 'active' : ''}`}
+      inert={!active}
+      onFocus={(e) => {
+        lastFocus.current = e.target
+      }}
+    >
       {entry.kind === 'trash' ? (
         <TrashedPageView
           key={`${tab.index}:${entry.entry}`}

@@ -12,7 +12,7 @@ import { pageLinkHref } from '@shared/core/links'
 import { openHref } from '../lib/navigation'
 import type { PageDoc } from '@shared/types'
 import { codeBlockOptions } from '@blocknote/code-block'
-import { Editor } from '../editor/Editor'
+import { Editor, type EditorContent } from '../editor/Editor'
 import { createLanguageResolver, withEditorLanguages } from '../editor/codeLanguages'
 import type { AppBlock, AppPartialBlock } from '../editor/schema'
 import { resolveAssetUrl } from '../lib/assets'
@@ -48,7 +48,6 @@ export function PageEditor({
   theme,
   active,
   onConflict,
-  onStale,
   ref
 }: {
   doc: PageDoc
@@ -56,8 +55,6 @@ export function PageEditor({
   /** False while the editor's tab is hidden. */
   active: boolean
   onConflict: () => void
-  /** Another tab saved this page and nothing here is unsaved: show the file again. */
-  onStale: () => void
   ref?: Ref<PageEditorHandle>
 }): React.JSX.Element {
   // Edits this page's previous editor could not save; this editor carries on with them.
@@ -73,6 +70,7 @@ export function PageEditor({
   const lastColor = useApp((s) => s.settings?.lastColor)
   const pageLink = usePageLink()
   const [source] = useState(() => ({}))
+  const content = useRef<EditorContent>(null)
 
   const keepDraft = useCallback(
     (blocks: Block[]) => api.invoke('history:draft', { id: doc.id, blocks }),
@@ -159,16 +157,37 @@ export function PageEditor({
     [save, keepDraft]
   )
 
+  const unsaved = useCallback(
+    () => pending.current !== null || inFlight.current !== null || conflicted.current,
+    []
+  )
+
+  /** Another tab saved this page: show its text here, unless edits here would be lost. */
+  const showSaved = useCallback(async (): Promise<void> => {
+    if (unsaved()) {
+      conflicted.current = true
+      return onConflict()
+    }
+    const fresh = await api.invoke('page:read', { id: doc.id }).catch(() => null)
+    if (!fresh || !mounted.current) return
+    if (unsaved()) {
+      conflicted.current = true
+      return onConflict()
+    }
+    revision.current = fresh.revision
+    latest.current = null
+    content.current?.replace(
+      withEditorLanguages(fresh.blocks, editorLanguage) as unknown as AppPartialBlock[]
+    )
+  }, [doc.id, onConflict, unsaved])
+
   useEffect(
     () =>
       onPageEvent((event) => {
         if (event.type !== 'saved' || event.id !== doc.id || event.source === source) return
-        if (pending.current !== null || inFlight.current !== null || conflicted.current) {
-          conflicted.current = true
-          onConflict()
-        } else onStale()
+        void showSaved()
       }),
-    [doc.id, source, onConflict, onStale]
+    [doc.id, source, showSaved]
   )
 
   useEffect(() => {
@@ -224,6 +243,7 @@ export function PageEditor({
   return (
     <Editor
       initialBlocks={initialBlocks}
+      contentRef={content}
       theme={theme}
       acceptsFiles={active}
       onChange={onChange}

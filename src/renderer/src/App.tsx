@@ -23,7 +23,8 @@ function editorHasSelection(): boolean {
   const selection = window.getSelection()
   const node = selection?.anchorNode
   const el = node instanceof Element ? node : node?.parentElement
-  return !!selection && !selection.isCollapsed && !!el?.closest('[contenteditable="true"]')
+  const editable = el?.closest('[contenteditable="true"]')
+  return !!selection && !selection.isCollapsed && !!editable?.closest('.tab-pane.active')
 }
 
 export function App(): React.JSX.Element | null {

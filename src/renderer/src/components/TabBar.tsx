@@ -182,10 +182,12 @@ export function TabBar(): React.JSX.Element {
                   setMenu({ tabId: t.id, anchor: new DOMRect(e.clientX, e.clientY, 0, 0) })
                 }}
               >
-                <span className="tab-icon">
-                  <PageIconView icon={icon} size={14} />
+                <span className="tab-inner">
+                  <span className="tab-icon">
+                    <PageIconView icon={icon} size={14} />
+                  </span>
+                  <span className="tab-title">{title}</span>
                 </span>
-                <span className="tab-title">{title}</span>
                 {conflict && (
                   <span className="tab-conflict" aria-label="Changed outside Nobsidian" />
                 )}

@@ -398,7 +398,9 @@ export const useApp = create<AppState>((set, get) => {
 
     reopenClosedTab: () => {
       const state = get().tabs
-      if (state?.closed.length) setTabs(tabs.reopen(withScroll(state)))
+      if (!state?.closed.length) return
+      setTabs(tabs.reopen(withScroll(state)))
+      void settleMissing(get().tree)
     },
 
     duplicateTab: (id) => {

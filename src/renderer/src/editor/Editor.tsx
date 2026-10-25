@@ -24,7 +24,7 @@ import {
   type LinkToolbarProps
 } from '@blocknote/react'
 import { locales as multiColumnLocales, multiColumnDropCursor } from '@blocknote/xl-multi-column'
-import { createContext, useContext, useEffect } from 'react'
+import { createContext, useContext, useEffect, useImperativeHandle, useRef, type Ref } from 'react'
 import type { Block } from '@shared/core/blocks'
 import { registerDrawingEditor } from '../drawing/session'
 import { errorReason, useApp } from '../store'
@@ -74,6 +74,8 @@ export type EditorProps = {
   createLinkedPage?(title: string): Promise<string>
   openLink(href: string, click?: LinkClick): void
   pageLink: PageLinkContextValue
+  /** Swaps in content saved by another tab, keeping this editor, its undo history and focus. */
+  contentRef?: Ref<EditorContent>
   editable?: boolean
   /** False while the page's tab is hidden, so files dropped on the window go elsewhere. */
   acceptsFiles?: boolean
@@ -88,6 +90,10 @@ export type EditorProps = {
 }
 
 const DEFAULT_COLOR: PickedColor = { kind: 'background', color: 'yellow' }
+
+export interface EditorContent {
+  replace(blocks: AppPartialBlock[]): void
+}
 
 const OpenLinkContext = createContext<(href: string, click?: LinkClick) => void>(() => {})
 
@@ -265,6 +271,8 @@ export function Editor(props: EditorProps): React.JSX.Element {
         const href = linkHrefFromEvent(event)
         if (!href) return false
         event.preventDefault()
+        // Cmd-clicks are opened by the click listener below, which also sees Cmd+Shift-clicks.
+        if (event.metaKey) return false
         props.openLink(href, event)
         return true
       }
@@ -272,6 +280,25 @@ export function Editor(props: EditorProps): React.JSX.Element {
   })
 
   const pickerItems = usePickerItems(editor, props.createLinkedPage)
+
+  const replacing = useRef(false)
+  useImperativeHandle(
+    props.contentRef,
+    () => ({
+      replace: (blocks) => {
+        replacing.current = true
+        try {
+          editor.transact((tr) => {
+            tr.setMeta('addToHistory', false)
+            editor.replaceBlocks(editor.document, blocks)
+          })
+        } finally {
+          replacing.current = false
+        }
+      }
+    }),
+    [editor]
+  )
 
   // The editor's link handler only sees left clicks; a middle click opens the link in a new tab.
   const { openLink } = props
@@ -287,11 +314,20 @@ export function Editor(props: EditorProps): React.JSX.Element {
       e.preventDefault()
       openLink(href, e)
     }
+    // ProseMirror leaves Shift-clicks to the browser, so the editor's link handler never sees them.
+    const onClick = (e: MouseEvent): void => {
+      const href = e.button === 0 && e.metaKey ? linkHrefFromEvent(e) : null
+      if (!href) return
+      e.preventDefault()
+      openLink(href, e)
+    }
     dom.addEventListener('mousedown', onDown)
     dom.addEventListener('auxclick', onAux)
+    dom.addEventListener('click', onClick)
     return () => {
       dom.removeEventListener('mousedown', onDown)
       dom.removeEventListener('auxclick', onAux)
+      dom.removeEventListener('click', onClick)
     }
   }, [editor, openLink])
 
@@ -331,7 +367,7 @@ export function Editor(props: EditorProps): React.JSX.Element {
             formattingToolbar={false}
             linkToolbar={false}
             sideMenu={false}
-            onChange={(ed) => props.onChange(ed.document)}
+            onChange={(ed) => replacing.current || props.onChange(ed.document)}
           >
             <BlockMenuHost>
               {props.editable !== false && (

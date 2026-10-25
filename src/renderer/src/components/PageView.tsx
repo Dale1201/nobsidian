@@ -116,7 +116,6 @@ export function PageView({
       offTabs()
     }
   }, [reload])
-  const onStale = useCallback(() => void reload(), [reload])
 
   useEffect(() => {
     useApp.getState().setTabConflict(tabId, Boolean(ready && conflict))
@@ -197,7 +196,6 @@ export function PageView({
                   theme={theme}
                   active={active}
                   onConflict={onConflict}
-                  onStale={onStale}
                 />
               </EditorErrorBoundary>
             </div>
