@@ -50,6 +50,8 @@ export interface TrashItem {
   deletedAt: string
   /** The page plus its sub-pages. */
   pageCount: number
+  /** Ids of the page and its sub-pages. */
+  pageIds: string[]
 }
 
 export interface PageMetaPatch {

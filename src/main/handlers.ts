@@ -220,4 +220,7 @@ export function registerHandlers(ctx: AppContext): void {
   handle('shell:openExternal', async ({ url }) => {
     if (/^(https?|mailto):/i.test(url)) await shell.openExternal(url)
   })
+  handle('window:close', () => {
+    ctx.window()?.close()
+  })
 }

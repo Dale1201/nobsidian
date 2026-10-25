@@ -68,7 +68,8 @@ export class PageTrash {
         icon: iconToInternal(e.meta.originalPath, data ? metaFromData(data).icon : undefined),
         parentTitle: parent ? parent.title || 'Untitled' : null,
         deletedAt: e.meta.deletedAt,
-        pageCount: await this.store.countPages(e)
+        pageCount: await this.store.countPages(e),
+        pageIds: await this.store.pageIds(e)
       })
     }
     return items

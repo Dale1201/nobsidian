@@ -21,6 +21,7 @@ import { startImportWorker } from './import/start-worker'
 import { send } from './ipc'
 import { buildMenu } from './menu'
 import { SettingsStore } from './settings'
+import { windowControls } from '../shared/window'
 
 if (process.env.NOBSIDIAN_USER_DATA) app.setPath('userData', process.env.NOBSIDIAN_USER_DATA)
 
@@ -83,6 +84,7 @@ function restoredBounds(): Partial<Rectangle> {
 }
 
 function createWindow(): void {
+  const controls = windowControls(process.getSystemVersion())
   const win = new BrowserWindow({
     ...restoredBounds(),
     minWidth: 720,
@@ -90,7 +92,7 @@ function createWindow(): void {
     show: false,
     title: 'Nobsidian',
     titleBarStyle: 'hiddenInset',
-    trafficLightPosition: { x: 14, y: 14 },
+    trafficLightPosition: { x: controls.x, y: controls.y },
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#191919' : '#ffffff',
     webPreferences: {
       preload: join(__dirname, '../preload/index.cjs'),
@@ -165,6 +167,8 @@ function createWindow(): void {
   win.on('closed', () => {
     mainWindow = null
   })
+  win.on('enter-full-screen', () => send(win.webContents, 'window:fullscreen', true))
+  win.on('leave-full-screen', () => send(win.webContents, 'window:fullscreen', false))
 
   if (is.dev && process.env.ELECTRON_RENDERER_URL)
     void win.loadURL(process.env.ELECTRON_RENDERER_URL)

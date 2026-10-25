@@ -10,6 +10,7 @@ import type {
   WorkspaceInfo,
   WriteResult
 } from './types'
+import type { WindowControls } from './window'
 
 export type ThemePreference = 'system' | 'light' | 'dark'
 
@@ -54,6 +55,12 @@ export type MenuCommand =
   | 'toggle-theme'
   | 'back'
   | 'forward'
+  | 'new-tab'
+  | 'close-tab'
+  | 'reopen-tab'
+  | 'next-tab'
+  | 'previous-tab'
+  | `select-tab-${1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9}`
 
 /** What a dropped zip is, judged from its file names. */
 export type ZipKind = 'notion-html' | 'notion-markdown' | 'other'
@@ -105,6 +112,8 @@ export interface IpcContract {
   'settings:set': [payload: Partial<Settings>, result: Settings]
   'shell:openExternal': [payload: { url: string }, result: void]
   'app:flushed': [payload: { saved: boolean }, result: void]
+  /** Closes the window, saving pending edits first, as the close button does. */
+  'window:close': [payload: void, result: void]
 }
 
 export type IpcChannel = keyof IpcContract
@@ -118,6 +127,7 @@ export interface IpcEvents {
   'menu:command': MenuCommand
   'app:flush': void
   'import:status': ImportStatus
+  'window:fullscreen': boolean
 }
 
 export interface Api {
@@ -125,6 +135,7 @@ export interface Api {
   on<E extends keyof IpcEvents>(event: E, listener: (data: IpcEvents[E]) => void): () => void
   /** The path of a file dropped on the window. */
   pathForFile(file: File): string
+  windowControls: WindowControls
 }
 
 export const ASSET_SCHEME = 'nbfile'
