@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, readdir, unlink, writeFile } from 'node:fs/promises'
+import { chmod, mkdtemp, readFile, readdir, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { ElectronApplication, Locator, Page } from '@playwright/test'
@@ -583,4 +583,59 @@ test('coming back to a tab puts the caret back where it was', async ({ nb }) => 
   await expect(pane(page).getByTestId('page-title')).toHaveText('Alpha')
   await page.keyboard.type(' typed')
   await expect(pane(page).locator(editor)).toHaveText('A. typed')
+})
+
+// Found by Bugbot.
+
+test('a new tab opened while the page is still saving shows the saved text, and keeps it', async ({
+  nb
+}) => {
+  const page = await pages(nb, { Shared: 'Start.\n' })
+  await open(page, 'Shared')
+  // The new tab's read takes the page's text and answers late; the save, held back, lands in between.
+  await nb.app.evaluate(({ ipcMain }) => {
+    type Handler = (...args: unknown[]) => Promise<unknown>
+    const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, Handler> })
+      ._invokeHandlers
+    const read = handlers.get('page:read')!
+    const write = handlers.get('page:write')!
+    const wait = (ms: number): Promise<unknown> => new Promise((r) => setTimeout(r, ms))
+    handlers.set('page:write', async (...args: unknown[]) => {
+      await wait(1200)
+      return write(...args)
+    })
+    let late = true
+    handlers.set('page:read', async (...args: unknown[]) => {
+      const doc = await read(...args)
+      if (late) await wait(2500)
+      late = false
+      return doc
+    })
+  })
+  await pane(page).locator(editor).getByText('Start.').click()
+  await page.keyboard.press('Meta+ArrowRight')
+  await page.keyboard.type(' Fresh words.')
+  await menu(nb.app, 'New Tab')
+  await expect(pane(page).locator(editor)).toHaveText('Start. Fresh words.')
+  await pane(page).locator(editor).getByText('Start. Fresh words.').click()
+  await page.keyboard.press('Meta+ArrowRight')
+  await page.keyboard.type(' More.')
+  await waitForFile(join(nb.workspace, 'Shared.md'), 'Start. Fresh words. More.')
+})
+
+test('a width change that cannot be saved is undone in every tab of the page', async ({ nb }) => {
+  const page = await pages(nb, { Wide: 'Text.\n' })
+  await open(page, 'Wide')
+  await menu(nb.app, 'New Tab')
+  try {
+    await chmod(nb.workspace, 0o555)
+    await pane(page).getByRole('button', { name: 'Page menu' }).click()
+    await page.getByRole('menuitem', { name: 'Full width' }).click()
+    await expect(page.getByRole('alert')).toContainText("Couldn't update the page")
+    await expect(pane(page).locator('.page-column.full-width')).toHaveCount(0)
+    await page.locator('.tab').first().click()
+    await expect(pane(page).locator('.page-column.full-width')).toHaveCount(0)
+  } finally {
+    await chmod(nb.workspace, 0o755)
+  }
 })

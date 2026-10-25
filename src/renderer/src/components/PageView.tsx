@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { PageDoc, PageMetaPatch } from '@shared/types'
 import { findNode } from '../lib/tree'
-import { emitPageEvent, onPageEvent } from '../lib/pageEvents'
+import { emitPageEvent, onPageEvent, saveCount } from '../lib/pageEvents'
 import { registerScroller, useApp } from '../store'
 import { Banner } from './Banner'
 import { PageCover, PageIconAndControls } from './PageHeader'
@@ -11,6 +11,16 @@ import { PageTitle } from './PageTitle'
 import { TopBar } from './TopBar'
 
 const api = window.api
+
+/** The patch that puts back what `patch` changed in `meta`. */
+function undoPatch(patch: PageMetaPatch, meta: PageDoc['meta']): PageMetaPatch {
+  const undo: PageMetaPatch = {}
+  if (patch.icon !== undefined) undo.icon = meta.icon ?? null
+  if (patch.cover !== undefined) undo.cover = meta.cover ?? null
+  if (patch.coverPosition !== undefined) undo.coverPosition = meta.coverPosition ?? null
+  if (patch.fullWidth !== undefined) undo.fullWidth = meta.fullWidth ?? false
+  return undo
+}
 
 function applyPatch(doc: PageDoc, patch: PageMetaPatch): PageDoc {
   const meta = { ...doc.meta }
@@ -40,6 +50,8 @@ export function PageView({
   // Bumped to rebuild the editor from a fresh read of the file.
   const [generation, setGeneration] = useState(0)
   const [conflict, setConflict] = useState(false)
+  // The page's save count when `doc` was read: a save announced since then is not in it.
+  const [readAt, setReadAt] = useState(0)
   const bodyRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const editorRef = useRef<PageEditorHandle>(null)
@@ -52,9 +64,11 @@ export function PageView({
 
   useEffect(() => {
     let cancelled = false
+    const at = saveCount(pageId)
     void api.invoke('page:read', { id: pageId }).then((d) => {
       if (cancelled) return
       setDoc(d)
+      setReadAt(at)
       setConflict(false)
     })
     return () => {
@@ -73,7 +87,9 @@ export function PageView({
     const id = docRef.current?.id
     if (!id) return
     let fresh: PageDoc
+    let at: number
     try {
+      at = saveCount(id)
       fresh = await api.invoke('page:read', { id })
     } catch (e) {
       return useApp.getState().reportError('reload', e)
@@ -86,6 +102,7 @@ export function PageView({
     }
     keepScroll.current = scrollRef.current?.scrollTop ?? null
     setDoc(fresh)
+    setReadAt(at)
     setGeneration((g) => g + 1)
     setConflict(false)
   }, [])
@@ -124,13 +141,17 @@ export function PageView({
 
   const updateMeta = (patch: PageMetaPatch): void => {
     if (!doc) return
-    const before = doc
+    const id = doc.id
+    const undo = undoPatch(patch, doc.meta)
     setDoc(applyPatch(doc, patch))
-    emitPageEvent({ type: 'meta', id: doc.id, patch })
-    api.invoke('page:meta', { id: doc.id, patch }).catch((e) => {
-      setDoc((d) => (d?.id === before.id ? { ...d, meta: before.meta } : d))
-      void useApp.getState().reportError('update', e)
-    })
+    // Other tabs follow only once it is saved; a failure undoes just what this patch changed.
+    api.invoke('page:meta', { id, patch }).then(
+      () => emitPageEvent({ type: 'meta', id, patch }),
+      (e) => {
+        setDoc((d) => (d?.id === id ? applyPatch(d, undo) : d))
+        void useApp.getState().reportError('update', e)
+      }
+    )
   }
 
   return (
@@ -193,6 +214,7 @@ export function PageView({
                 <PageEditor
                   ref={editorRef}
                   tabId={tabId}
+                  readAt={readAt}
                   doc={doc}
                   theme={theme}
                   active={active}

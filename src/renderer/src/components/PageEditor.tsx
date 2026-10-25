@@ -18,7 +18,7 @@ import type { AppBlock, AppPartialBlock } from '../editor/schema'
 import { resolveAssetUrl } from '../lib/assets'
 import { usePageLink } from '../lib/pageLink'
 import { prepareNotionPaste } from '../editor/notionPaste'
-import { emitPageEvent, onPageEvent } from '../lib/pageEvents'
+import { emitPageEvent, onPageEvent, saveCount } from '../lib/pageEvents'
 import { registerFlusher, useApp } from '../store'
 
 const SAVE_DELAY_MS = 500
@@ -45,6 +45,7 @@ export interface PageEditorHandle {
 
 export function PageEditor({
   tabId,
+  readAt,
   doc,
   theme,
   active,
@@ -52,6 +53,8 @@ export function PageEditor({
   ref
 }: {
   tabId: string
+  /** The page's save count when `doc` was read. */
+  readAt: number
   doc: PageDoc
   theme: 'light' | 'dark'
   /** False while the editor's tab is hidden. */
@@ -183,14 +186,16 @@ export function PageEditor({
     )
   }, [doc.id, onConflict, unsaved])
 
-  useEffect(
-    () =>
-      onPageEvent((event) => {
-        if (event.type !== 'saved' || event.id !== doc.id || event.source === source) return
-        void showSaved()
-      }),
-    [doc.id, source, showSaved]
-  )
+  // A save another tab announced while this page was read is caught up on here.
+  const [readAtMount] = useState(readAt)
+  useEffect(() => {
+    const off = onPageEvent((event) => {
+      if (event.type !== 'saved' || event.id !== doc.id || event.source === source) return
+      void showSaved()
+    })
+    if (saveCount(doc.id) !== readAtMount) void showSaved()
+    return off
+  }, [doc.id, source, showSaved, readAtMount])
 
   useEffect(() => {
     if (!rescued) return
