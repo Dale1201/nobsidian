@@ -31,7 +31,7 @@ Resizing a drawing on the page, captions, cleaning up drawing files no page uses
 | Editing surface | The page shows the saved SVG as a plain image; drawing happens in a full-screen editor. |
 | Dark mode | Files are always exported light, on a white background. In the app's dark theme the page image gets `filter: invert(90%) hue-rotate(180deg)`, which turns the white background into the dark page colour, and the editor uses Excalidraw's dark theme. |
 | Slash menu | "Drawing" in the Media group, after Image. |
-| Loading | The editor and everything that imports Excalidraw sit behind one dynamic `import()`. Fonts, including the 12 MB Xiaolai CJK font, ship with the app and are served locally. |
+| Loading | The editor and everything that imports Excalidraw sit behind one dynamic `import()`. Fonts, including the 12 MB Xiaolai CJK font, ship with the app and are served by the main process at `nbfile://excalidraw/fonts/`. |
 
 ## 3. The page and the file
 
@@ -56,27 +56,34 @@ If the file does not exist, the block shows "Drawing not found" and the file nam
 ### File names
 
 The first save of a new drawing is named `Drawing.excalidraw.svg`; later saves keep the current file's stem.
-`saveAttachment` treats `.excalidraw.svg` as one extension, so a taken name becomes `Drawing 2.excalidraw.svg` rather than `Drawing.excalidraw 2.svg`.
+`saveAttachment` treats `.excalidraw.svg` as one extension, so a taken name becomes `Drawing (2).excalidraw.svg` rather than `Drawing.excalidraw (2).svg`.
+A save of `Drawing (2).excalidraw.svg` is named `Drawing.excalidraw.svg` again, so counters never pile up as `Drawing (2) (2)`.
 
 ## 4. The editor
 
 `DrawingEditor` is a full-window overlay above the app, loaded with `import()` the first time a drawing is opened.
 
-- It renders Excalidraw with the app's current theme and the "Done" button in the top-right corner.
-  Cmd+Enter also closes it; Esc stays with Excalidraw, which uses it to deselect and leave tools.
-- The main menu is our own short `MainMenu`: clear canvas, toggle grid, help.
+- A 45px bar like the app's top bar holds the title "Drawing" (clear of the window's traffic lights) and a "Done" button on the right; Excalidraw fills the rest.
+  The bar and canvas are one surface: white, or Excalidraw's dark canvas colour `#121212`.
+- Cmd+Enter also closes it; Esc stays with Excalidraw, which uses it to deselect and leave tools.
+- While it is open, menu commands that would navigate (new page, back, forward, search, open folder, import) do nothing; toggling the theme still works and restyles the editor.
+- After Done the drawing block is selected, as Notion does, so Enter opens it again.
+- The main menu is our own short `MainMenu`: clear canvas, find on canvas, help.
+  Excalidraw's AI features are off.
   There is no live collaboration and no export to link, since that uploads to excalidraw.com.
   The library's "Browse libraries" link opens in the user's browser through the existing window-open handler.
 - Excalidraw's own theme toggle is hidden; the theme follows the app.
-- `window.EXCALIDRAW_ASSET_PATH` points at the bundled font folder before the module loads, so fonts never come from a CDN.
-- While open, the editor registers a flusher with `registerFlusher`, so quitting or closing the window saves the drawing first.
+- `window.EXCALIDRAW_ASSET_PATH` is `nbfile://excalidraw/` before the module loads.
+- While open, the editor registers a flusher with `registerFlusher` that runs before the page editors' flushers, so quitting or closing the window saves the drawing and then the page that points at it.
+- If the page file changes on disk while the editor is open, the page's editor is rebuilt and its blocks get new ids; Done then finds the drawing in the rebuilt editor by its file (and its position among drawings of that file), so the drawing still lands.
+  Only if no such block is left does it show "The drawing's block was gone, so it was saved as attachments/…".
 
 ### Opening and saving
 
 1. Open: the renderer calls `drawing:read(href)`, which returns the file's text, or `null` when it is missing.
    The text is loaded with Excalidraw's `loadFromBlob`, and the scene version (`getSceneVersion`) is kept.
 2. Done: if the scene version is unchanged, the editor closes and nothing is written.
-   Otherwise it calls `exportToSvg` with `exportEmbedScene: true`, `exportBackground: true`, `viewBackgroundColor: '#ffffff'` and `exportWithDarkMode: false`, saves the SVG text through `attachment:save`, and updates the block's `url`.
+   Otherwise it calls `exportToSvg` with `exportEmbedScene: true`, `exportBackground: true`, `viewBackgroundColor: '#ffffff'`, `exportWithDarkMode: false` and `exportScale: 1` (so the page shows it at the size it was drawn), saves the SVG text through `attachment:save`, and updates the block's `url`.
    The page then saves as usual, and Cmd+Z on the page restores the previous `url`.
 3. New drawing: the slash item inserts a drawing block with an empty `url` and opens the editor on a blank canvas.
    If the editor closes without a save, the block is removed, so an empty `url` never reaches the file.
@@ -88,8 +95,14 @@ The first save of a new drawing is named `Drawing.excalidraw.svg`; later saves k
 
 - `drawing:read(href)` resolves the href with `resolveAsset`, accepts only files ending in `.excalidraw.svg`, and returns their UTF-8 text.
   Reading through IPC keeps the renderer's Content-Security-Policy unchanged for `fetch`.
-- Excalidraw's fonts are copied from the package into the renderer build at a fixed path, served from `'self'`, which `font-src` already allows.
-- If Excalidraw's font-subsetting worker needs a CSP change, it is the narrowest one that works (`worker-src 'self' blob:`), verified in the packaged app.
+- A Vite plugin copies Excalidraw's `dist/prod/fonts` into `out/renderer/excalidraw/fonts` at build time.
+  The main process serves them at `nbfile://excalidraw/fonts/…` (from the package folder under the dev server), refusing paths outside that folder.
+  The responses carry `Access-Control-Allow-Origin: *`, because Excalidraw fetches fonts with CORS from the `file://` page; the scheme gains the `corsEnabled` privilege for that.
+- The CSP adds `nbfile:` to `font-src` and a `connect-src 'self' nbfile:`; nothing else changes.
+- A `pnpm patch` of `@excalidraw/excalidraw@0.18.1` makes two changes, in both its `dev` and `prod` builds:
+  1. Fonts no longer list `esm.sh` as a fallback source. Chromium requests every listed source of a `FontFace`, so without the patch each font face triggered a blocked request to the CDN.
+  2. Glyph subsetting is skipped, and whole font files (one per Unicode range used) are embedded in exported SVGs. Subsetting needs `eval` (Emscripten embind) in a worker that cannot start from a `file://` page, and the CSP rightly forbids `eval` on the page. A drawing with Latin text carries about 33 KB of font; one with CJK text, about 50 KB more per range.
+  The patch is tied to that exact version, so an upgrade fails `pnpm install` until it is redone.
 
 ## 6. Bundle size
 
@@ -103,7 +116,7 @@ An e2e test in section 7 asserts that opening the app and a page with a drawing 
 
 - Parse and serialize round-trip a drawing; a normal `.svg` image stays an image; a drawing block with an empty `url` is dropped.
 - `links.ts` rewrites a drawing's `url` on move and rename.
-- `saveAttachment` numbers `Drawing.excalidraw.svg` as `Drawing 2.excalidraw.svg`.
+- `saveAttachment` numbers `Drawing.excalidraw.svg` as `Drawing (2).excalidraw.svg`, and a save names a file after the current one without its counter.
 - `drawing:read` refuses paths outside the workspace and files without the `.excalidraw.svg` suffix.
 
 ### End to end (Playwright on the built app)
@@ -116,5 +129,10 @@ An e2e test in section 7 asserts that opening the app and a page with a drawing 
 - A drawing whose file is missing shows "Drawing not found".
 - While the editor is open, no request leaves the app (fonts load locally, nothing goes to excalidraw.com).
 - Opening the app and a page with a drawing loads no Excalidraw chunk.
+- Enter on a selected drawing opens it; Cmd+Enter saves and closes; quitting with the editor open keeps the drawing.
+- A drawing copied with Cmd+D and then edited gets its own file; the other copy keeps the old one.
+- A drawing in a read-only page (Trash) does not open; a plain SVG named `.excalidraw.svg` opens as "can't be edited" and is never overwritten.
+- The page file changing on disk while the editor is open still lands the drawing in the page.
+- The packaged app draws with its bundled fonts (served from inside `app.asar`).
 
 New e2e tests run with `--repeat-each=10` before the work is called done.
