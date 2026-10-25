@@ -63,43 +63,54 @@ export default function DrawingEditor({
     }
   }, [session.url])
 
-  /** Writes the drawing if it changed; false if that failed. */
-  const save = useCallback(async (): Promise<boolean> => {
-    const draw = excalidraw.current
-    if (!draw) return true
-    const elements = draw.getSceneElements()
-    const version = hashElementsVersion(elements)
-    if (version === savedVersion.current) return true
-    try {
-      const svg = await exportToSvg({
-        elements,
-        appState: {
-          ...draw.getAppState(),
-          exportEmbedScene: true,
-          exportBackground: true,
-          viewBackgroundColor: '#ffffff',
-          exportWithDarkMode: false,
-          exportScale: 1
-        },
-        files: draw.getFiles()
-      })
-      const href = await api.invoke('attachment:save', {
-        name: drawingFileName(url.current),
-        data: new TextEncoder().encode(svg.outerHTML)
-      })
-      savedVersion.current = version
-      url.current = href
-      if (!session.apply(href)) {
-        useApp
-          .getState()
-          .showMessage(`The drawing's block was gone, so it was saved as ${href.slice(1)}.`)
+  /** Writes the drawing until what is saved matches the canvas; false if a write failed. */
+  const write = useCallback(async (): Promise<boolean> => {
+    // The canvas stays live during an export, so strokes drawn meanwhile get another pass.
+    for (;;) {
+      const draw = excalidraw.current
+      if (!draw) return true
+      const elements = draw.getSceneElements()
+      const version = hashElementsVersion(elements)
+      if (version === savedVersion.current) return true
+      try {
+        const svg = await exportToSvg({
+          elements,
+          appState: {
+            ...draw.getAppState(),
+            exportEmbedScene: true,
+            exportBackground: true,
+            viewBackgroundColor: '#ffffff',
+            exportWithDarkMode: false,
+            exportScale: 1
+          },
+          files: draw.getFiles()
+        })
+        const href = await api.invoke('attachment:save', {
+          name: drawingFileName(url.current),
+          data: new TextEncoder().encode(svg.outerHTML)
+        })
+        savedVersion.current = version
+        url.current = href
+        if (!session.apply(href)) {
+          useApp
+            .getState()
+            .showMessage(`The drawing's block was gone, so it was saved as ${href.slice(1)}.`)
+        }
+      } catch (err) {
+        useApp.getState().showMessage(`Couldn't save the drawing: ${errorReason(err)}`)
+        return false
       }
-      return true
-    } catch (err) {
-      useApp.getState().showMessage(`Couldn't save the drawing: ${errorReason(err)}`)
-      return false
     }
   }, [session])
+
+  // Done and the quit flush share one save, so racing them never writes the drawing twice.
+  const inFlight = useRef<Promise<boolean> | null>(null)
+  const save = useCallback((): Promise<boolean> => {
+    inFlight.current ??= write().finally(() => {
+      inFlight.current = null
+    })
+    return inFlight.current
+  }, [write])
 
   useEffect(() => registerFlusher(save, { first: true }), [save])
 

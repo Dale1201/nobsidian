@@ -377,3 +377,32 @@ test('the block menu names a drawing', async ({ nb }) => {
   await page.getByRole('button', { name: 'Block menu' }).click()
   await expect(page.getByRole('menu').locator('.menu-section').first()).toHaveText('Drawing')
 })
+
+test('strokes drawn while a save is running are saved too', async ({ nb }) => {
+  const { page, app } = nb
+  await newPage(page, 'Busy')
+  await insertDrawing(page)
+  await drawRectangle(page, 500, 400)
+  // Holds every save in the main process until released, counting them.
+  await app.evaluate(({ ipcMain }) => {
+    const g = globalThis as { saves?: number; release?: () => void }
+    let opened: Promise<void> = new Promise((resolve) => (g.release = resolve))
+    g.saves = 0
+    ipcMain.removeHandler('attachment:save')
+    ipcMain.handle('attachment:save', async () => {
+      g.saves! += 1
+      await opened
+      opened = Promise.resolve()
+      return `/attachments/Saved%20${g.saves}.excalidraw.svg`
+    })
+  })
+  await overlay(page).getByRole('button', { name: 'Done' }).click()
+  await expect.poll(() => app.evaluate(() => (globalThis as { saves?: number }).saves)).toBe(1)
+  // Clicking Done left focus on the button; Excalidraw takes its tool keys only when focused.
+  await page.mouse.click(900, 300)
+  await drawRectangle(page, 300, 600)
+  await app.evaluate(() => (globalThis as { release?: () => void }).release!())
+  await expect(overlay(page)).toBeHidden()
+  expect(await app.evaluate(() => (globalThis as { saves?: number }).saves)).toBe(2)
+  await waitForFile(join(nb.workspace, 'Busy.md'), 'Saved%202.excalidraw.svg')
+})
