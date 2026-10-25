@@ -36,16 +36,21 @@ export interface PageEditorHandle {
   keepMine(): Promise<boolean>
   /** Moves unsaved edits into the page's history before a reload; false if that failed. */
   discard(): Promise<boolean>
+  /** Saves pending edits now instead of after the typing pause. */
+  saveNow(): Promise<void>
 }
 
 export function PageEditor({
   doc,
   theme,
+  active,
   onConflict,
   ref
 }: {
   doc: PageDoc
   theme: 'light' | 'dark'
+  /** False while the editor's tab is hidden. */
+  active: boolean
   onConflict: () => void
   ref?: Ref<PageEditorHandle>
 }): React.JSX.Element {
@@ -115,6 +120,7 @@ export function PageEditor({
     () => ({
       hasUnsaved: () => pending.current !== null || inFlight.current !== null || conflicted.current,
       revision: () => revision.current,
+      saveNow: () => save('auto'),
       keepMine: async () => {
         pending.current = latest.current ?? pending.current
         await save('force')
@@ -196,6 +202,7 @@ export function PageEditor({
     <Editor
       initialBlocks={initialBlocks}
       theme={theme}
+      acceptsFiles={active}
       onChange={onChange}
       uploadFile={async (file) =>
         api.invoke('attachment:save', {

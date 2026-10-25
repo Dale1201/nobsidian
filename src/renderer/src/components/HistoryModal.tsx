@@ -27,7 +27,9 @@ export function HistoryModal({
   const close = (): void => {
     useApp.getState().setOverlay(null)
     queueMicrotask(() =>
-      document.querySelector<HTMLElement>('.page-body [contenteditable="true"]')?.focus()
+      document
+        .querySelector<HTMLElement>('.tab-pane.active .page-body [contenteditable="true"]')
+        ?.focus()
     )
   }
 

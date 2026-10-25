@@ -45,6 +45,8 @@
   --bg-pink: #f9eef3;
   --bg-red: #fdebec;
 
+  --tab-hover: hsl(from var(--bg-sidebar) h s calc(l - 5));
+  --tab-bar-height: 36px;
   --sidebar-row-height: 30px;
   --topbar-height: 45px;
   --page-width: 708px;
@@ -67,6 +69,7 @@
   --danger: #c4554d;
   --danger-hover: #b04a43;
   --input-bg: rgba(255, 255, 255, 0.055);
+  --tab-hover: hsl(from var(--bg-sidebar) h s calc(l + 5));
   --menu-shadow:
     rgba(15, 15, 15, 0.1) 0 0 0 1px, rgba(15, 15, 15, 0.2) 0 3px 6px,
     rgba(15, 15, 15, 0.4) 0 9px 24px;

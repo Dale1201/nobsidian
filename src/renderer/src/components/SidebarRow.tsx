@@ -33,8 +33,7 @@ export function SidebarRow({
   /** Favorites keep their own expansion, apart from the page tree. */
   scope?: 'pages' | 'favorites'
 }): React.JSX.Element {
-  // A trashed page on screen is not in the sidebar, so no row is the current one.
-  const currentId = useApp((s) => (s.trashEntry ? null : s.currentId))
+  const currentId = useApp((s) => s.currentId)
   const expandedIds = useApp((s) => (s.workspace && s.settings?.expanded[s.workspace.root]) || NONE)
   const favorites = useApp((s) => s.favorites)
   const renamingId = useApp((s) => s.renamingId)

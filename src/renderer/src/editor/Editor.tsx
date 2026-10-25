@@ -74,6 +74,8 @@ export type EditorProps = {
   openLink(href: string): void
   pageLink: PageLinkContextValue
   editable?: boolean
+  /** False while the page's tab is hidden, so files dropped on the window go elsewhere. */
+  acceptsFiles?: boolean
   /** Applied by Cmd+Shift+H. */
   lastColor?: PickedColor
   onPickColor?(picked: PickedColor): void
@@ -270,14 +272,14 @@ export function Editor(props: EditorProps): React.JSX.Element {
 
   const pickerItems = usePickerItems(editor, props.createLinkedPage)
 
-  const { uploadFile, editable } = props
+  const { uploadFile, editable, acceptsFiles } = props
   useEffect(
     () => (editable === false ? undefined : registerDrawingEditor(editor)),
     [editor, editable]
   )
 
   useEffect(() => {
-    if (editable === false) return
+    if (editable === false || acceptsFiles === false) return
     const attach = (event: Event): void => {
       const files = (event as CustomEvent<File[]>).detail
       void Promise.all(
@@ -292,7 +294,7 @@ export function Editor(props: EditorProps): React.JSX.Element {
     }
     window.addEventListener(ATTACH_FILES_EVENT, attach)
     return () => window.removeEventListener(ATTACH_FILES_EVENT, attach)
-  }, [editor, uploadFile, editable])
+  }, [editor, uploadFile, editable, acceptsFiles])
 
   return (
     <PageLinkContext.Provider value={props.pageLink}>

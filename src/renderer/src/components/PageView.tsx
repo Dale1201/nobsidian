@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { PageDoc, PageMetaPatch } from '@shared/types'
 import { findNode } from '../lib/tree'
-import { useApp } from '../store'
+import { registerScroller, useApp } from '../store'
 import { Banner } from './Banner'
 import { PageCover, PageIconAndControls } from './PageHeader'
 import { EditorErrorBoundary } from './EditorErrorBoundary'
@@ -20,9 +20,21 @@ function applyPatch(doc: PageDoc, patch: PageMetaPatch): PageDoc {
   return { ...doc, meta }
 }
 
-export function PageView({ theme }: { theme: 'light' | 'dark' }): React.JSX.Element {
-  const currentId = useApp((s) => s.currentId)
-  const node = useApp((s) => (s.currentId ? findNode(s.tree, s.currentId) : null))
+export function PageView({
+  tabId,
+  pageId,
+  initialScroll,
+  active,
+  theme
+}: {
+  tabId: string
+  pageId: string
+  /** Where to scroll once the page shows, as when going back to it. */
+  initialScroll: number
+  active: boolean
+  theme: 'light' | 'dark'
+}): React.JSX.Element {
+  const node = useApp((s) => findNode(s.tree, pageId))
   const [doc, setDoc] = useState<PageDoc | null>(null)
   // Bumped to rebuild the editor from a fresh read of the file.
   const [generation, setGeneration] = useState(0)
@@ -30,7 +42,7 @@ export function PageView({ theme }: { theme: 'light' | 'dark' }): React.JSX.Elem
   const bodyRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const editorRef = useRef<PageEditorHandle>(null)
-  const keepScroll = useRef<number | null>(null)
+  const keepScroll = useRef<number | null>(initialScroll || null)
   const docRef = useRef(doc)
   useLayoutEffect(() => {
     docRef.current = doc
@@ -38,9 +50,8 @@ export function PageView({ theme }: { theme: 'light' | 'dark' }): React.JSX.Elem
   const onConflict = useCallback(() => setConflict(true), [])
 
   useEffect(() => {
-    if (!currentId) return
     let cancelled = false
-    void api.invoke('page:read', { id: currentId }).then((d) => {
+    void api.invoke('page:read', { id: pageId }).then((d) => {
       if (cancelled) return
       setDoc(d)
       setConflict(false)
@@ -48,7 +59,14 @@ export function PageView({ theme }: { theme: 'light' | 'dark' }): React.JSX.Elem
     return () => {
       cancelled = true
     }
-  }, [currentId])
+  }, [pageId])
+
+  useEffect(() => registerScroller(tabId, () => scrollRef.current?.scrollTop ?? 0), [tabId])
+
+  // A tab being left saves at once, so a hidden tab never sits on unsaved typing.
+  useEffect(() => {
+    if (!active) void editorRef.current?.saveNow()
+  }, [active])
 
   const reload = useCallback(async (): Promise<void> => {
     const id = docRef.current?.id
@@ -59,7 +77,7 @@ export function PageView({ theme }: { theme: 'light' | 'dark' }): React.JSX.Elem
     } catch (e) {
       return useApp.getState().reportError('reload', e)
     }
-    if (docRef.current?.id !== id || useApp.getState().currentId !== id) return
+    if (docRef.current?.id !== id) return
     // Typing that started while the page was being read is not thrown away.
     if (editorRef.current?.hasUnsaved()) return setConflict(true)
     keepScroll.current = scrollRef.current?.scrollTop ?? null
@@ -68,12 +86,13 @@ export function PageView({ theme }: { theme: 'light' | 'dark' }): React.JSX.Elem
     setConflict(false)
   }, [])
 
+  const ready = doc && doc.id === pageId && node
+
   useLayoutEffect(() => {
-    if (keepScroll.current !== null && scrollRef.current) {
-      scrollRef.current.scrollTop = keepScroll.current
-      keepScroll.current = null
-    }
-  }, [generation])
+    if (!ready || keepScroll.current === null || !scrollRef.current) return
+    scrollRef.current.scrollTop = keepScroll.current
+    keepScroll.current = null
+  }, [generation, ready])
 
   useEffect(
     () =>
@@ -97,11 +116,10 @@ export function PageView({ theme }: { theme: 'light' | 'dark' }): React.JSX.Elem
     })
   }
 
-  const ready = doc && doc.id === currentId && node
-
   return (
     <div className="main">
       <TopBar
+        pageId={pageId}
         doc={ready ? doc : null}
         onToggleFullWidth={() => doc && updateMeta({ fullWidth: !doc.meta.fullWidth })}
       />
@@ -155,7 +173,13 @@ export function PageView({ theme }: { theme: 'light' | 'dark' }): React.JSX.Elem
               ref={bodyRef}
             >
               <EditorErrorBoundary key={`${doc.id}:${generation}`} path={doc.path}>
-                <PageEditor ref={editorRef} doc={doc} theme={theme} onConflict={onConflict} />
+                <PageEditor
+                  ref={editorRef}
+                  doc={doc}
+                  theme={theme}
+                  active={active}
+                  onConflict={onConflict}
+                />
               </EditorErrorBoundary>
             </div>
           </>

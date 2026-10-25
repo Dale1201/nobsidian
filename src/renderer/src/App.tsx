@@ -3,10 +3,10 @@ import { DrawingHost } from './drawing/DrawingHost'
 import { HistoryModal } from './components/HistoryModal'
 import { ImportDrop } from './components/ImportDrop'
 import { ImportPanel } from './components/ImportPanel'
-import { PageView } from './components/PageView'
 import { SearchModal } from './components/SearchModal'
 import { Sidebar } from './components/Sidebar'
-import { TrashedPageView } from './components/TrashedPageView'
+import { TabBar } from './components/TabBar'
+import { TabPanes } from './components/TabPanes'
 import { Welcome } from './components/Welcome'
 import { toggledPreference, useEffectiveTheme } from './lib/theme'
 import { flushAll, useApp } from './store'
@@ -33,7 +33,6 @@ export function App(): React.JSX.Element | null {
   const theme = useEffectiveTheme(settings?.theme)
   const error = useApp((s) => s.error)
   const overlay = useApp((s) => s.overlay)
-  const trashEntry = useApp((s) => s.trashEntry)
 
   useEffect(() => {
     void useApp.getState().init()
@@ -74,6 +73,15 @@ export function App(): React.JSX.Element | null {
         if (cmd === 'search' && canSearch()) app.setOverlay({ kind: 'search' })
         if (cmd === 'back') app.back()
         if (cmd === 'forward') app.forward()
+        if (cmd === 'new-tab') app.newTab()
+        if (cmd === 'close-tab') {
+          if (app.tabs) app.closeTab(app.tabs.activeId)
+          else void api.invoke('window:close', undefined)
+        }
+        if (cmd === 'reopen-tab') app.reopenClosedTab()
+        if (cmd === 'next-tab') app.stepTab(1)
+        if (cmd === 'previous-tab') app.stepTab(-1)
+        if (cmd.startsWith('select-tab-')) app.selectTab(Number(cmd.slice('select-tab-'.length)))
         if (cmd === 'toggle-sidebar')
           void app.updateSettings({ sidebarCollapsed: !app.settings?.sidebarCollapsed })
         if (cmd === 'toggle-theme') void app.updateSettings({ theme: toggledPreference(theme) })
@@ -90,12 +98,11 @@ export function App(): React.JSX.Element | null {
         <>
           {/* The drawing editor covers the window; nothing under it may take focus or clicks. */}
           <div className="app-content" inert={overlay?.kind === 'drawing'}>
-            {!settings?.sidebarCollapsed && <Sidebar />}
-            {trashEntry ? (
-              <TrashedPageView key={trashEntry} entry={trashEntry} theme={theme} />
-            ) : (
-              <PageView theme={theme} />
-            )}
+            <TabBar />
+            <div className="app-body">
+              {!settings?.sidebarCollapsed && <Sidebar />}
+              <TabPanes theme={theme} />
+            </div>
             {overlay?.kind === 'search' && <SearchModal />}
             {overlay?.kind === 'move' && <SearchModal moving={overlay.pageId} />}
             {overlay?.kind === 'history' && <HistoryModal pageId={overlay.pageId} theme={theme} />}

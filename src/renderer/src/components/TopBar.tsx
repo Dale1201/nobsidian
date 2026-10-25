@@ -1,47 +1,31 @@
 import { Fragment, useState } from 'react'
 import type { PageDoc } from '@shared/types'
-import { pathTo } from '../lib/tree'
+import { findNode, pathTo } from '../lib/tree'
 import { useApp } from '../store'
-import {
-  ClockIcon,
-  DotsIcon,
-  DuplicateIcon,
-  SidebarIcon,
-  StarIcon,
-  TrashIcon,
-  WidthIcon
-} from './icons'
+import { ClockIcon, DotsIcon, DuplicateIcon, StarIcon, TrashIcon, WidthIcon } from './icons'
 import { Menu } from './menu/Menu'
 import { PageIconView } from './PageIconView'
 
 export function TopBar({
+  pageId,
   doc,
   onToggleFullWidth
 }: {
+  pageId: string
   doc: PageDoc | null
   onToggleFullWidth: () => void
 }): React.JSX.Element {
   const tree = useApp((s) => s.tree)
   const favorites = useApp((s) => s.favorites)
-  const collapsed = useApp((s) => s.settings?.sidebarCollapsed ?? false)
-  const currentId = useApp((s) => s.currentId)
+  const currentId = useApp((s) => (findNode(s.tree, pageId) ? pageId : null))
   const [menu, setMenu] = useState<DOMRect | null>(null)
   const app = useApp.getState
   const crumbs = currentId ? pathTo(tree, currentId) : []
   const isFavorite = currentId ? favorites.includes(currentId) : false
 
   return (
-    <header className={`topbar drag-region ${collapsed ? 'sidebar-hidden' : ''}`}>
-      <div className="breadcrumbs no-drag">
-        {collapsed && (
-          <button
-            className="icon-button"
-            aria-label="Show sidebar"
-            onClick={() => void app().updateSettings({ sidebarCollapsed: false })}
-          >
-            <SidebarIcon size={16} />
-          </button>
-        )}
+    <header className="topbar">
+      <div className="breadcrumbs">
         {crumbs.map((node, i) => (
           <Fragment key={node.id}>
             {i > 0 && <span className="breadcrumb-sep">/</span>}
@@ -57,7 +41,7 @@ export function TopBar({
         ))}
       </div>
       {currentId && (
-        <div className="topbar-actions no-drag">
+        <div className="topbar-actions">
           <button
             className={`icon-button ${isFavorite ? 'on' : ''}`}
             aria-label={isFavorite ? 'Remove from Favorites' : 'Add to Favorites'}
