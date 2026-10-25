@@ -44,12 +44,14 @@ export interface PageEditorHandle {
 }
 
 export function PageEditor({
+  tabId,
   doc,
   theme,
   active,
   onConflict,
   ref
 }: {
+  tabId: string
   doc: PageDoc
   theme: 'light' | 'dark'
   /** False while the editor's tab is hidden. */
@@ -244,6 +246,7 @@ export function PageEditor({
     <Editor
       initialBlocks={initialBlocks}
       contentRef={content}
+      drawingSlot={{ tabId, pageId: doc.id }}
       theme={theme}
       acceptsFiles={active}
       onChange={onChange}

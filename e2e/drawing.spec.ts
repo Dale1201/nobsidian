@@ -270,6 +270,29 @@ test('a new drawing still lands when its page changes on disk while it is open',
   await waitForFile(file, /Before\n\n!\[\]\(attachments\/Drawing\.excalidraw\.svg\)\n\nTheirs\n$/)
 })
 
+test('a new drawing lands in the page of the tab it was made in', async ({ nb }) => {
+  const { page, app } = nb
+  await newPage(page, 'Other')
+  await newPage(page, 'Sketch')
+  // A second tab on another page mounts its editor after this one.
+  await app.evaluate(({ Menu }) =>
+    Menu.getApplicationMenu()
+      ?.items.flatMap((i) => i.submenu?.items ?? [])
+      .find((i) => i.label === 'New Tab')
+      ?.click()
+  )
+  await page.getByTestId('sidebar-row-Other').click()
+  await expect(page.locator('.tab-pane.active').getByTestId('page-title')).toHaveText('Other')
+  await page.locator('.tab').first().click()
+  await expect(page.locator('.tab-pane.active').getByTestId('page-title')).toHaveText('Sketch')
+  await page.locator('.tab-pane.active .bn-editor').click()
+  await insertDrawing(page)
+  await drawRectangle(page, 500, 400)
+  await done(page)
+  await waitForFile(join(nb.workspace, 'Sketch.md'), '![](attachments/Drawing.excalidraw.svg)')
+  expect(await readFile(join(nb.workspace, 'Other.md'), 'utf8')).not.toContain('excalidraw')
+})
+
 test('a drawing that cannot be saved says so over the editor and stays open', async ({ nb }) => {
   const { page } = nb
   await newPage(page, 'Locked')

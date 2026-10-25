@@ -192,6 +192,7 @@ export function PageView({
               <EditorErrorBoundary key={`${doc.id}:${generation}`} path={doc.path}>
                 <PageEditor
                   ref={editorRef}
+                  tabId={tabId}
                   doc={doc}
                   theme={theme}
                   active={active}

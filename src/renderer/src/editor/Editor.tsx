@@ -76,6 +76,8 @@ export type EditorProps = {
   pageLink: PageLinkContextValue
   /** Swaps in content saved by another tab, keeping this editor, its undo history and focus. */
   contentRef?: Ref<EditorContent>
+  /** The tab and page an editable page editor belongs to, so drawings land in the right one. */
+  drawingSlot?: { tabId: string; pageId: string }
   editable?: boolean
   /** False while the page's tab is hidden, so files dropped on the window go elsewhere. */
   acceptsFiles?: boolean
@@ -332,9 +334,14 @@ export function Editor(props: EditorProps): React.JSX.Element {
   }, [editor, openLink])
 
   const { uploadFile, editable, acceptsFiles } = props
+  const slotTab = props.drawingSlot?.tabId
+  const slotPage = props.drawingSlot?.pageId
   useEffect(
-    () => (editable === false ? undefined : registerDrawingEditor(editor)),
-    [editor, editable]
+    () =>
+      editable === false || !slotTab || !slotPage
+        ? undefined
+        : registerDrawingEditor(editor, { tabId: slotTab, pageId: slotPage }),
+    [editor, editable, slotTab, slotPage]
   )
 
   useEffect(() => {
