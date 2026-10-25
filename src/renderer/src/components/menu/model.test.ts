@@ -44,6 +44,16 @@ describe('moveIndex', () => {
     expect(moveIndex(entries, 1, -1)).toBe(4)
   })
 
+  it('skips disabled items', () => {
+    const some: MenuEntry[] = [
+      { kind: 'item', id: 'a', label: 'A' },
+      { kind: 'item', id: 'b', label: 'B', disabled: true },
+      { kind: 'item', id: 'c', label: 'C' }
+    ]
+    expect(moveIndex(some, 0, 1)).toBe(2)
+    expect(moveIndex(some, 2, -1)).toBe(0)
+  })
+
   it('returns -1 when there is nothing to select', () => {
     expect(moveIndex([{ kind: 'separator' }], -1, 1)).toBe(-1)
   })

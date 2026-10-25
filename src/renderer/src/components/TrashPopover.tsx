@@ -24,9 +24,9 @@ export function TrashPopover({
   const [items, setItems] = useState<TrashItem[] | null>(null)
   const [query, setQuery] = useState('')
   const app = useApp.getState
-  const open = (entry: string): void => {
+  const open = (item: TrashItem): void => {
     onClose()
-    app().showTrashEntry(entry)
+    app().showTrashEntry(item)
   }
 
   useEffect(() => {
@@ -66,11 +66,11 @@ export function TrashPopover({
             role="button"
             data-testid={`trash-item-${item.title || 'Untitled'}`}
             tabIndex={0}
-            onClick={() => open(item.entry)}
+            onClick={() => open(item)}
             onKeyDown={(e) => {
               if (e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ')) return
               e.preventDefault()
-              open(item.entry)
+              open(item)
             }}
           >
             <span className="page-icon">

@@ -36,7 +36,13 @@ button {
 
 .app {
   display: flex;
+  flex-direction: column;
   height: 100%;
+}
+.app-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
 }
 
 .app-content {
@@ -57,6 +63,257 @@ button {
 
 .no-drag {
   -webkit-app-region: no-drag;
+}
+
+/* ---------- tab bar ---------- */
+.tab-bar {
+  height: var(--tab-bar-height);
+  flex: none;
+  display: flex;
+  background: var(--bg-sidebar);
+  box-shadow: inset 0 -1px 0 var(--divider);
+  padding-right: 54px;
+}
+.tab-bar.fullscreen {
+  padding-right: 0;
+}
+.tab-bar-lead {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-right: 4px;
+}
+.tab-bar:not(.sidebar-collapsed) .tab-bar-lead {
+  box-shadow: inset -1px 0 0 var(--divider);
+}
+.tab-bar-nav {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+}
+.tab-bar.sidebar-collapsed .tab-bar-nav {
+  padding-left: 4px;
+}
+.tab-bar-button {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  flex: none;
+}
+.tab-bar-button:hover:not(:disabled) {
+  background: var(--hover-strong);
+}
+.tab-bar-button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.tab-list {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+.tab-strip {
+  position: relative;
+  display: flex;
+  height: 100%;
+}
+.tab {
+  --tab-bg: var(--bg-sidebar);
+  position: relative;
+  flex: 1 0 36px;
+  min-width: 36px;
+  max-width: 200px;
+  height: 100%;
+  display: flex;
+  background: var(--tab-bg);
+  color: var(--text-secondary);
+  box-shadow:
+    inset 1px 0 0 var(--divider),
+    inset 0 -1px 0 var(--divider);
+  container-type: inline-size;
+  cursor: default;
+}
+.tab.last {
+  box-shadow:
+    inset 1px 0 0 var(--divider),
+    inset -1px 0 0 var(--divider),
+    inset 0 -1px 0 var(--divider);
+}
+.tab:hover,
+.tab.menu-open {
+  --tab-bg: var(--tab-hover);
+  color: var(--text);
+}
+.tab.active {
+  --tab-bg: var(--bg);
+  color: var(--text);
+  box-shadow: inset 1px 0 0 var(--divider);
+}
+.tab.active.last {
+  box-shadow:
+    inset 1px 0 0 var(--divider),
+    inset -1px 0 0 var(--divider);
+}
+.tab-inner {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  padding-inline: clamp(9px, 25cqw, 16px);
+}
+/* Too narrow for any of the title: the icon alone, centred. */
+@container (max-width: 44px) {
+  .tab-inner {
+    justify-content: center;
+    padding-inline: 0;
+  }
+  .tab-inner .tab-icon {
+    margin-right: 0;
+  }
+  .tab-inner .tab-title {
+    display: none;
+  }
+}
+.tab-icon {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  margin-right: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  line-height: 1;
+  opacity: 0.75;
+}
+.tab-icon img {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  object-fit: cover;
+}
+.tab:hover .tab-icon,
+.tab.active .tab-icon {
+  opacity: 1;
+}
+.tab-title {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+}
+.tab.active .tab-title {
+  text-overflow: ellipsis;
+}
+.tab:not(.active) .tab-title::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 9px;
+  background: linear-gradient(90deg, transparent, var(--tab-bg));
+}
+.tab-close {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--tab-bg);
+  opacity: 0;
+  transition: opacity 150ms ease;
+  pointer-events: none;
+}
+.tab-close::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -16px;
+  width: 16px;
+  background: linear-gradient(90deg, transparent, var(--tab-bg));
+}
+.tab:hover .tab-close,
+.tab:focus-visible .tab-close {
+  opacity: 1;
+}
+.tab-close button {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: 6px;
+  color: var(--text-tertiary);
+  pointer-events: auto;
+}
+.tab-close button:hover {
+  background: var(--hover-strong);
+}
+/* Like Notion, narrow tabs other than the active one have no close button. */
+@container (max-width: 52px) {
+  .tab:not(.active) .tab-close {
+    display: none;
+  }
+}
+.tab-conflict {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  margin-top: -3px;
+  border-radius: 50%;
+  background: var(--color-yellow);
+}
+.tab:hover .tab-conflict {
+  display: none;
+}
+.tab-bar-new {
+  flex: none;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+}
+.tab-drop-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--accent);
+  opacity: 0.43;
+  pointer-events: none;
+  z-index: 3;
+}
+
+/* ---------- tab panes ---------- */
+.tab-panes {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+}
+.tab-pane {
+  position: absolute;
+  inset: 0;
+  display: flex;
+}
+/* Hidden, not removed, so a tab keeps its scroll, selection and undo while away. */
+.tab-pane:not(.active) {
+  visibility: hidden;
 }
 
 /* ---------- welcome ---------- */
@@ -99,32 +356,31 @@ button {
   flex-direction: column;
   border-right: 1px solid var(--divider);
 }
-.sidebar-header {
-  height: var(--topbar-height);
-  padding: 0 10px 0 80px;
+.sidebar-workspace-row {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
   gap: 2px;
+  margin: 8px 8px 0;
   flex: none;
 }
-.sidebar-header .icon-button {
-  width: 26px;
-  height: 26px;
-  color: var(--text-tertiary);
+.sidebar-compose {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  color: var(--text-secondary);
 }
 .sidebar-workspace {
   display: flex;
   align-items: center;
   gap: 8px;
   height: 32px;
-  margin: 0 8px;
+  flex: 1;
+  min-width: 0;
   padding: 0 6px;
   border-radius: 6px;
   font-weight: 500;
   color: var(--text);
   text-align: left;
-  flex: none;
 }
 .sidebar-workspace:hover {
   background: var(--hover);
@@ -339,6 +595,10 @@ button {
 .menu-item.danger.active {
   color: var(--color-red);
 }
+.menu-item.disabled {
+  color: var(--text-tertiary);
+  cursor: default;
+}
 .menu-item-icon {
   width: 20px;
   height: 20px;
@@ -405,9 +665,6 @@ button {
   justify-content: space-between;
   padding: 0 12px;
   gap: 8px;
-}
-.topbar.sidebar-hidden {
-  padding-left: 80px;
 }
 .breadcrumbs {
   display: flex;

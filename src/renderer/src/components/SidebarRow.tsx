@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type DragEvent } from 'react'
 import type { PageNode } from '@shared/types'
+import { tabTarget } from '../lib/navigation'
 import { dropTarget, type DropPosition } from '../lib/tree'
 import { useApp } from '../store'
 import {
@@ -7,6 +8,7 @@ import {
   DotsIcon,
   DuplicateIcon,
   MoveIcon,
+  OpenInTabIcon,
   PlusIcon,
   RenameIcon,
   StarIcon,
@@ -33,8 +35,7 @@ export function SidebarRow({
   /** Favorites keep their own expansion, apart from the page tree. */
   scope?: 'pages' | 'favorites'
 }): React.JSX.Element {
-  // A trashed page on screen is not in the sidebar, so no row is the current one.
-  const currentId = useApp((s) => (s.trashEntry ? null : s.currentId))
+  const currentId = useApp((s) => s.currentId)
   const expandedIds = useApp((s) => (s.workspace && s.settings?.expanded[s.workspace.root]) || NONE)
   const favorites = useApp((s) => s.favorites)
   const renamingId = useApp((s) => s.renamingId)
@@ -85,7 +86,13 @@ export function SidebarRow({
         style={{ paddingLeft: indent }}
         data-testid={`sidebar-row-${node.title || 'Untitled'}`}
         draggable={draggable && renamingId !== node.id}
-        onClick={() => app().openPage(node.id, { scroll: false })}
+        onClick={(e) => app().openPage(node.id, { scroll: false, tab: tabTarget(e) })}
+        onMouseDown={(e) => {
+          if (e.button === 1) e.preventDefault()
+        }}
+        onAuxClick={(e) => {
+          if (e.button === 1) app().openPage(node.id, { tab: tabTarget(e) })
+        }}
         onDragStart={(e) => {
           e.dataTransfer.setData(DRAG_TYPE, node.id)
           e.dataTransfer.effectAllowed = 'move'
@@ -208,6 +215,14 @@ export function SidebarRow({
               icon: <TrashIcon size={16} />,
               danger: true,
               onSelect: () => void app().trashPage(node.id)
+            },
+            { kind: 'separator' },
+            {
+              kind: 'item',
+              id: 'open-tab',
+              label: 'Open in new tab',
+              icon: <OpenInTabIcon size={16} />,
+              onSelect: () => app().openPage(node.id, { tab: 'foreground' })
             }
           ]}
         />

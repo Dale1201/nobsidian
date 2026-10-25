@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { findRanges } from '@shared/core/text'
 import type { PageNode, SearchHit, TextRange } from '@shared/types'
+import { tabTarget, type LinkClick } from '../lib/navigation'
 import { findNode, pathTo } from '../lib/tree'
 import { useApp } from '../store'
 import { SearchIcon } from './icons'
@@ -102,12 +103,12 @@ export function SearchModal({ moving }: { moving?: string }): React.JSX.Element 
 
   const current = Math.min(selected, items.length - 1)
 
-  const choose = (item: Item | undefined): void => {
+  const choose = (item: Item | undefined, click?: LinkClick): void => {
     if (!item) return
     close()
     const app = useApp.getState()
     if (!moving) {
-      if (item.id) app.openPage(item.id)
+      if (item.id) app.openPage(item.id, { tab: click ? tabTarget(click) : 'current' })
       return
     }
     const siblings = item.id ? (findNode(app.tree, item.id)?.children ?? []) : app.tree
@@ -123,7 +124,7 @@ export function SearchModal({ moving }: { moving?: string }): React.JSX.Element 
       setSelected(Math.max(current - 1, 0))
     } else if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
       e.preventDefault()
-      choose(items[current])
+      choose(items[current], { button: 0, metaKey: e.metaKey, shiftKey: e.shiftKey })
     }
   }
 
@@ -157,7 +158,7 @@ export function SearchModal({ moving }: { moving?: string }): React.JSX.Element 
             tabIndex={-1}
             className={`search-item ${i === current ? 'selected' : ''}`}
             onMouseMove={() => i !== current && setSelected(i)}
-            onClick={() => choose(item)}
+            onClick={(e) => choose(item, e)}
           >
             <span className="page-icon">
               {item.id === null ? (

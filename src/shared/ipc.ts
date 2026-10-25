@@ -10,6 +10,7 @@ import type {
   WorkspaceInfo,
   WriteResult
 } from './types'
+import type { WindowControls } from './window'
 
 export type ThemePreference = 'system' | 'light' | 'dark'
 
@@ -21,13 +22,21 @@ export interface Settings {
   sidebarCollapsed: boolean
   /** Workspace root -> ids of expanded sidebar rows. */
   expanded: Record<string, string[]>
-  /** Workspace root -> id of the page open when the app last closed. */
+  /** Workspace root -> id of the page open when the app last closed; read only when no tabs are saved. */
   lastPage: Record<string, string>
+  /** Workspace root -> its open tabs. */
+  tabs: Record<string, SavedTabs>
   windowBounds?: { x: number; y: number; width: number; height: number }
   /** Workspace root -> ids of recently opened pages, newest first. */
   recent: Record<string, string[]>
   /** The color Cmd+Shift+H applies: the last one picked in the formatting toolbar. */
   lastColor: { kind: 'text' | 'background'; color: string }
+}
+
+/** A workspace's tabs: each tab's page history and position in it, and which tab is active. */
+export interface SavedTabs {
+  tabs: { history: string[]; index: number }[]
+  active: number
 }
 
 export const RECENT_LIMIT = 20
@@ -46,6 +55,12 @@ export type MenuCommand =
   | 'toggle-theme'
   | 'back'
   | 'forward'
+  | 'new-tab'
+  | 'close-tab'
+  | 'reopen-tab'
+  | 'next-tab'
+  | 'previous-tab'
+  | `select-tab-${1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9}`
 
 /** What a dropped zip is, judged from its file names. */
 export type ZipKind = 'notion-html' | 'notion-markdown' | 'other'
@@ -97,6 +112,8 @@ export interface IpcContract {
   'settings:set': [payload: Partial<Settings>, result: Settings]
   'shell:openExternal': [payload: { url: string }, result: void]
   'app:flushed': [payload: { saved: boolean }, result: void]
+  /** Closes the window, saving pending edits first, as the close button does. */
+  'window:close': [payload: void, result: void]
 }
 
 export type IpcChannel = keyof IpcContract
@@ -110,6 +127,7 @@ export interface IpcEvents {
   'menu:command': MenuCommand
   'app:flush': void
   'import:status': ImportStatus
+  'window:fullscreen': boolean
 }
 
 export interface Api {
@@ -117,6 +135,7 @@ export interface Api {
   on<E extends keyof IpcEvents>(event: E, listener: (data: IpcEvents[E]) => void): () => void
   /** The path of a file dropped on the window. */
   pathForFile(file: File): string
+  windowControls: WindowControls
 }
 
 export const ASSET_SCHEME = 'nbfile'

@@ -24,6 +24,19 @@ export const ChevronRightIcon = (p: IconProps): React.JSX.Element => (
   </Svg>
 )
 
+export const ChevronLeftIcon = (p: IconProps): React.JSX.Element => (
+  <Svg {...p}>
+    <path d="M12.6 4.6a.75.75 0 0 0-1.06 0L6.67 9.47a.75.75 0 0 0 0 1.06l4.87 4.87a.75.75 0 1 0 1.06-1.06L8.26 10l4.34-4.34a.75.75 0 0 0 0-1.06Z" />
+  </Svg>
+)
+
+export const OpenInTabIcon = (p: IconProps): React.JSX.Element => (
+  <Svg {...p}>
+    <rect x="3.25" y="4.25" width="13.5" height="11.5" rx="1.75" {...stroke} />
+    <path d="M3.5 7.75h13M8 4.5v3" {...stroke} />
+  </Svg>
+)
+
 export const PlusIcon = (p: IconProps): React.JSX.Element => (
   <Svg {...p}>
     <path d="M10 3.75a.75.75 0 0 1 .75.75v4.75h4.75a.75.75 0 0 1 0 1.5h-4.75v4.75a.75.75 0 0 1-1.5 0v-4.75H4.5a.75.75 0 0 1 0-1.5h4.75V4.5a.75.75 0 0 1 .75-.75Z" />

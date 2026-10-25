@@ -3,7 +3,7 @@ import type { TrashItem } from '@shared/types'
 import { findNode } from '../lib/tree'
 import { deleteForeverTitle } from '../lib/trash'
 import { useApp } from '../store'
-import { ComposeIcon, PlusIcon, SearchIcon, SidebarIcon, TrashIcon } from './icons'
+import { ComposeIcon, PlusIcon, SearchIcon, TrashIcon } from './icons'
 import { ConfirmDialog } from './Modal'
 import { Menu } from './menu/Menu'
 import { SidebarRow } from './SidebarRow'
@@ -17,7 +17,7 @@ export function Sidebar(): React.JSX.Element {
   const favorites = useApp((s) => s.favorites)
   const workspace = useApp((s) => s.workspace)
   const savedWidth = useApp((s) => s.settings?.sidebarWidth ?? 240)
-  const [width, setWidth] = useState<number | null>(null)
+  const width = useApp((s) => s.sidebarDrag)
   const [menu, setMenu] = useState<DOMRect | null>(null)
   const [trash, setTrash] = useState<DOMRect | null>(null)
   const [deleting, setDeleting] = useState<TrashItem | null>(null)
@@ -31,14 +31,14 @@ export function Sidebar(): React.JSX.Element {
     let latest = start
     const move = (ev: MouseEvent): void => {
       latest = Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, start + ev.clientX - startX))
-      setWidth(latest)
+      app().setSidebarDrag(latest)
     }
     const up = (): void => {
       window.removeEventListener('mousemove', move)
       window.removeEventListener('mouseup', up)
       void app()
         .updateSettings({ sidebarWidth: latest })
-        .then(() => setWidth(null))
+        .then(() => app().setSidebarDrag(null))
     }
     window.addEventListener('mousemove', move)
     window.addEventListener('mouseup', up)
@@ -48,29 +48,25 @@ export function Sidebar(): React.JSX.Element {
 
   return (
     <aside className="sidebar" style={{ width: width ?? savedWidth }} data-testid="sidebar">
-      <div className="sidebar-header drag-region">
+      <div className="sidebar-workspace-row">
         <button
-          className="icon-button no-drag"
-          aria-label="Hide sidebar"
-          onClick={() => void app().updateSettings({ sidebarCollapsed: true })}
+          className="sidebar-workspace"
+          onClick={(e) => setMenu(e.currentTarget.getBoundingClientRect())}
         >
-          <SidebarIcon size={16} />
+          <span className="sidebar-workspace-badge">
+            {workspace?.name.slice(0, 1).toUpperCase()}
+          </span>
+          <span className="sidebar-row-title">{workspace?.name}</span>
         </button>
         <button
-          className="icon-button no-drag"
+          className="icon-button sidebar-compose"
           aria-label="New page"
+          title="New page"
           onClick={() => void app().createPage(null)}
         >
-          <ComposeIcon size={16} />
+          <ComposeIcon size={18} />
         </button>
       </div>
-      <button
-        className="sidebar-workspace"
-        onClick={(e) => setMenu(e.currentTarget.getBoundingClientRect())}
-      >
-        <span className="sidebar-workspace-badge">{workspace?.name.slice(0, 1).toUpperCase()}</span>
-        <span className="sidebar-row-title">{workspace?.name}</span>
-      </button>
       <div className="sidebar-nav">
         <button className="sidebar-row" onClick={() => app().setOverlay({ kind: 'search' })}>
           <span className="page-icon">

@@ -206,21 +206,23 @@ test('Reload keeps the edits and the banner when they cannot be kept in history'
 
 test('leaving a page whose edits cannot be kept brings it back with the edits', async ({ nb }) => {
   const { page, workspace } = nb
+  // The page comes back with its edits in a new tab.
+  const pane = page.locator('.tab-pane.active')
   await newPage(page, 'Other')
   const [file, id] = await conflicted(nb)
-  const banner = page.getByRole('status')
+  const banner = pane.getByRole('status')
   try {
     await chmodHistory(workspace, 0o555)
     await page.getByTestId('sidebar-row-Other').click()
     await expect(page.getByRole('alert')).toContainText("Couldn't save the page")
-    await expect(page.getByTestId('page-title')).toHaveText('Shared')
+    await expect(pane.getByTestId('page-title')).toHaveText('Shared')
     await expect(banner).toContainText('This page was changed outside Nobsidian.')
-    await expect(page.locator(editor)).toHaveText('Base plus mine')
+    await expect(pane.locator(editor)).toHaveText('Base plus mine')
   } finally {
     await chmodHistory(workspace, 0o755)
   }
   await page.getByTestId('sidebar-row-Other').click()
-  await expect(page.getByTestId('page-title')).toHaveText('Other')
+  await expect(pane.getByTestId('page-title')).toHaveText('Other')
   await expect
     .poll(async () => (await historyTexts(workspace, id)).some((t) => t.includes('Base plus mine')))
     .toBe(true)
@@ -231,6 +233,8 @@ test('leaving a page that cannot be saved brings it back and saves it once it ca
   nb
 }) => {
   const { page, workspace } = nb
+  // The page comes back with its edits in a new tab.
+  const pane = page.locator('.tab-pane.active')
   await newPage(page, 'Other')
   await newPage(page, 'Locked')
   await page.keyboard.type('Start')
@@ -241,14 +245,14 @@ test('leaving a page that cannot be saved brings it back and saves it once it ca
     await page.keyboard.type(' more')
     await page.getByTestId('sidebar-row-Other').click()
     await expect(page.getByRole('alert')).toContainText("Couldn't save the page")
-    await expect(page.getByTestId('page-title')).toHaveText('Locked')
-    await expect(page.locator(editor)).toHaveText('Start more')
-    await expect(page.getByRole('status')).toHaveCount(0)
+    await expect(pane.getByTestId('page-title')).toHaveText('Locked')
+    await expect(pane.locator(editor)).toHaveText('Start more')
+    await expect(pane.getByRole('status')).toHaveCount(0)
   } finally {
     await chmod(workspace, 0o755)
   }
   await page.getByTestId('sidebar-row-Other').click()
-  await expect(page.getByTestId('page-title')).toHaveText('Other')
+  await expect(pane.getByTestId('page-title')).toHaveText('Other')
   await waitForFile(file, 'Start more')
 })
 
@@ -256,13 +260,15 @@ test('a page deleted outside while its edits cannot be kept leaves a recovered p
   nb
 }) => {
   const { page, workspace } = nb
+  // The page comes back with its edits in a new tab.
+  const pane = page.locator('.tab-pane.active')
   const [file] = await conflicted(nb)
   try {
     await chmodHistory(workspace, 0o555)
     await unlink(file)
     await expect(page.getByRole('alert')).toContainText("Couldn't save the page")
-    await expect(page.getByTestId('page-title')).toHaveText('Recovered edits')
-    await expect(page.locator(editor)).toHaveText('Base plus mine')
+    await expect(pane.getByTestId('page-title')).toHaveText('Recovered edits')
+    await expect(pane.locator(editor)).toHaveText('Base plus mine')
     await waitForFile(join(workspace, 'Recovered edits.md'), 'Base plus mine')
   } finally {
     await chmodHistory(workspace, 0o755)

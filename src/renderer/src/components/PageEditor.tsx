@@ -12,12 +12,13 @@ import { pageLinkHref } from '@shared/core/links'
 import { openHref } from '../lib/navigation'
 import type { PageDoc } from '@shared/types'
 import { codeBlockOptions } from '@blocknote/code-block'
-import { Editor } from '../editor/Editor'
+import { Editor, type EditorContent } from '../editor/Editor'
 import { createLanguageResolver, withEditorLanguages } from '../editor/codeLanguages'
 import type { AppBlock, AppPartialBlock } from '../editor/schema'
 import { resolveAssetUrl } from '../lib/assets'
 import { usePageLink } from '../lib/pageLink'
 import { prepareNotionPaste } from '../editor/notionPaste'
+import { emitPageEvent, onPageEvent, saveCount } from '../lib/pageEvents'
 import { registerFlusher, useApp } from '../store'
 
 const SAVE_DELAY_MS = 500
@@ -36,16 +37,28 @@ export interface PageEditorHandle {
   keepMine(): Promise<boolean>
   /** Moves unsaved edits into the page's history before a reload; false if that failed. */
   discard(): Promise<boolean>
+  /** Saves pending edits now instead of after the typing pause. */
+  saveNow(): Promise<void>
+  /** Holds back saves until the user picks a version, as after a conflicting outside edit. */
+  markConflicted(): void
 }
 
 export function PageEditor({
+  tabId,
+  readAt,
   doc,
   theme,
+  active,
   onConflict,
   ref
 }: {
+  tabId: string
+  /** The page's save count when `doc` was read. */
+  readAt: number
   doc: PageDoc
   theme: 'light' | 'dark'
+  /** False while the editor's tab is hidden. */
+  active: boolean
   onConflict: () => void
   ref?: Ref<PageEditorHandle>
 }): React.JSX.Element {
@@ -61,6 +74,8 @@ export function PageEditor({
   const mounted = useRef(false)
   const lastColor = useApp((s) => s.settings?.lastColor)
   const pageLink = usePageLink()
+  const [source] = useState(() => ({}))
+  const content = useRef<EditorContent>(null)
 
   const keepDraft = useCallback(
     (blocks: Block[]) => api.invoke('history:draft', { id: doc.id, blocks }),
@@ -90,6 +105,7 @@ export function PageEditor({
           if (result.ok) {
             revision.current = result.revision
             conflicted.current = false
+            emitPageEvent({ type: 'saved', id: doc.id, source })
           } else if (result.reason === 'conflict') {
             conflicted.current = true
             if (mode === 'leave') return await keepDraft(blocks)
@@ -107,7 +123,7 @@ export function PageEditor({
       })
       await inFlight.current
     },
-    [doc.id, onConflict, keepDraft]
+    [doc.id, onConflict, keepDraft, source]
   )
 
   useImperativeHandle(
@@ -115,6 +131,10 @@ export function PageEditor({
     () => ({
       hasUnsaved: () => pending.current !== null || inFlight.current !== null || conflicted.current,
       revision: () => revision.current,
+      saveNow: () => save('auto'),
+      markConflicted: () => {
+        conflicted.current = true
+      },
       keepMine: async () => {
         pending.current = latest.current ?? pending.current
         await save('force')
@@ -141,6 +161,41 @@ export function PageEditor({
     }),
     [save, keepDraft]
   )
+
+  const unsaved = useCallback(
+    () => pending.current !== null || inFlight.current !== null || conflicted.current,
+    []
+  )
+
+  /** Another tab saved this page: show its text here, unless edits here would be lost. */
+  const showSaved = useCallback(async (): Promise<void> => {
+    if (unsaved()) {
+      conflicted.current = true
+      return onConflict()
+    }
+    const fresh = await api.invoke('page:read', { id: doc.id }).catch(() => null)
+    if (!fresh || !mounted.current) return
+    if (unsaved()) {
+      conflicted.current = true
+      return onConflict()
+    }
+    revision.current = fresh.revision
+    latest.current = null
+    content.current?.replace(
+      withEditorLanguages(fresh.blocks, editorLanguage) as unknown as AppPartialBlock[]
+    )
+  }, [doc.id, onConflict, unsaved])
+
+  // A save another tab announced while this page was read is caught up on here.
+  const [readAtMount] = useState(readAt)
+  useEffect(() => {
+    const off = onPageEvent((event) => {
+      if (event.type !== 'saved' || event.id !== doc.id || event.source === source) return
+      void showSaved()
+    })
+    if (saveCount(doc.id) !== readAtMount) void showSaved()
+    return off
+  }, [doc.id, source, showSaved, readAtMount])
 
   useEffect(() => {
     if (!rescued) return
@@ -195,7 +250,10 @@ export function PageEditor({
   return (
     <Editor
       initialBlocks={initialBlocks}
+      contentRef={content}
+      drawingSlot={{ tabId, pageId: doc.id }}
       theme={theme}
+      acceptsFiles={active}
       onChange={onChange}
       uploadFile={async (file) =>
         api.invoke('attachment:save', {

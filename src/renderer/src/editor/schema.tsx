@@ -21,10 +21,16 @@ import { resolveAssetUrl } from '../lib/assets'
 import { decodeHref } from '@shared/core/paths'
 import { Katex } from './Katex'
 import { dividerShortcut, headingShortcuts, quoteShortcut } from './markdownShortcuts'
+import type { LinkClick } from '../lib/navigation'
 
 export type PageLinkContextValue = {
   resolve(href: string): { title: string; icon?: string } | null
-  open(href: string): void
+  open(href: string, click?: LinkClick): void
+}
+
+// The middle button opens a page link in a new tab; without this it would start autoscrolling.
+const onMiddleDown = (e: React.MouseEvent): void => {
+  if (e.button === 1) e.preventDefault()
 }
 
 export const PageLinkContext = createContext<PageLinkContextValue | null>(null)
@@ -103,7 +109,9 @@ export const createPageLink = createReactBlockSpec(
         <div
           className="nb-page-link"
           data-missing={target ? undefined : 'true'}
-          onClick={() => ctx?.open(block.props.href)}
+          onClick={(e) => ctx?.open(block.props.href, e)}
+          onMouseDown={onMiddleDown}
+          onAuxClick={(e) => e.button === 1 && ctx?.open(block.props.href, e)}
         >
           <span className="nb-page-link-icon">{target?.icon ?? '📄'}</span>
           <span className="nb-page-link-title">{target?.title ?? block.props.href}</span>
@@ -273,7 +281,9 @@ export const PageMention = createReactInlineContentSpec(
         <span
           className="nb-mention"
           data-missing={target ? undefined : 'true'}
-          onClick={() => target && ctx?.open(href)}
+          onClick={(e) => target && ctx?.open(href, e)}
+          onMouseDown={onMiddleDown}
+          onAuxClick={(e) => e.button === 1 && target && ctx?.open(href, e)}
         >
           <span className="nb-mention-icon">
             <PageIconView icon={target?.icon} size={14} />

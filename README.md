@@ -12,6 +12,7 @@ Your notes are plain Markdown files in a folder you choose, so they stay yours.
 - Nested pages in a sidebar, with emoji or image icons and page covers.
 - Notion's look, in light and dark mode.
 - Quick search (Cmd+K or Cmd+P) across titles and text, with recent pages.
+- Tabs like Notion's desktop app: Cmd+T, Cmd-click or middle-click to open, drag to reorder, Cmd+Shift+T to reopen, and each notes folder's tabs come back after a restart.
 - Favorites, duplicate, move to, and a table of contents block.
 - Trash with restore, and page history with restore.
 - Edits made in other apps, Finder or a sync folder show up live, without losing yours.

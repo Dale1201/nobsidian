@@ -54,7 +54,7 @@ export function Menu(props: MenuProps): React.JSX.Element {
 
   const select = (index: number): void => {
     const entry = shown[index]
-    if (entry?.kind !== 'item') return
+    if (entry?.kind !== 'item' || entry.disabled) return
     if (entry.submenu) {
       const rect = rows.current[index]?.getBoundingClientRect()
       if (rect) setSub({ id: entry.id, rect })
@@ -141,9 +141,11 @@ export function Menu(props: MenuProps): React.JSX.Element {
               type="button"
               role="menuitem"
               aria-label={entry.label}
-              className={`menu-item ${i === active ? 'active' : ''} ${entry.danger ? 'danger' : ''}`}
+              aria-disabled={entry.disabled || undefined}
+              className={`menu-item ${i === active ? 'active' : ''} ${entry.danger ? 'danger' : ''} ${entry.disabled ? 'disabled' : ''}`}
               onMouseDown={(e) => e.preventDefault()}
               onMouseEnter={(e) => {
+                if (entry.disabled) return
                 setActiveId(entry.id)
                 const rect = e.currentTarget.getBoundingClientRect()
                 setSub(entry.submenu ? { id: entry.id, rect } : null)

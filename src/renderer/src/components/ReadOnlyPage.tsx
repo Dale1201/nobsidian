@@ -6,7 +6,7 @@ import { Editor } from '../editor/Editor'
 import { createLanguageResolver, withEditorLanguages } from '../editor/codeLanguages'
 import type { AppPartialBlock } from '../editor/schema'
 import { resolveAssetUrl } from '../lib/assets'
-import { openHref } from '../lib/navigation'
+import { openHref, type LinkClick } from '../lib/navigation'
 import { usePageLink } from '../lib/pageLink'
 import { EditorErrorBoundary } from './EditorErrorBoundary'
 import { PageIconView } from './PageIconView'
@@ -14,8 +14,8 @@ import { PageIconView } from './PageIconView'
 const editorLanguage = createLanguageResolver(codeBlockOptions.supportedLanguages)
 
 // Links to pages that are not in the workspace (deleted sub-pages) have nowhere to go.
-const openLink = (href: string): void => {
-  if (!/\.md$/i.test(decodeHref(href))) openHref(href)
+const openLink = (href: string, click?: LinkClick): void => {
+  if (!/\.md$/i.test(decodeHref(href))) openHref(href, click)
 }
 
 /** A page shown as it is (a trashed page or an old version); nothing on it can be edited. */

@@ -24,7 +24,7 @@ import {
   type LinkToolbarProps
 } from '@blocknote/react'
 import { locales as multiColumnLocales, multiColumnDropCursor } from '@blocknote/xl-multi-column'
-import { createContext, useContext, useEffect } from 'react'
+import { createContext, useContext, useEffect, useImperativeHandle, useRef, type Ref } from 'react'
 import type { Block } from '@shared/core/blocks'
 import { registerDrawingEditor } from '../drawing/session'
 import { errorReason, useApp } from '../store'
@@ -61,6 +61,7 @@ import { SlashMenu } from './menus/SlashMenu'
 import { TurnIntoButton } from './menus/TurnIntoButton'
 import { querySlashItems, type SlashItem } from './slashItems'
 import { opensAtWordStart, usePickerItems } from './usePickerItems'
+import type { LinkClick } from '../lib/navigation'
 
 export type EditorProps = {
   initialBlocks: AppPartialBlock[]
@@ -71,9 +72,15 @@ export type EditorProps = {
   createSubPage(): Promise<string>
   /** Creates a sub-page with this title for a mention, and returns its link. */
   createLinkedPage?(title: string): Promise<string>
-  openLink(href: string): void
+  openLink(href: string, click?: LinkClick): void
   pageLink: PageLinkContextValue
+  /** Swaps in content saved by another tab, keeping this editor, its undo history and focus. */
+  contentRef?: Ref<EditorContent>
+  /** The tab and page an editable page editor belongs to, so drawings land in the right one. */
+  drawingSlot?: { tabId: string; pageId: string }
   editable?: boolean
+  /** False while the page's tab is hidden, so files dropped on the window go elsewhere. */
+  acceptsFiles?: boolean
   /** Applied by Cmd+Shift+H. */
   lastColor?: PickedColor
   onPickColor?(picked: PickedColor): void
@@ -86,7 +93,11 @@ export type EditorProps = {
 
 const DEFAULT_COLOR: PickedColor = { kind: 'background', color: 'yellow' }
 
-const OpenLinkContext = createContext<(href: string) => void>(() => {})
+export interface EditorContent {
+  replace(blocks: AppPartialBlock[]): void
+}
+
+const OpenLinkContext = createContext<(href: string, click?: LinkClick) => void>(() => {})
 
 // File buttons only show for file blocks; text alignment, nesting and the block type select are not Notion's.
 const TOOLBAR_KEYS = [
@@ -262,7 +273,9 @@ export function Editor(props: EditorProps): React.JSX.Element {
         const href = linkHrefFromEvent(event)
         if (!href) return false
         event.preventDefault()
-        props.openLink(href)
+        // Cmd-clicks are opened by the click listener below, which also sees Cmd+Shift-clicks.
+        if (event.metaKey) return false
+        props.openLink(href, event)
         return true
       }
     }
@@ -270,14 +283,69 @@ export function Editor(props: EditorProps): React.JSX.Element {
 
   const pickerItems = usePickerItems(editor, props.createLinkedPage)
 
-  const { uploadFile, editable } = props
+  const replacing = useRef(false)
+  useImperativeHandle(
+    props.contentRef,
+    () => ({
+      replace: (blocks) => {
+        replacing.current = true
+        try {
+          editor.transact((tr) => {
+            tr.setMeta('addToHistory', false)
+            editor.replaceBlocks(editor.document, blocks)
+          })
+        } finally {
+          replacing.current = false
+        }
+      }
+    }),
+    [editor]
+  )
+
+  // The editor's link handler only sees left clicks; a middle click opens the link in a new tab.
+  const { openLink } = props
+  useEffect(() => {
+    const dom = editor.domElement
+    if (!dom) return
+    const onDown = (e: MouseEvent): void => {
+      if (e.button === 1 && linkHrefFromEvent(e)) e.preventDefault()
+    }
+    const onAux = (e: MouseEvent): void => {
+      const href = e.button === 1 ? linkHrefFromEvent(e) : null
+      if (!href) return
+      e.preventDefault()
+      openLink(href, e)
+    }
+    // ProseMirror leaves Shift-clicks to the browser, so the editor's link handler never sees them.
+    const onClick = (e: MouseEvent): void => {
+      const href = e.button === 0 && e.metaKey ? linkHrefFromEvent(e) : null
+      if (!href) return
+      e.preventDefault()
+      openLink(href, e)
+    }
+    dom.addEventListener('mousedown', onDown)
+    dom.addEventListener('auxclick', onAux)
+    dom.addEventListener('click', onClick)
+    return () => {
+      dom.removeEventListener('mousedown', onDown)
+      dom.removeEventListener('auxclick', onAux)
+      dom.removeEventListener('click', onClick)
+    }
+  }, [editor, openLink])
+
+  const { uploadFile, editable, acceptsFiles } = props
+  const slotTab = props.drawingSlot?.tabId
+  const slotPage = props.drawingSlot?.pageId
   useEffect(
-    () => (editable === false ? undefined : registerDrawingEditor(editor)),
-    [editor, editable]
+    () =>
+      editable === false || !slotTab || !slotPage
+        ? undefined
+        : registerDrawingEditor(editor, { tabId: slotTab, pageId: slotPage }),
+    [editor, editable, slotTab, slotPage]
   )
 
   useEffect(() => {
-    if (editable === false) return
+    if (editable === false || acceptsFiles === false) return
     const attach = (event: Event): void => {
       const files = (event as CustomEvent<File[]>).detail
       void Promise.all(
@@ -292,7 +360,7 @@ export function Editor(props: EditorProps): React.JSX.Element {
     }
     window.addEventListener(ATTACH_FILES_EVENT, attach)
     return () => window.removeEventListener(ATTACH_FILES_EVENT, attach)
-  }, [editor, uploadFile, editable])
+  }, [editor, uploadFile, editable, acceptsFiles])
 
   return (
     <PageLinkContext.Provider value={props.pageLink}>
@@ -306,7 +374,7 @@ export function Editor(props: EditorProps): React.JSX.Element {
             formattingToolbar={false}
             linkToolbar={false}
             sideMenu={false}
-            onChange={(ed) => props.onChange(ed.document)}
+            onChange={(ed) => replacing.current || props.onChange(ed.document)}
           >
             <BlockMenuHost>
               {props.editable !== false && (

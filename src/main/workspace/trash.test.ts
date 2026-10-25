@@ -42,7 +42,7 @@ describe('Trash', () => {
     const ws = await open()
     const parent = await page(ws, null, 'Parent')
     const a = await page(ws, parent, 'A')
-    await page(ws, a, 'A child')
+    const aChild = await page(ws, a, 'A child')
     await ws.updateMeta(a, { icon: '🚀' })
     const b = await page(ws, null, 'B')
     await ws.trashPage(a)
@@ -55,6 +55,7 @@ describe('Trash', () => {
     ])
     expect(items[1].icon).toBe('🚀')
     expect(items[1].pageId).toBe(a)
+    expect(items[1].pageIds).toEqual([a, aChild])
   })
 
   it('opens a deleted page read-only with links to live pages resolved', async () => {
