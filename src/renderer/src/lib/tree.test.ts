@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { PageNode } from '@shared/types'
-import { dropTarget, pathTo } from './tree'
+import { dropTarget, pageIdForHref, pathTo } from './tree'
 
 const node = (id: string, children: PageNode[] = []): PageNode => ({
   id,
@@ -26,5 +26,16 @@ describe('tree helpers', () => {
   it('refuses to drop a page into itself or its descendants', () => {
     expect(dropTarget(tree, 'a', 'a1', 'inside')).toBeNull()
     expect(dropTarget(tree, 'a', 'a', 'before')).toBeNull()
+  })
+
+  it('finds the page a link points to, by id or by workspace path', () => {
+    const nested = [node('a', [{ id: 'n', title: 'Né', path: 'a/Né Plan.md', children: [] }])]
+    expect(pageIdForHref(nested, 'nobsidian://page/n')).toBe('n')
+    expect(pageIdForHref(nested, '/a/N%C3%A9%20Plan.md')).toBe('n')
+    expect(pageIdForHref(nested, '/a/N%C3%A9%20Plan.md#top')).toBe('n')
+    expect(pageIdForHref(nested, '/a.md')).toBe('a')
+    expect(pageIdForHref(nested, '/attachments/photo.png')).toBeNull()
+    expect(pageIdForHref(nested, '//a.md')).toBeNull()
+    expect(pageIdForHref(nested, 'https://example.com/a.md')).toBeNull()
   })
 })

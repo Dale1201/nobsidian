@@ -1,7 +1,7 @@
-import { writeFile } from 'node:fs/promises'
+import { utimes, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { expect, test } from './fixtures'
-import { editor, newPage, waitForFile } from './helpers'
+import { editor, newPage, openFile, waitForFile } from './helpers'
 
 test('@ links a page as a mention that opens it', async ({ nb }) => {
   await writeFile(join(nb.workspace, 'Roadmap.md'), '---\nicon: 🗺️\n---\n\nplan\n')
@@ -112,4 +112,39 @@ test('copied blocks paste back with their mentions, callouts and page links', as
       ...['paragraph', 'callout', 'pageLink']
     ])
   await expect(page.locator(`${editor} .nb-mention`)).toHaveCount(2)
+})
+
+const LINKS = 'See [Target](Target.md "mention")\n\n[Target](Target.md "page")\n'
+
+test('links come alive when the page they point to is added outside the app', async ({ nb }) => {
+  const page = await openFile(nb, 'Home', LINKS)
+  const missing = page.locator(`${editor} [data-missing]`)
+  await expect(missing).toHaveCount(2)
+  await writeFile(join(nb.workspace, 'Target.md'), 't\n')
+  await expect(page.getByTestId('sidebar-row-Target')).toBeVisible()
+  await expect(missing).toHaveCount(0)
+  // The left edge, as the middle of this short line is the mention, which opens its page.
+  await page
+    .locator(`${editor} .bn-inline-content`, { hasText: 'See' })
+    .click({ position: { x: 1, y: 8 } })
+  await page.keyboard.type('!')
+  const saved = await waitForFile(join(nb.workspace, 'Home.md'), '!')
+  expect(saved).toContain('[Target](Target.md "mention")')
+  expect(saved).toContain('[Target](Target.md "page")')
+  await page.locator(`${editor} .nb-page-link`).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Target' })).toBeVisible()
+})
+
+test('links to a page written just before launch work on the page opened first', async ({ nb }) => {
+  const home = join(nb.workspace, 'Home.md')
+  await writeFile(home, LINKS)
+  const settled = new Date(Date.now() - 60_000)
+  await utimes(home, settled, settled)
+  // Written moments before launch, so the app waits for it to settle before adding it.
+  await writeFile(join(nb.workspace, 'Target.md'), 't\n')
+  const page = await nb.relaunch()
+  await page.getByTestId('sidebar-row-Home').click()
+  await expect(page.locator(`${editor} .nb-mention`)).toHaveCount(1)
+  await expect(page.getByTestId('sidebar-row-Target')).toBeVisible()
+  await expect(page.locator(`${editor} [data-missing]`)).toHaveCount(0)
 })
