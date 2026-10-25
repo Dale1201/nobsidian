@@ -4,9 +4,12 @@ import { activeTab, currentEntry, nearest, type Tab } from '../lib/tabs'
 import { findNode } from '../lib/tree'
 import { useApp } from '../store'
 import { ChevronLeftIcon, ChevronRightIcon, CloseIcon, PlusIcon, SidebarIcon } from './icons'
+import { Menu } from './menu/Menu'
 import { PageIconView } from './PageIconView'
 
 const api = window.api
+// The pointer moves this far before a press on a tab becomes a drag.
+const DRAG_THRESHOLD = 4
 
 function tabLabel(tab: Tab, tree: PageNode[]): { title: string; icon?: string } {
   const entry = currentEntry(tab)
@@ -30,6 +33,8 @@ export function TabBar(): React.JSX.Element {
   const fullscreen = useFullscreen()
   const app = useApp.getState
   const listRef = useRef<HTMLDivElement>(null)
+  const [menu, setMenu] = useState<{ tabId: string; anchor: DOMRect } | null>(null)
+  const [drag, setDrag] = useState<{ tabId: string; boundary: number; x: number } | null>(null)
 
   const usable = (e: Tab['entries'][number]): boolean =>
     e.kind === 'trash' || findNode(tree, e.pageId) !== null
@@ -43,7 +48,54 @@ export function TabBar(): React.JSX.Element {
       ?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
   }, [state?.activeId, state?.tabs.length])
 
+  /** Index of the gap between tabs nearest to x: 0 is before the first tab. */
+  const boundaryAt = (x: number): { boundary: number; x: number } => {
+    const tabs = [...(listRef.current?.querySelectorAll<HTMLElement>('.tab') ?? [])]
+    const list = listRef.current!.getBoundingClientRect()
+    let boundary = tabs.length
+    for (let i = 0; i < tabs.length; i++) {
+      const r = tabs[i].getBoundingClientRect()
+      if (x < r.left + r.width / 2) {
+        boundary = i
+        break
+      }
+    }
+    const edge =
+      boundary < tabs.length
+        ? tabs[boundary].getBoundingClientRect().left
+        : tabs[tabs.length - 1].getBoundingClientRect().right
+    return { boundary, x: edge - list.left + listRef.current!.scrollLeft }
+  }
+
+  const onTabPointerDown = (e: React.PointerEvent<HTMLDivElement>, id: string): void => {
+    if (e.button !== 0 || (e.target as Element).closest('.tab-close')) return
+    app().activateTab(id)
+    const startX = e.clientX
+    const el = e.currentTarget
+    el.setPointerCapture(e.pointerId)
+    let dragging = false
+    const move = (ev: PointerEvent): void => {
+      if (!dragging && Math.abs(ev.clientX - startX) < DRAG_THRESHOLD) return
+      dragging = true
+      setDrag({ tabId: id, ...boundaryAt(ev.clientX) })
+    }
+    const up = (ev: PointerEvent): void => {
+      el.removeEventListener('pointermove', move)
+      el.removeEventListener('pointerup', up)
+      el.removeEventListener('pointercancel', up)
+      setDrag(null)
+      if (!dragging || ev.type === 'pointercancel') return
+      const from = app().tabs!.tabs.findIndex((t) => t.id === id)
+      const { boundary } = boundaryAt(ev.clientX)
+      app().moveTab(id, boundary > from ? boundary - 1 : boundary)
+    }
+    el.addEventListener('pointermove', move)
+    el.addEventListener('pointerup', up)
+    el.addEventListener('pointercancel', up)
+  }
+
   const tabs = state?.tabs ?? []
+  const menuIndex = menu ? tabs.findIndex((t) => t.id === menu.tabId) : -1
 
   return (
     <header
@@ -112,17 +164,19 @@ export function TabBar(): React.JSX.Element {
                 className={[
                   'tab no-drag',
                   active ? 'active' : '',
-                  i === tabs.length - 1 ? 'last' : ''
+                  i === tabs.length - 1 ? 'last' : '',
+                  menu?.tabId === t.id ? 'menu-open' : ''
                 ].join(' ')}
-                onPointerDown={(e) => {
-                  if (e.button === 0 && !(e.target as Element).closest('.tab-close'))
-                    app().activateTab(t.id)
-                }}
+                onPointerDown={(e) => onTabPointerDown(e, t.id)}
                 onMouseDown={(e) => {
                   if (e.button === 1) e.preventDefault()
                 }}
                 onAuxClick={(e) => {
                   if (e.button === 1) app().closeTab(t.id)
+                }}
+                onContextMenu={(e) => {
+                  e.preventDefault()
+                  setMenu({ tabId: t.id, anchor: new DOMRect(e.clientX, e.clientY, 0, 0) })
                 }}
               >
                 <span className="tab-icon">
@@ -154,8 +208,60 @@ export function TabBar(): React.JSX.Element {
               <PlusIcon size={20} />
             </button>
           </div>
+          {drag && <div className="tab-drop-line" style={{ left: drag.x - 1 }} />}
         </div>
       </div>
+      {menu && menuIndex !== -1 && (
+        <Menu
+          anchor={menu.anchor}
+          onClose={() => setMenu(null)}
+          entries={[
+            {
+              kind: 'item',
+              id: 'duplicate',
+              label: 'Duplicate Tab',
+              onSelect: () => app().duplicateTab(menu.tabId)
+            },
+            {
+              kind: 'item',
+              id: 'reopen',
+              label: 'Reopen Closed Tab',
+              hint: '⌘⇧T',
+              disabled: !state?.closed.length,
+              onSelect: () => app().reopenClosedTab()
+            },
+            { kind: 'separator' },
+            {
+              kind: 'item',
+              id: 'close',
+              label: 'Close Tab',
+              hint: '⌘W',
+              onSelect: () => app().closeTab(menu.tabId)
+            },
+            {
+              kind: 'item',
+              id: 'close-others',
+              label: 'Close Other Tabs',
+              disabled: tabs.length === 1,
+              onSelect: () => app().closeTabs(menu.tabId, 'others')
+            },
+            {
+              kind: 'item',
+              id: 'close-left',
+              label: 'Close Tabs to the Left',
+              disabled: menuIndex === 0,
+              onSelect: () => app().closeTabs(menu.tabId, 'left')
+            },
+            {
+              kind: 'item',
+              id: 'close-right',
+              label: 'Close Tabs to the Right',
+              disabled: menuIndex === tabs.length - 1,
+              onSelect: () => app().closeTabs(menu.tabId, 'right')
+            }
+          ]}
+        />
+      )}
     </header>
   )
 }

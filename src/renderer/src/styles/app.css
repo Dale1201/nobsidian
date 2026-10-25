@@ -258,6 +258,16 @@ button {
   align-items: center;
   padding: 0 8px;
 }
+.tab-drop-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--accent);
+  opacity: 0.43;
+  pointer-events: none;
+  z-index: 3;
+}
 
 /* ---------- tab panes ---------- */
 .tab-panes {
@@ -553,6 +563,10 @@ button {
 }
 .menu-item.danger.active {
   color: var(--color-red);
+}
+.menu-item.disabled {
+  color: var(--text-tertiary);
+  cursor: default;
 }
 .menu-item-icon {
   width: 20px;

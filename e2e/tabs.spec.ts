@@ -379,3 +379,53 @@ test('Cmd+Enter in Search opens the result in a background tab', async ({ nb }) 
   expect(await tabTitles(page)).toEqual(['Alpha', 'Beta'])
   expect(await activeTitle(page)).toBe('Alpha')
 })
+
+test('Reopen Closed Tab brings back a closed tab, and a batch closed together', async ({ nb }) => {
+  const page = await pages(nb, { One: '1\n', Two: '2\n', Three: '3\n' })
+  await open(page, 'One')
+  await page.getByTestId('sidebar-row-Two').click({ modifiers: ['Meta'] })
+  await page.getByTestId('sidebar-row-Three').click({ modifiers: ['Meta'] })
+  await page.getByTestId('tab-Two').click({ button: 'right' })
+  await page.getByRole('menuitem', { name: 'Close Other Tabs' }).click()
+  expect(await tabTitles(page)).toEqual(['Two'])
+  await menu(nb.app, 'Reopen Closed Tab')
+  expect(await tabTitles(page)).toEqual(['One', 'Two', 'Three'])
+
+  await page.getByTestId('tab-Three').click({ button: 'middle' })
+  await page.getByTestId('tab-One').click({ button: 'right' })
+  await page.getByRole('menuitem', { name: 'Reopen Closed Tab' }).click()
+  expect(await tabTitles(page)).toEqual(['One', 'Two', 'Three'])
+  expect(await activeTitle(page)).toBe('Three')
+})
+
+test('the tab menu disables what would do nothing', async ({ nb }) => {
+  const page = await pages(nb, { One: '1\n', Two: '2\n' })
+  await open(page, 'One')
+  await page.getByTestId('tab-One').click({ button: 'right' })
+  for (const label of ['Reopen Closed Tab', 'Close Other Tabs', 'Close Tabs to the Left']) {
+    await expect(page.getByRole('menuitem', { name: label })).toHaveAttribute(
+      'aria-disabled',
+      'true'
+    )
+  }
+  await page.getByRole('menuitem', { name: 'Duplicate Tab' }).click()
+  expect(await tabTitles(page)).toEqual(['One', 'One'])
+})
+
+test('dragging a tab moves it', async ({ nb }) => {
+  const page = await pages(nb, { One: '1\n', Two: '2\n', Three: '3\n' })
+  await open(page, 'One')
+  await page.getByTestId('sidebar-row-Two').click({ modifiers: ['Meta'] })
+  await page.getByTestId('sidebar-row-Three').click({ modifiers: ['Meta'] })
+  const one = await page.getByTestId('tab-One').boundingBox()
+  const three = await page.getByTestId('tab-Three').boundingBox()
+  await page.mouse.move(one!.x + 20, one!.y + 18)
+  await page.mouse.down()
+  await page.mouse.move(one!.x + 40, one!.y + 18, { steps: 4 })
+  await expect(page.locator('.tab-drop-line')).toBeVisible()
+  await page.mouse.move(three!.x + three!.width - 10, three!.y + 18, { steps: 8 })
+  await page.mouse.up()
+  expect(await tabTitles(page)).toEqual(['Two', 'Three', 'One'])
+  expect(await activeTitle(page)).toBe('One')
+  await expect(page.locator('.tab-drop-line')).toHaveCount(0)
+})

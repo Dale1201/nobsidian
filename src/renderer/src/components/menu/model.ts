@@ -8,6 +8,8 @@ export interface MenuItemEntry {
   /** Muted text on the right, such as a shortcut. */
   hint?: string
   danger?: boolean
+  /** Shown greyed out; keyboard and mouse skip it. */
+  disabled?: boolean
   checked?: boolean
   /** Extra words the search box matches. */
   keywords?: string[]
@@ -38,7 +40,7 @@ export function filterEntries(entries: MenuEntry[], query: string): MenuEntry[] 
 }
 
 export function moveIndex(entries: MenuEntry[], from: number, delta: 1 | -1): number {
-  const items = entries.flatMap((e, i) => (e.kind === 'item' ? [i] : []))
+  const items = entries.flatMap((e, i) => (e.kind === 'item' && !e.disabled ? [i] : []))
   if (items.length === 0) return -1
   const at = items.indexOf(from)
   if (at === -1) return delta === 1 ? items[0] : items[items.length - 1]
