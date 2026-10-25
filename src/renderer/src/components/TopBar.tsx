@@ -1,5 +1,6 @@
 import { Fragment, useState } from 'react'
 import type { PageDoc } from '@shared/types'
+import { tabTarget } from '../lib/navigation'
 import { findNode, pathTo } from '../lib/tree'
 import { useApp } from '../store'
 import { ClockIcon, DotsIcon, DuplicateIcon, StarIcon, TrashIcon, WidthIcon } from './icons'
@@ -29,7 +30,16 @@ export function TopBar({
         {crumbs.map((node, i) => (
           <Fragment key={node.id}>
             {i > 0 && <span className="breadcrumb-sep">/</span>}
-            <button className="breadcrumb" onClick={() => app().openPage(node.id)}>
+            <button
+              className="breadcrumb"
+              onClick={(e) => app().openPage(node.id, { tab: tabTarget(e) })}
+              onMouseDown={(e) => {
+                if (e.button === 1) e.preventDefault()
+              }}
+              onAuxClick={(e) => {
+                if (e.button === 1) app().openPage(node.id, { tab: tabTarget(e) })
+              }}
+            >
               {node.icon && (
                 <span className="page-icon">
                   <PageIconView icon={node.icon} size={14} />

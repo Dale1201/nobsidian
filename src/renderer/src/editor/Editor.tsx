@@ -61,6 +61,7 @@ import { SlashMenu } from './menus/SlashMenu'
 import { TurnIntoButton } from './menus/TurnIntoButton'
 import { querySlashItems, type SlashItem } from './slashItems'
 import { opensAtWordStart, usePickerItems } from './usePickerItems'
+import type { LinkClick } from '../lib/navigation'
 
 export type EditorProps = {
   initialBlocks: AppPartialBlock[]
@@ -71,7 +72,7 @@ export type EditorProps = {
   createSubPage(): Promise<string>
   /** Creates a sub-page with this title for a mention, and returns its link. */
   createLinkedPage?(title: string): Promise<string>
-  openLink(href: string): void
+  openLink(href: string, click?: LinkClick): void
   pageLink: PageLinkContextValue
   editable?: boolean
   /** False while the page's tab is hidden, so files dropped on the window go elsewhere. */
@@ -88,7 +89,7 @@ export type EditorProps = {
 
 const DEFAULT_COLOR: PickedColor = { kind: 'background', color: 'yellow' }
 
-const OpenLinkContext = createContext<(href: string) => void>(() => {})
+const OpenLinkContext = createContext<(href: string, click?: LinkClick) => void>(() => {})
 
 // File buttons only show for file blocks; text alignment, nesting and the block type select are not Notion's.
 const TOOLBAR_KEYS = [
@@ -264,13 +265,35 @@ export function Editor(props: EditorProps): React.JSX.Element {
         const href = linkHrefFromEvent(event)
         if (!href) return false
         event.preventDefault()
-        props.openLink(href)
+        props.openLink(href, event)
         return true
       }
     }
   })
 
   const pickerItems = usePickerItems(editor, props.createLinkedPage)
+
+  // The editor's link handler only sees left clicks; a middle click opens the link in a new tab.
+  const { openLink } = props
+  useEffect(() => {
+    const dom = editor.domElement
+    if (!dom) return
+    const onDown = (e: MouseEvent): void => {
+      if (e.button === 1 && linkHrefFromEvent(e)) e.preventDefault()
+    }
+    const onAux = (e: MouseEvent): void => {
+      const href = e.button === 1 ? linkHrefFromEvent(e) : null
+      if (!href) return
+      e.preventDefault()
+      openLink(href, e)
+    }
+    dom.addEventListener('mousedown', onDown)
+    dom.addEventListener('auxclick', onAux)
+    return () => {
+      dom.removeEventListener('mousedown', onDown)
+      dom.removeEventListener('auxclick', onAux)
+    }
+  }, [editor, openLink])
 
   const { uploadFile, editable, acceptsFiles } = props
   useEffect(

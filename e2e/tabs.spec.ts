@@ -331,3 +331,51 @@ test('the active tab stays in view when the tabs do not fit', async ({ nb }) => 
   await menu(nb.app, 'Select Last Tab')
   await expect.poll(inView).toBe(true)
 })
+
+test('Cmd-click and middle-click open background tabs in a row; Cmd+Shift-click opens in front', async ({
+  nb
+}) => {
+  const page = await pages(nb, { One: '1\n', Two: '2\n', Three: '3\n', Four: '4\n' })
+  await open(page, 'One')
+  await page.getByTestId('sidebar-row-Two').click({ modifiers: ['Meta'] })
+  await page.getByTestId('sidebar-row-Three').click({ button: 'middle' })
+  expect(await tabTitles(page)).toEqual(['One', 'Two', 'Three'])
+  expect(await activeTitle(page)).toBe('One')
+  await expect(pane(page).getByTestId('page-title')).toHaveText('One')
+  await page.getByTestId('sidebar-row-Four').click({ modifiers: ['Meta', 'Shift'] })
+  expect(await tabTitles(page)).toEqual(['One', 'Two', 'Three', 'Four'])
+  expect(await activeTitle(page)).toBe('Four')
+  await expect(pane(page).getByTestId('page-title')).toHaveText('Four')
+})
+
+test('links and mentions in a page open in a background tab with Cmd or the middle button', async ({
+  nb
+}) => {
+  const page = await pages(nb, {
+    Hub: 'Read [the plan](Plan.md) and [Notes](Notes.md "mention").\n',
+    Plan: 'Plan.\n',
+    Notes: 'Notes.\n'
+  })
+  await open(page, 'Hub')
+  await pane(page)
+    .locator(editor)
+    .getByRole('link', { name: 'the plan' })
+    .click({ modifiers: ['Meta'] })
+  await pane(page).locator('.nb-mention').click({ button: 'middle' })
+  expect(await tabTitles(page)).toEqual(['Hub', 'Plan', 'Notes'])
+  expect(await activeTitle(page)).toBe('Hub')
+  // A plain click still opens the page in the tab it is in.
+  await pane(page).locator('.nb-mention').click()
+  await expect.poll(() => tabTitles(page)).toEqual(['Notes', 'Plan', 'Notes'])
+})
+
+test('Cmd+Enter in Search opens the result in a background tab', async ({ nb }) => {
+  const page = await pages(nb, { Alpha: 'A.\n', Beta: 'Findable words.\n' })
+  await open(page, 'Alpha')
+  await page.keyboard.press('Meta+K')
+  await page.getByPlaceholder(/^Search/).fill('Findable')
+  await expect(page.locator('.search-item')).toHaveCount(1)
+  await page.keyboard.press('Meta+Enter')
+  expect(await tabTitles(page)).toEqual(['Alpha', 'Beta'])
+  expect(await activeTitle(page)).toBe('Alpha')
+})
