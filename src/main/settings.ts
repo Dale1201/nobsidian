@@ -9,6 +9,7 @@ export const DEFAULT_SETTINGS: Settings = {
   sidebarCollapsed: false,
   expanded: {},
   lastPage: {},
+  tabs: {},
   recent: {},
   lastColor: { kind: 'background', color: 'yellow' }
 }

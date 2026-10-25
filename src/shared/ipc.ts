@@ -21,13 +21,21 @@ export interface Settings {
   sidebarCollapsed: boolean
   /** Workspace root -> ids of expanded sidebar rows. */
   expanded: Record<string, string[]>
-  /** Workspace root -> id of the page open when the app last closed. */
+  /** Workspace root -> id of the page open when the app last closed; read only when no tabs are saved. */
   lastPage: Record<string, string>
+  /** Workspace root -> its open tabs. */
+  tabs: Record<string, SavedTabs>
   windowBounds?: { x: number; y: number; width: number; height: number }
   /** Workspace root -> ids of recently opened pages, newest first. */
   recent: Record<string, string[]>
   /** The color Cmd+Shift+H applies: the last one picked in the formatting toolbar. */
   lastColor: { kind: 'text' | 'background'; color: string }
+}
+
+/** A workspace's tabs: each tab's page history and position in it, and which tab is active. */
+export interface SavedTabs {
+  tabs: { history: string[]; index: number }[]
+  active: number
 }
 
 export const RECENT_LIMIT = 20
