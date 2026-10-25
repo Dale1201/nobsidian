@@ -187,6 +187,7 @@ export function registerHandlers(ctx: AppContext): void {
     const file = ws().resolveAsset(href)
     if (file) await shell.openPath(file)
   })
+  handle('drawing:read', ({ href }) => ws().readDrawing(href))
   handle('attachment:fetch', async ({ url }) => {
     const image = await downloadImage(url)
     return ws().saveAttachment(image.name, image.data)

@@ -1,0 +1,45 @@
+.drawing-overlay {
+  position: fixed;
+  inset: 0;
+  /* Above modals (150), below the toast (200) so save errors show over it. */
+  z-index: 160;
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+}
+
+/* Excalidraw's dark canvas colour, so the bar and the canvas are one surface. */
+:root[data-theme='dark'] .drawing-overlay {
+  background: #121212;
+}
+
+.drawing-bar {
+  height: var(--topbar-height);
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px 0 80px;
+  border-bottom: 1px solid var(--divider);
+}
+
+.drawing-title {
+  font-size: 14px;
+  color: var(--text);
+}
+
+.drawing-done {
+  padding: 4px 12px;
+}
+
+.drawing-canvas {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.drawing-error {
+  margin: 96px auto;
+  color: var(--text-secondary);
+  text-align: center;
+}

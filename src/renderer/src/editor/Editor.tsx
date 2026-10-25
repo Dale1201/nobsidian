@@ -26,6 +26,7 @@ import {
 import { locales as multiColumnLocales, multiColumnDropCursor } from '@blocknote/xl-multi-column'
 import { createContext, useContext, useEffect } from 'react'
 import type { Block } from '@shared/core/blocks'
+import { registerDrawingEditor } from '../drawing/session'
 import { errorReason, useApp } from '../store'
 import { readNotionClipboard, type NotionClipboard } from '@shared/notion/paste'
 import {
@@ -270,6 +271,11 @@ export function Editor(props: EditorProps): React.JSX.Element {
   const pickerItems = usePickerItems(editor, props.createLinkedPage)
 
   const { uploadFile, editable } = props
+  useEffect(
+    () => (editable === false ? undefined : registerDrawingEditor(editor)),
+    [editor, editable]
+  )
+
   useEffect(() => {
     if (editable === false) return
     const attach = (event: Event): void => {

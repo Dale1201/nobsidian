@@ -34,6 +34,7 @@ describe('canonical markdown survives a round trip', () => {
     inlineMath: 'Euler $e^{i\\pi}$ wow\n',
     table: '| a | b |\n| - | - |\n| 1 | 2 |\n',
     image: '![A cat](attachments/cat.png)\n',
+    drawing: '![](attachments/Drawing%20\\(2\\).excalidraw.svg)\n',
     imageWidth: '<img src="attachments/cat.png" alt="A cat" width="320">\n',
     video: '<video src="attachments/clip.mp4" controls></video>\n',
     file: '[report.pdf](attachments/report.pdf "file")\n',
@@ -137,6 +138,32 @@ describe('markdownToBlocks structure', () => {
     const blocks = markdownToBlocks('<div data-columns>\n\nNo close\n')
     expect(blocks[0]).toMatchObject({ type: 'raw' })
     expect(blocks[1]).toMatchObject({ type: 'paragraph' })
+  })
+})
+
+describe('drawings', () => {
+  const drawing = (url: string): Block => ({ type: 'drawing', props: { url }, children: [] })
+
+  it('reads an image of an .excalidraw.svg file as a drawing', () => {
+    expect(markdownToBlocks('![](attachments/Cat%20Sketch.Excalidraw.SVG)\n')).toEqual([
+      drawing('attachments/Cat%20Sketch.Excalidraw.SVG')
+    ])
+  })
+
+  it('reads a resized drawing from another tool, dropping its width on save', () => {
+    const blocks = markdownToBlocks('<img src="attachments/a.excalidraw.svg" width="300">\n')
+    expect(blocks).toEqual([drawing('attachments/a.excalidraw.svg')])
+    expect(blocksToMarkdown(blocks)).toBe('![](attachments/a.excalidraw.svg)\n')
+  })
+
+  it('keeps other SVG images as images', () => {
+    expect(markdownToBlocks('![](attachments/logo.svg)\n')[0].type).toBe('image')
+  })
+
+  it('writes nothing for a drawing that was never saved', () => {
+    expect(blocksToMarkdown([drawing(''), drawing('attachments/a.excalidraw.svg')])).toBe(
+      '![](attachments/a.excalidraw.svg)\n'
+    )
   })
 })
 

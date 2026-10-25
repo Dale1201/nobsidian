@@ -98,6 +98,7 @@ export type ImageBlock = WithoutContent<
 export type VideoBlock = WithoutContent<'video', { url: string; caption: string; name?: string }>
 export type AudioBlock = WithoutContent<'audio', { url: string; caption: string; name?: string }>
 export type FileBlock = WithoutContent<'file', { url: string; name: string; caption?: string }>
+export type DrawingBlock = WithoutContent<'drawing', { url: string }>
 export type MathBlock = WithoutContent<'math', { latex: string }>
 export type PageLinkBlock = WithoutContent<'pageLink', { href: string }>
 export type RawBlock = WithoutContent<'raw', { markdown: string }>
@@ -121,6 +122,7 @@ export type Block =
   | VideoBlock
   | AudioBlock
   | FileBlock
+  | DrawingBlock
   | MathBlock
   | PageLinkBlock
   | RawBlock

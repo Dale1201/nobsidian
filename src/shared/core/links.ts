@@ -22,6 +22,7 @@ function mapBlock(block: Block, map: (href: string) => string): Block {
     case 'video':
     case 'audio':
     case 'file':
+    case 'drawing':
       return {
         ...block,
         props: { ...block.props, url: mapNonEmpty(block.props.url, map) },

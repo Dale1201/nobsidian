@@ -603,3 +603,37 @@
   max-width: none;
   overflow-y: auto;
 }
+
+.nb-drawing {
+  position: relative;
+  width: fit-content;
+  max-width: 100%;
+  margin: 4px 0;
+}
+
+/* The picture is opaque, so the selection tint goes over it to match the rest of the block. */
+.bn-block-outer.nb-block-selected .nb-drawing::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-color: var(--selected);
+}
+
+.nb-drawing[data-editable] {
+  cursor: pointer;
+}
+
+.nb-drawing img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+:root[data-theme='dark'] .nb-drawing img {
+  filter: invert(90%) hue-rotate(180deg);
+}
+
+.nb-drawing-missing {
+  padding: 4px 0;
+  color: var(--bn-colors-highlights-gray-text);
+}

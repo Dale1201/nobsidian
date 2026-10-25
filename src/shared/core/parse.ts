@@ -9,6 +9,7 @@ import type {
   Blockquote
 } from 'mdast'
 import type { Block, BlockColors, Inline, TableContent } from './blocks'
+import { isDrawingHref } from './drawing'
 import { parseAttrs, parseBlockColorComment } from './html'
 import { phrasingToInline } from './inline'
 import { parseMarkdown, stringifyMarkdown } from './processor'
@@ -221,6 +222,9 @@ function sourceOf(node: Node): string {
 function parseParagraph(node: Paragraph): Block {
   const kids = node.children
   if (kids.length === 1 && kids[0].type === 'image') {
+    if (isDrawingHref(kids[0].url)) {
+      return { type: 'drawing', props: { url: kids[0].url }, children: [] }
+    }
     return {
       type: 'image',
       props: { url: kids[0].url, caption: kids[0].alt ?? '' },
@@ -282,6 +286,9 @@ function parseMediaHtml(value: string): Block | null {
   const html = value.trim()
   if (/^<img\b[^>]*>$/i.test(html)) {
     const a = parseAttrs(html)
+    if (a.src && isDrawingHref(a.src)) {
+      return { type: 'drawing', props: { url: a.src }, children: [] }
+    }
     const width = a.width ? Number(a.width) : undefined
     return {
       type: 'image',

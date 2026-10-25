@@ -39,6 +39,10 @@ button {
   height: 100%;
 }
 
+.app-content {
+  display: contents;
+}
+
 .main {
   flex: 1;
   min-width: 0;
