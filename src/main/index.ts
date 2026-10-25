@@ -11,10 +11,10 @@ import {
   shell,
   type Rectangle
 } from 'electron'
-import { join } from 'node:path'
+import { join, normalize, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { is } from '@electron-toolkit/utils'
-import { ASSET_SCHEME } from '../shared/ipc'
+import { ASSET_SCHEME, EXCALIDRAW_HOST } from '../shared/ipc'
 import { openWorkspace, registerHandlers, updateMenu, type AppContext } from './handlers'
 import { ImportService } from './import/service'
 import { startImportWorker } from './import/start-worker'
@@ -31,9 +31,27 @@ if (hidden && process.platform === 'darwin') app.setActivationPolicy('accessory'
 protocol.registerSchemesAsPrivileged([
   {
     scheme: ASSET_SCHEME,
-    privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true }
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      stream: true,
+      corsEnabled: true
+    }
   }
 ])
+
+// The build copies Excalidraw's fonts next to the renderer; the dev server has no such folder.
+const EXCALIDRAW_FONTS = process.env.ELECTRON_RENDERER_URL
+  ? join(__dirname, '../../node_modules/@excalidraw/excalidraw/dist/prod/fonts')
+  : join(__dirname, '../renderer/excalidraw/fonts')
+
+function excalidrawFont(pathname: string): string | null {
+  const path = normalize(decodeURIComponent(pathname))
+  if (!path.startsWith('/fonts/')) return null
+  const file = join(EXCALIDRAW_FONTS, path.slice('/fonts/'.length))
+  return file.startsWith(EXCALIDRAW_FONTS + sep) ? file : null
+}
 
 let mainWindow: BrowserWindow | null = null
 let quitting = false
@@ -191,8 +209,17 @@ app.whenReady().then(async () => {
     }
   }
 
-  protocol.handle(ASSET_SCHEME, (request) => {
+  protocol.handle(ASSET_SCHEME, async (request) => {
     const url = new URL(request.url)
+    if (url.host === EXCALIDRAW_HOST) {
+      const file = excalidrawFont(url.pathname)
+      if (!file) return new Response('Not found', { status: 404 })
+      // Fonts are fetched with CORS from the file:// page.
+      const response = await net.fetch(pathToFileURL(file).toString())
+      return new Response(response.body, {
+        headers: { 'Content-Type': 'font/woff2', 'Access-Control-Allow-Origin': '*' }
+      })
+    }
     const file = ctx.workspace?.resolveAsset(url.pathname)
     if (!file) return new Response('Not found', { status: 404 })
     return net.fetch(pathToFileURL(file).toString())

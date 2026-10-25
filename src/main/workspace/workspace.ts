@@ -2,6 +2,7 @@ import { mkdir, readFile, stat } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { basename, extname, join } from 'node:path'
 import type { Block } from '../../shared/core/blocks'
+import { DRAWING_SUFFIX, isDrawingHref } from '../../shared/core/drawing'
 import { mapBlockLinks, pageIdFromHref, pageLinkHref } from '../../shared/core/links'
 import { parsePage, serializePage, splitFrontmatter, type PageMeta } from '../../shared/core/page'
 import {
@@ -453,11 +454,23 @@ export class Workspace {
     return this.run(async () => {
       const dir = this.core.abs(ATTACHMENTS_DIR)
       await mkdir(dir, { recursive: true })
-      const ext = extname(name)
+      const ext = name.toLowerCase().endsWith(DRAWING_SUFFIX)
+        ? name.slice(-DRAWING_SUFFIX.length)
+        : extname(name)
       const base = sanitizeTitle(basename(name, ext)) || 'file'
       const stem = await uniqueName(dir, base, ext)
       await writeFileAtomic(join(dir, stem + ext), data)
       return '/' + encodeHref(`${ATTACHMENTS_DIR}/${stem}${ext}`)
+    })
+  }
+
+  /** The text of a drawing file, or null when there is none at that href. */
+  async readDrawing(internalHref: string): Promise<string | null> {
+    const file = isDrawingHref(internalHref) ? this.resolveAsset(internalHref) : null
+    if (!file) return null
+    return readFile(file, 'utf8').catch((err: NodeJS.ErrnoException) => {
+      if (err.code === 'ENOENT') return null
+      throw err
     })
   }
 

@@ -243,6 +243,29 @@ describe('Workspace page operations', () => {
     expect(await read('Renamed.md')).toBe(`---\nid: ${p.id}\n---\n\ntwo\n`)
   })
 
+  it('numbers drawings before their double extension', async () => {
+    const ws = await Workspace.open(root, { settleMs: 0 })
+    const svg = new TextEncoder().encode('<svg/>')
+    expect(await ws.saveAttachment('Drawing.excalidraw.svg', svg)).toBe(
+      '/attachments/Drawing.excalidraw.svg'
+    )
+    expect(await ws.saveAttachment('Drawing.excalidraw.svg', svg)).toBe(
+      '/attachments/Drawing%20(2).excalidraw.svg'
+    )
+  })
+
+  it('reads drawings, and nothing else, from the workspace', async () => {
+    const ws = await Workspace.open(root, { settleMs: 0 })
+    const href = await ws.saveAttachment('a.excalidraw.svg', new TextEncoder().encode('<svg/>'))
+    await writeFile(join(root, 'secret.svg'), '<svg/>')
+    await mkdir(join(root, '.nobsidian'), { recursive: true })
+    await writeFile(join(root, '.nobsidian', 'x.excalidraw.svg'), '<svg/>')
+    expect(await ws.readDrawing(href)).toBe('<svg/>')
+    expect(await ws.readDrawing('/attachments/missing.excalidraw.svg')).toBeNull()
+    expect(await ws.readDrawing('/secret.svg')).toBeNull()
+    expect(await ws.readDrawing('/.nobsidian/x.excalidraw.svg')).toBeNull()
+  })
+
   it('refuses asset paths outside the workspace', async () => {
     const ws = await Workspace.open(root, { settleMs: 0 })
     expect(ws.resolveAsset('/../../etc/passwd')).toBe(join(root, 'etc', 'passwd'))

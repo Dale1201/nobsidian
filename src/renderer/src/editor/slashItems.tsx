@@ -1,7 +1,8 @@
 import { filterSuggestionItems, insertOrUpdateBlockForSlashMenu } from '@blocknote/core'
 import { getDefaultReactSlashMenuItems, type DefaultReactSuggestionItem } from '@blocknote/react'
 import { getMultiColumnSlashMenuItems } from '@blocknote/xl-multi-column'
-import { CalloutIcon, PageIcon, TocIcon } from '../components/icons'
+import { CalloutIcon, DrawingIcon, PageIcon, TocIcon } from '../components/icons'
+import { openDrawing } from '../drawing/session'
 import type { AppEditor, AppPartialBlock } from './schema'
 
 // The React items carry core's `key` at runtime, but their type omits it.
@@ -75,7 +76,7 @@ const ORDER: { group: string; keys: string[] }[] = [
       'code_block'
     ]
   },
-  { group: 'Media', keys: ['image', 'video', 'audio', 'file'] },
+  { group: 'Media', keys: ['image', 'drawing', 'video', 'audio', 'file'] },
   {
     group: 'Advanced',
     keys: [
@@ -110,6 +111,16 @@ function customItems(editor: AppEditor, opts: SlashItemOptions): SlashItem[] {
           type: 'callout',
           props: { backgroundColor: 'gray' }
         })
+    },
+    {
+      key: 'drawing',
+      title: 'Drawing',
+      aliases: ['drawing', 'draw', 'sketch', 'doodle', 'excalidraw', 'whiteboard'],
+      icon: <DrawingIcon size={18} />,
+      onItemClick: () => {
+        const block = insertOrUpdateBlockForSlashMenu(editor, { type: 'drawing' })
+        openDrawing(editor, block.id)
+      }
     },
     {
       key: 'toc',

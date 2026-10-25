@@ -1,3 +1,4 @@
+import type { DrawingSession } from './drawing/session'
 import { create } from 'zustand'
 import type { Block } from '@shared/core/blocks'
 import { RECENT_LIMIT, type Settings, type TreeSnapshot } from '@shared/ipc'
@@ -9,12 +10,19 @@ const api = window.api
 // Editors register a flush so pending autosaves land before destructive actions and quit.
 // A flush resolves false when edits are still unsaved afterwards.
 const flushers = new Set<() => Promise<boolean>>()
-export function registerFlusher(fn: () => Promise<boolean>): () => void {
-  flushers.add(fn)
-  return () => flushers.delete(fn)
+// Run before the others, for work that ends in an edit the page editors must still save.
+const firstFlushers = new Set<() => Promise<boolean>>()
+export function registerFlusher(
+  fn: () => Promise<boolean>,
+  options?: { first?: boolean }
+): () => void {
+  const set = options?.first ? firstFlushers : flushers
+  set.add(fn)
+  return () => set.delete(fn)
 }
 export async function flushAll(): Promise<boolean> {
-  return (await Promise.all([...flushers].map((fn) => fn()))).every(Boolean)
+  const first = await Promise.all([...firstFlushers].map((fn) => fn()))
+  return [...first, ...(await Promise.all([...flushers].map((fn) => fn())))].every(Boolean)
 }
 
 let errorTimer: ReturnType<typeof setTimeout> | undefined
@@ -32,7 +40,10 @@ export interface Rescue {
 }
 
 export type Overlay =
-  { kind: 'search' } | { kind: 'move'; pageId: string } | { kind: 'history'; pageId: string }
+  | { kind: 'search' }
+  | { kind: 'move'; pageId: string }
+  | { kind: 'history'; pageId: string }
+  | { kind: 'drawing'; session: DrawingSession }
 
 interface AppState {
   ready: boolean

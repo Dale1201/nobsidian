@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { DrawingHost } from './drawing/DrawingHost'
 import { HistoryModal } from './components/HistoryModal'
 import { ImportDrop } from './components/ImportDrop'
 import { ImportPanel } from './components/ImportPanel'
@@ -65,6 +66,8 @@ export function App(): React.JSX.Element | null {
     () =>
       api.on('menu:command', (cmd) => {
         const app = useApp.getState()
+        // The drawing editor covers the window; only the theme may change under it.
+        if (app.overlay?.kind === 'drawing' && cmd !== 'toggle-theme') return
         if (cmd === 'new-page') void app.createPage(null)
         if (cmd === 'open-folder') void app.chooseWorkspace()
         if (cmd === 'import-notion') void app.startImport()
@@ -85,17 +88,21 @@ export function App(): React.JSX.Element | null {
         <Welcome />
       ) : (
         <>
-          {!settings?.sidebarCollapsed && <Sidebar />}
-          {trashEntry ? (
-            <TrashedPageView key={trashEntry} entry={trashEntry} theme={theme} />
-          ) : (
-            <PageView theme={theme} />
-          )}
-          {overlay?.kind === 'search' && <SearchModal />}
-          {overlay?.kind === 'move' && <SearchModal moving={overlay.pageId} />}
-          {overlay?.kind === 'history' && <HistoryModal pageId={overlay.pageId} theme={theme} />}
-          <ImportDrop />
-          <ImportPanel />
+          {/* The drawing editor covers the window; nothing under it may take focus or clicks. */}
+          <div className="app-content" inert={overlay?.kind === 'drawing'}>
+            {!settings?.sidebarCollapsed && <Sidebar />}
+            {trashEntry ? (
+              <TrashedPageView key={trashEntry} entry={trashEntry} theme={theme} />
+            ) : (
+              <PageView theme={theme} />
+            )}
+            {overlay?.kind === 'search' && <SearchModal />}
+            {overlay?.kind === 'move' && <SearchModal moving={overlay.pageId} />}
+            {overlay?.kind === 'history' && <HistoryModal pageId={overlay.pageId} theme={theme} />}
+            <ImportDrop />
+            <ImportPanel />
+          </div>
+          {overlay?.kind === 'drawing' && <DrawingHost session={overlay.session} theme={theme} />}
         </>
       )}
       {error && (

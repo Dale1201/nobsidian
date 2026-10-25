@@ -10,6 +10,7 @@ const NAMES: Record<string, string> = {
   video: 'Video',
   audio: 'Audio',
   file: 'File',
+  drawing: 'Drawing',
   table: 'Table',
   divider: 'Divider',
   pageLink: 'Page',

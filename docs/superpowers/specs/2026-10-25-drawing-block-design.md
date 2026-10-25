@@ -76,29 +76,34 @@ A save of `Drawing (2).excalidraw.svg` is named `Drawing.excalidraw.svg` again, 
 - `window.EXCALIDRAW_ASSET_PATH` is `nbfile://excalidraw/` before the module loads.
 - While open, the editor registers a flusher with `registerFlusher` that runs before the page editors' flushers, so quitting or closing the window saves the drawing and then the page that points at it.
 - If the page file changes on disk while the editor is open, the page's editor is rebuilt and its blocks get new ids; Done then finds the drawing in the rebuilt editor by its file (and its position among drawings of that file), so the drawing still lands.
+  A new drawing, which the page file does not have yet, is put back at the position it was inserted at.
   Only if no such block is left does it show "The drawing's block was gone, so it was saved as attachments/…".
 
 ### Opening and saving
 
 1. Open: the renderer calls `drawing:read(href)`, which returns the file's text, or `null` when it is missing.
-   The text is loaded with Excalidraw's `loadFromBlob`, and the scene version (`getSceneVersion`) is kept.
-2. Done: if the scene version is unchanged, the editor closes and nothing is written.
+   The text is loaded with Excalidraw's `loadFromBlob`, and a hash of the elements' versions (`hashElementsVersion`) is kept.
+2. Done: if that hash is unchanged, the editor closes and nothing is written.
    Otherwise it calls `exportToSvg` with `exportEmbedScene: true`, `exportBackground: true`, `viewBackgroundColor: '#ffffff'`, `exportWithDarkMode: false` and `exportScale: 1` (so the page shows it at the size it was drawn), saves the SVG text through `attachment:save`, and updates the block's `url`.
    The page then saves as usual, and Cmd+Z on the page restores the previous `url`.
 3. New drawing: the slash item inserts a drawing block with an empty `url` and opens the editor on a blank canvas.
    If the editor closes without a save, the block is removed, so an empty `url` never reaches the file.
    If it somehow does (a crash mid-session), the serializer drops a drawing block with an empty `url`.
-4. A file that has no embedded scene (a plain SVG renamed to `.excalidraw.svg`) shows as a picture; opening it shows "This drawing can't be edited" instead of an empty canvas, so it cannot be overwritten by mistake.
-5. If saving fails, the editor stays open and shows the error, so no drawing is lost.
+4. A file that cannot be read (permissions, an offline cloud file) opens as "Couldn't open the drawing: …" with Done enabled.
+   A file that has no embedded scene (a plain SVG renamed to `.excalidraw.svg`) shows as a picture; opening it shows "This drawing can't be edited" instead of an empty canvas, so it cannot be overwritten by mistake.
+5. If saving fails, the editor stays open and the error shows above it, so no drawing is lost.
+6. If Excalidraw itself fails to load or render, the editor shows "Couldn't open the drawing editor: …" instead of taking the window down.
+7. While the editor is open the rest of the window is `inert`, so no key or click reaches the page under it; in an error state Done has focus and Esc closes.
+8. The hash is `hashElementsVersion` rather than the deprecated `getSceneVersion`, a plain sum that misses a shape replaced by another of the same version.
 
 ## 5. Main process and security
 
 - `drawing:read(href)` resolves the href with `resolveAsset`, accepts only files ending in `.excalidraw.svg`, and returns their UTF-8 text.
-  Reading through IPC keeps the renderer's Content-Security-Policy unchanged for `fetch`.
+  Reading through IPC means `fetch` never needs to reach workspace files.
 - A Vite plugin copies Excalidraw's `dist/prod/fonts` into `out/renderer/excalidraw/fonts` at build time.
   The main process serves them at `nbfile://excalidraw/fonts/…` (from the package folder under the dev server), refusing paths outside that folder.
   The responses carry `Access-Control-Allow-Origin: *`, because Excalidraw fetches fonts with CORS from the `file://` page; the scheme gains the `corsEnabled` privilege for that.
-- The CSP adds `nbfile:` to `font-src` and a `connect-src 'self' nbfile:`; nothing else changes.
+- The CSP adds `nbfile://excalidraw` to `font-src` and a `connect-src 'self' nbfile://excalidraw`, so `fetch` reaches the fonts and nothing else in the workspace; nothing else changes.
 - A `pnpm patch` of `@excalidraw/excalidraw@0.18.1` makes two changes, in both its `dev` and `prod` builds:
   1. Fonts no longer list `esm.sh` as a fallback source. Chromium requests every listed source of a `FontFace`, so without the patch each font face triggered a blocked request to the CDN.
   2. Glyph subsetting is skipped, and whole font files (one per Unicode range used) are embedded in exported SVGs. Subsetting needs `eval` (Emscripten embind) in a worker that cannot start from a `file://` page, and the CSP rightly forbids `eval` on the page. A drawing with Latin text carries about 33 KB of font; one with CJK text, about 50 KB more per range.

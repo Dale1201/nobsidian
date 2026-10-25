@@ -192,6 +192,13 @@ function blockToFlow(block: Block): RootContent[] {
         : { type: 'paragraph', children: [{ type: 'image', url, alt: caption || null }] }
       return [node, ...childrenContainer(block.children)]
     }
+    case 'drawing':
+      // A drawing that was never saved has no file to point at.
+      if (!block.props.url) return blocksToFlow(block.children)
+      return [
+        { type: 'paragraph', children: [{ type: 'image', url: block.props.url, alt: null }] },
+        ...childrenContainer(block.children)
+      ]
     case 'video':
     case 'audio': {
       const attrs = renderAttrs({

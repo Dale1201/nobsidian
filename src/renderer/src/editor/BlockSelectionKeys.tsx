@@ -1,6 +1,7 @@
 import { SuggestionMenu } from '@blocknote/core/extensions'
 import { useEditorDOMElement, useExtension } from '@blocknote/react'
 import { useEffect } from 'react'
+import { openDrawing } from '../drawing/session'
 import { blocksOf, deleteBlocks, moveBlocks } from './blockActions'
 import { selectBlocks, selectedBlockIds } from './blockSelection'
 import { stepSelection, topLevelIds } from './blockSelectionModel'
@@ -43,6 +44,10 @@ function onSelectionKey(
   }
   if (e.key === 'Enter' && !mod) {
     const last = editor.getBlock(ids[ids.length - 1])
+    if (ids.length === 1 && last?.type === 'drawing') {
+      openDrawing(editor, last.id)
+      return true
+    }
     // A block without text, such as a page link, would be left invisibly node-selected,
     // and the next paste would replace it; it stays selected instead.
     if (last?.content !== undefined) {

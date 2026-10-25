@@ -16,6 +16,9 @@ import { codeBlockOptions } from '@blocknote/code-block'
 import { withMultiColumn } from '@blocknote/xl-multi-column'
 import { createContext, useContext, useState } from 'react'
 import { PageIconView } from '../components/PageIconView'
+import { openDrawing } from '../drawing/session'
+import { resolveAssetUrl } from '../lib/assets'
+import { decodeHref } from '@shared/core/paths'
 import { Katex } from './Katex'
 import { dividerShortcut, headingShortcuts, quoteShortcut } from './markdownShortcuts'
 
@@ -104,6 +107,43 @@ export const createPageLink = createReactBlockSpec(
         >
           <span className="nb-page-link-icon">{target?.icon ?? '📄'}</span>
           <span className="nb-page-link-title">{target?.title ?? block.props.href}</span>
+        </div>
+      )
+    }
+  }
+)
+
+export const createDrawing = createReactBlockSpec(
+  {
+    type: 'drawing',
+    propSchema: { url: { default: '' } },
+    content: 'none'
+  },
+  {
+    render: function DrawingBlock({ block, editor }) {
+      const { url } = block.props
+      const [missing, setMissing] = useState<string | null>(null)
+      // A new drawing has no file until its editor saves one.
+      if (!url) return <div className="nb-drawing-new" />
+      if (missing === url) {
+        return (
+          <div className="nb-drawing-missing">
+            Drawing not found: {decodeHref(url.split('/').pop() ?? url)}
+          </div>
+        )
+      }
+      return (
+        <div
+          className="nb-drawing"
+          data-editable={editor.isEditable ? 'true' : undefined}
+          onClick={() => editor.isEditable && openDrawing(editor as unknown as AppEditor, block.id)}
+        >
+          <img
+            src={resolveAssetUrl(url)}
+            alt=""
+            draggable={false}
+            onError={() => setMissing(url)}
+          />
         </div>
       )
     }
@@ -256,6 +296,7 @@ export const schema = withMultiColumn(
       callout: createCallout(),
       math: createMath(),
       pageLink: createPageLink(),
+      drawing: createDrawing(),
       raw: createRaw(),
       toc: createToc()
     },

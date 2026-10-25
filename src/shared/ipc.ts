@@ -82,6 +82,8 @@ export interface IpcContract {
   'attachment:save': [payload: { name: string; data: Uint8Array }, result: string]
   'attachment:chooseImage': [payload: void, result: string | null]
   'attachment:open': [payload: { href: string }, result: void]
+  /** The text of a drawing file, or null when it is missing. */
+  'drawing:read': [payload: { href: string }, result: string | null]
   /** Downloads an image from the web into attachments/; returns its internal href. */
   'attachment:fetch': [payload: { url: string }, result: string]
   /** Picks Notion export zips and starts importing them; false if the picker was cancelled. */
@@ -118,3 +120,5 @@ export interface Api {
 }
 
 export const ASSET_SCHEME = 'nbfile'
+/** The host under ASSET_SCHEME that serves Excalidraw's bundled fonts. */
+export const EXCALIDRAW_HOST = 'excalidraw'
