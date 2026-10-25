@@ -14,13 +14,14 @@ Notion parity is the yardstick.
 Notion's help pages say little about tabs, so the facts below come from the tab bar and menu code in Notion 7.40.1 (`/Applications/Notion.app`, `app.asar`), read on 2026-10-25.
 
 - One 36px tab bar spans the top of the window and replaces the title bar.
-- Its left segment is as wide as the sidebar (with a 1px divider on its right) and holds the traffic lights and the sidebar toggle; with the sidebar collapsed it shrinks to fit them.
+- Its left segment is as wide as the sidebar (with a 1px divider on its right) and holds the traffic lights with the sidebar toggle right after them; with the sidebar collapsed it shrinks to fit them.
+- The traffic lights are 14px on macOS 26 and later and 12px before, placed at x = size and centred in the bar; the space they take is 4.5 sizes plus two gaps of 9px (8px before macOS 26), so 81px or 70px.
 - Back and forward buttons follow, then the tabs, then a `+` button.
 - The bar uses the sidebar's background with a 1px divider along its bottom.
 - Tabs are flat rectangles separated by 1px lines; the active tab takes the page background and has no bottom border, so it joins the page below.
 - Tabs share the width equally between 36px and 200px each.
 - A tab shows the page icon and the title in 13px medium; inactive tabs use secondary text, a 75% opacity icon, and a title that fades out instead of ending in an ellipsis.
-- A 16px close button fades in on hover, over a short gradient.
+- A 16px close button fades in on hover or focus, over a short gradient; the active tab always has one, other tabs only when wider than 52px.
 - Mouse-down activates a tab, middle-click closes it, right-click opens the tab menu, and dragging reorders with a blue drop line (`rgba(35, 131, 226, 0.43)`).
 - Shortcuts: ⌘T new tab, ⌘W close tab (closing the last tab closes the window), ⌘⇧W close window, ⌘⇧T reopen the last closed tab or batch, ⌃Tab / ⌃⇧Tab, ⌘⌥→ / ⌘⌥← and ⌘⇧] / ⌘⇧[ next and previous tab (wrapping), ⌘1 to ⌘8 select a tab, ⌘9 selects the last tab, ⌘[ / ⌘] back and forward in the active tab.
 - ⌘-click on a link opens it in a new tab.
@@ -63,11 +64,13 @@ From left to right:
 
 1. The left segment.
    With the sidebar open it is exactly the sidebar's width, follows it live during a resize, and has a 1px `--divider` on its right in line with the sidebar's border.
-   It holds the traffic lights (the existing `trafficLightPosition` is adjusted to centre them in 36px) and the sidebar toggle at its right end.
+   It holds the traffic lights, placed and sized as Notion does for the running macOS version, and the sidebar toggle right after them.
+   In full screen, where the traffic lights are hidden, the toggle sits 12px from the edge.
    With the sidebar collapsed it is just wide enough for the traffic lights and the toggle.
 2. Back and forward buttons for the active tab's history, dimmed when there is nowhere to go.
 3. The tabs.
 4. The `+` new tab button, right after the last tab.
+5. A 54px empty drag area at the right end.
 
 ### Tabs
 
@@ -80,7 +83,7 @@ From left to right:
 - Content: the page icon (or the default page icon), then the title in 13px medium, with "Untitled" for an empty title.
   The tooltip is the full title.
 - Close: a 16px ✕ in a 20px button with a 6px radius, over a 16px fade, appears on hover and keyboard focus.
-  It stays visible on the active tab while the tab is wider than 72px.
+  The active tab always has it; other tabs have it only when wider than 52px.
 - A hidden tab whose page has a conflict shows a small amber dot (`--color-yellow`) in place of its close button until it is hovered.
 - Dragging shows a 2px `--accent` drop line at 43% opacity between tabs.
 
@@ -256,7 +259,8 @@ Tab titles, tab icons and breadcrumbs read the tree, so a rename or icon change,
 - `window:close` IPC: closes the window through the existing close flow.
 - `page-trash.ts` / `trash.ts`: `TrashItem.pageIds`, read from the ids in the entry's page files.
 - `settings.ts`: `tabs` defaults to `{}`.
-- `index.ts`: `trafficLightPosition` is adjusted for the 36px bar.
+- `src/shared/window.ts` (new): the traffic light position and inset for a macOS version, used by `index.ts` for `trafficLightPosition` and exposed by the preload as `api.windowControls`.
+- `index.ts`: sends `window:fullscreen` when the window enters or leaves full screen.
 
 ## 8. Testing
 
