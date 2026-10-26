@@ -355,3 +355,66 @@ test('offline, the AI slash item is greyed out and does nothing', async ({ nb })
   await item.click({ force: true })
   await expect(writer).toBeHidden()
 })
+
+test('a follow-up that brings nothing back leaves the change under review as it was', async ({
+  nb,
+  anthropic
+}) => {
+  const page = await setUp(nb)
+  const writer = page.getByRole('dialog', { name: 'AI' })
+  const box = writer.getByRole('textbox', { name: 'Ask AI' })
+
+  await selectParagraph(page, 'Outro.')
+  await page.keyboard.press('Meta+j')
+  anthropic.reply(
+    { tool: { name: 'edit', markdown: 'The end.' } },
+    { status: 529 },
+    { status: 529 },
+    { text: '', hold: true }
+  )
+  await box.fill('make it final')
+  await box.press('Enter')
+  await expect(page.locator('.nb-ai-added')).toHaveText('The end.')
+
+  await box.fill('longer')
+  await box.press('Enter')
+  await expect(writer.getByRole('alert')).toContainText('Claude is busy right now.')
+  await expect(page.locator('.nb-ai-added')).toHaveText('The end.')
+
+  await box.fill('shorter')
+  await box.press('Enter')
+  await writer.getByRole('button', { name: 'Stop' }).click()
+  await expect(writer.getByRole('button', { name: 'Accept' })).toBeVisible()
+  await expect(page.locator('.nb-ai-added')).toHaveText('The end.')
+
+  await writer.getByRole('button', { name: 'Accept' }).click()
+  await expect(writer).toBeHidden()
+  await expect(page.locator(editor)).toContainText('The end.')
+  await expect(page.locator(editor)).not.toContainText('Outro.')
+  await waitForFile(join(nb.workspace, 'Notes.md'), 'The end.')
+  expect(await file(nb)).not.toContain('Outro.')
+})
+
+test('after a reply and a failed follow-up, typing retries and skills are not offered', async ({
+  nb,
+  anthropic
+}) => {
+  const page = await setUp(nb)
+  const writer = page.getByRole('dialog', { name: 'AI' })
+  const box = writer.getByRole('textbox', { name: 'Ask AI' })
+
+  await selectParagraph(page, 'Outro.')
+  await page.keyboard.press('Meta+j')
+  anthropic.reply(
+    { tool: { name: 'reply', markdown: 'It closes the page.' } },
+    { status: 529 },
+    { status: 529 }
+  )
+  await box.fill('what is this for?')
+  await box.press('Enter')
+  await expect(writer.locator('.nb-writer-reply')).toHaveText('It closes the page.')
+  await box.fill('and why?')
+  await box.press('Enter')
+  await expect(writer.getByRole('alert')).toContainText('Claude is busy right now.')
+  await expect(writer.getByRole('option')).toHaveCount(0)
+})

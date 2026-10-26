@@ -42,8 +42,6 @@ interface Session {
   selectedBlocks: string[]
   /** The page as it was when the Writer opened, with the selection marked. */
   markdown: string
-  /** Set once a turn finished, so later instructions revise it. */
-  answered: boolean
 }
 
 const WIDTH = 400
@@ -76,8 +74,7 @@ function newSession(editor: AppEditor): Session {
     id: crypto.randomUUID(),
     selection: selectedBlocks.length > 0 || textSelected,
     selectedBlocks,
-    markdown: pageMarkdown(editor, mark),
-    answered: false
+    markdown: pageMarkdown(editor, mark)
   }
 }
 
@@ -118,6 +115,7 @@ export function WriterHost({
   const [error, setError] = useState<AiError | null>(null)
   const [activeSkill, setActiveSkill] = useState(0)
   const [selection, setSelection] = useState(false)
+  const [answered, setAnswered] = useState(false)
   const session = useRef<Session | null>(null)
   const request = useRef<{ id: string; mode: AiMode | null; text: string } | null>(null)
   const frame = useRef(0)
@@ -130,13 +128,15 @@ export function WriterHost({
     () => (reply ? editor.blocksToHTMLLossy(resultBlocks(reply) as never) : ''),
     [editor, reply]
   )
-  const shown = phase === 'prompt' ? matchingSkills(skills, query) : []
+  // Skills start a request; once Claude has answered, typing revises it.
+  const shown = phase === 'prompt' && !answered ? matchingSkills(skills, query) : []
 
   const render = useCallback((): void => {
     cancelAnimationFrame(frame.current)
     frame.current = 0
     const current = request.current
-    if (current && current.mode !== 'reply' && hasPending(editor))
+    // A turn that brought nothing leaves the result under review as it is.
+    if (current?.text && current.mode !== 'reply' && hasPending(editor))
       renderPending(editor, current.text)
   }, [editor])
 
@@ -202,6 +202,7 @@ export function WriterHost({
     setQuery('')
     setReply('')
     setError(null)
+    setAnswered(false)
     setActiveSkill(0)
     setPhase(useAi.getState().status?.hasKey ? 'prompt' : 'setup')
     setOpen(true)
@@ -219,7 +220,7 @@ export function WriterHost({
   const run = (ask: { skill?: SkillId; instruction?: string }): void => {
     const s = session.current
     if (!s) return
-    const followUp = s.answered
+    const followUp = answered
     if (!hasPending(editor)) {
       const skill = ask.skill ? skills.find((k) => k.id === ask.skill) : null
       const placement = skill ? placementOf(skill.kind) : placementForText(s.selection)
@@ -249,8 +250,8 @@ export function WriterHost({
     const finish = (failed: AiError | null): void => {
       const current = request.current
       if (!current) return
-      if (current.text) render()
-      if (session.current && current.text) session.current.answered = true
+      render()
+      if (current.text) setAnswered(true)
       const rendered = pendingOf(editor.prosemirrorState)?.rendered ?? false
       if (!rendered && hasPending(editor)) undoPending(editor)
       setError(failed)
@@ -338,9 +339,7 @@ export function WriterHost({
       return
     }
     const prefilled = prefilledSkill(skills, query)
-    run(
-      prefilled && !s.answered ? { skill: prefilled.id, instruction: text } : { instruction: text }
-    )
+    run(prefilled && !answered ? { skill: prefilled.id, instruction: text } : { instruction: text })
   }
 
   const choose = (skill: Skill): void => {
