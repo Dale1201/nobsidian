@@ -61,6 +61,7 @@ Asking questions about the workspace, turning pages into to-dos or tables, AI bl
 
 - **Toolbar.** "Ask AI" is the first item of the formatting toolbar, with a sparkle icon and the tooltip "Ask AI to help edit, review, or generate text." plus ⌘J.
 - **⌘J.** Opens the Writer on the selection, or at the cursor when nothing is selected.
+  A clicked image or other selected node counts as a cursor after its block, so the Writer offers the cursor's skills and never writes into the node.
 - **Slash menu.** An "AI" group at the end holds one item, "Ask AI", matched by `ai`, `ask`, `write` and `claude`; it is last so Text stays first, as in Notion.
 - **Space.** In an empty paragraph, heading or list item, Space with no modifier opens the Writer.
   It does nothing special in code blocks, tables, or while an input method is composing.
@@ -73,15 +74,15 @@ Asking questions about the workspace, turning pages into to-dos or tables, AI bl
 
 ## 4. The Writer popup
 
-The popup sits below the selection or the cursor block, in the editor's own layer, 400px wide (narrower when the page column is), with a 12px radius and the app's menu shadow.
-It uses the existing menus kit for its list and keyboard handling.
+The popup sits below the selection or the cursor block, in the editor's own layer, lined up with the page column's left edge, 400px wide (narrower when the page column is), with a 12px radius and the app's menu shadow.
+The Writer keeps its own Skills list and keyboard handling, driven from its input, because the menus kit's menu takes focus from the input.
 
 ### 4.1 Prompt
 
 - An input with a sparkle icon and the placeholder "Edit with AI".
 - A send button on the right, enabled when the input has text.
 - While the input is empty, a **Skills** list sits below it.
-- Typing filters the list with the menus kit's `filterEntries`.
+- Typing filters the list with the menus kit's `filterEntries`, the only part of the kit the Writer reuses.
 - Enter runs the highlighted skill, or sends the typed text as the instruction when no skill matches.
 - Esc, or Backspace in an empty input, closes the popup.
 
@@ -123,6 +124,9 @@ With a selection Claude may edit it or reply; without one it may insert at the c
 | Error | One red line (section 9), plus Undo and Accept when a partial change exists | As Review |
 
 A follow-up typed in Review revises the pending change: the conversation so far is sent again with the follow-up, and the new result replaces the pending change.
+A follow-up after Stop revises the last completed result, since a stopped answer is never added to the conversation.
+A follow-up that brings nothing back, or fails, leaves the change under review as it was.
+An edit that deliberately comes back empty shows as a deletion of the selection, with Undo and Accept.
 
 ## 5. How changes land
 
@@ -145,6 +149,11 @@ A follow-up typed in Review revises the pending change: the conversation so far 
 - A response that grows a second paragraph while streaming switches from inline to blocks and is re-rendered.
 - **Insert below** goes after the last selected block; **insert at cursor** goes after the cursor block, replacing it when it is empty.
 - **Edit page** takes every block of the page body as the original.
+- A selection inside a column stays in that column: its blocks are the original, and the result goes after them in the same column.
+- A rewritten block whose children the selection leaves out keeps them: while pending they show unmarked under the struck parent, and on Accept they move under the last new block.
+- A selection inside a code block is replaced with Claude's answer as plain text, never parsed as Markdown, without a wrapping fence or a trailing newline.
+- Pending ranges follow any edit made by others while the change is pending, so the change stays where it was shown.
+- A result the page cannot take where it goes, such as columns inside a column, is not placed: the request ends with "The answer could not be placed here." and any change already under review stays.
 - Streamed Markdown is parsed with the app's existing Markdown parser on each text delta, coalesced to one render per animation frame.
 
 ### 5.3 Accept and Undo
@@ -197,7 +206,8 @@ A follow-up typed in Review revises the pending change: the conversation so far 
 - First user message:
   1. A text block holding the page as `<page title="…">…</page>`, with the selection wrapped in `⟦selection⟧…⟦/selection⟧` or the cursor marked `⟦cursor⟧`, and `cache_control: { type: 'ephemeral' }`.
   2. A text block with the skill's instruction, or the typed text.
-- Follow-ups append the assistant response's full `content` unchanged (thinking blocks included), then a user message with the follow-up.
+- Follow-ups append the assistant response's `content` (thinking blocks included), then a user message with the follow-up.
+  Empty text blocks are dropped from it, since the API rejects them, and a turn left with nothing is not added.
 - Page Markdown comes from the existing serializer.
 - Images, video, audio, files and drawings are replaced by `[image]`, `[video]`, `[audio]`, `[file]` and `[drawing]`, written as raw Markdown so the brackets are not escaped.
 - Selected blocks are wrapped by markers on lines of their own.
@@ -214,6 +224,7 @@ Typed instructions add two strict tools with `eager_input_streaming: true` and `
 The system prompt tells Claude to call exactly one.
 The tool's streamed input is parsed incrementally and rendered as an edit, insert or reply.
 A response with plain text and no tool call is treated as a reply.
+Text Claude writes before a tool call streams as a reply until the tool's input arrives, and is cleared when the tool edits or inserts, so it never stays above the change.
 
 ## 7. Main process
 
@@ -222,12 +233,13 @@ New folder `src/main/ai/`:
 - `keyStore.ts`
   - Saves the key with `safeStorage.encryptString` to `<userData>/anthropic-key.bin` with mode 0600, reads it back, and deletes it.
   - Refuses to save when `safeStorage.isEncryptionAvailable()` is false.
-  - Only `hasKey` and a hint (`sk-ant-…` plus the last four characters) ever leave this module.
+  - The key leaves the store only for the service that calls Anthropic; only `hasKey` and a hint (`sk-ant-…` plus the last four characters) ever leave the main process.
   - Under `NOBSIDIAN_E2E=1` a test codec stands in for `safeStorage`, so tests never touch the macOS Keychain.
 - `codecs.ts`: the `safeStorage` codec, and the test codec.
 - `client.ts`: builds the SDK client from the key, always passing the base URL so `ANTHROPIC_BASE_URL` in the user's environment cannot redirect the key; reads `NOBSIDIAN_AI_BASE_URL` only under `NOBSIDIAN_E2E=1`.
 - `prompts.ts`: pure functions that build `system`, messages and tools for a skill or instruction.
-- `service.ts`: key checks, status, and streaming; keeps one conversation per open Writer and an `AbortController` per request.
+- `service.ts`: key checks, status, and streaming; keeps one conversation per open Writer and an `AbortController` per request, registered before anything is awaited so a cancel is never missed.
+  An unexpected failure that is not an API error is logged with `console.error` before it is reported.
 - `handlers.ts`: the IPC handlers; events go back to the window that asked.
 - `usage.ts`
   - A ledger in `<userData>/ai-usage.json` keyed by month (`2026-10`): requests, input, output, cache write and cache read tokens, and dollars.
@@ -259,6 +271,9 @@ Added to `IpcContract`:
 | `ai:cancel` | `{ requestId }` | none |
 | `ai:end` | `{ sessionId }` | none |
 
+`ai:cancel` stops one request, which then reports `ai:done` with whatever had arrived.
+`ai:end` forgets the Writer's conversation and stops its running request.
+
 Added to `IpcEvents`:
 
 | Event | Data |
@@ -274,7 +289,8 @@ Non-secret settings join `Settings`: `ai: { enabled: boolean; model: string }`, 
 ### 8.1 Window
 
 - A Settings modal with the measurements of Notion's (web client, 2026-10-25): 90vw up to 1512px wide, the window's height less 100px, 12px radius; a 240px nav on the sidebar background; pages padded 36px by up to 60px, at most 800px wide; 26px page titles, 16px section titles over a divider, 14px row labels over 13px descriptions; a 30 by 18px toggle.
-- Opened with ⌘, (a new app menu item "Settings…") and from a new "Settings" row at the bottom of the sidebar, above Trash.
+- Opened with ⌘, (a new app menu item "Settings…") and from a new "Settings" row at the bottom of the sidebar, above Trash; both open on Preferences, as Notion opens on its first page.
+- The Writer's "Learn more" and "Open Settings" open the AI page.
 - The nav groups pages as Notion does: **Account › Preferences** and **Features › AI**.
 - **Preferences** has an Appearance section with a **Theme** row, "Choose a theme for Nobsidian on this device": Use system setting, Light, Dark.
 - **AI** is described as "Write and edit your pages with Claude, using your own Anthropic API key.", with a General section (the rows below) and a Usage section.
@@ -317,6 +333,7 @@ Saving a working key turns the card into the prompt.
 | `truncated` | `stop_reason: max_tokens` | "The response was cut off." |
 
 - An error after some text keeps the partial pending change, with Undo and Accept.
+- A result the page cannot take where it goes shows "The answer could not be placed here." as a `request` error (section 5.2).
 - The renderer listens for `online` and `offline` events and updates the entry points at once.
 - Nothing is queued while offline.
 
@@ -364,7 +381,7 @@ Editor tests mount a real BlockNote editor under `happy-dom` (a dev dependency),
 - Offline greys out the entry points.
 - Switching tabs or closing the tab during writing removes the pending change.
 - Settings shows the month's total after requests; the toggle hides AI.
-- The key is absent from `settings.json`, from the notes folder, and from every renderer-visible value.
+- The key is absent from `settings.json`, from every file under the app's data folder but its own (Local Storage and IndexedDB included), from the notes folder, and from every renderer-visible value.
 - Look tests capture the popup states and the diff in light and dark.
 
 ## 11. Files
