@@ -674,7 +674,7 @@
   min-width: min(350px, 100%);
   border-radius: 12px;
   background: var(--bg-elevated);
-  box-shadow: var(--menu-shadow);
+  box-shadow: var(--popup-shadow);
   color: var(--text);
   font-size: 14px;
   overflow: hidden;

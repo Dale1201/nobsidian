@@ -310,7 +310,7 @@ test('after an error with nothing written, a skill can be retried', async ({ nb,
 
   await selectParagraph(page, 'Outro.')
   await page.keyboard.press('Meta+j')
-  anthropic.reply({ status: 529 }, { status: 529 })
+  anthropic.reply({ status: 529 })
   await writer.getByRole('option', { name: 'Improve writing' }).click()
   await expect(writer.getByRole('alert')).toContainText('Claude is busy right now.')
   await expect(page.locator(MARKS)).toHaveCount(0)
@@ -369,7 +369,6 @@ test('a follow-up that brings nothing back leaves the change under review as it 
   anthropic.reply(
     { tool: { name: 'edit', markdown: 'The end.' } },
     { status: 529 },
-    { status: 529 },
     { text: '', hold: true }
   )
   await box.fill('make it final')
@@ -405,11 +404,7 @@ test('after a reply and a failed follow-up, typing retries and skills are not of
 
   await selectParagraph(page, 'Outro.')
   await page.keyboard.press('Meta+j')
-  anthropic.reply(
-    { tool: { name: 'reply', markdown: 'It closes the page.' } },
-    { status: 529 },
-    { status: 529 }
-  )
+  anthropic.reply({ tool: { name: 'reply', markdown: 'It closes the page.' } }, { status: 529 })
   await box.fill('what is this for?')
   await box.press('Enter')
   await expect(writer.locator('.nb-writer-reply')).toHaveText('It closes the page.')

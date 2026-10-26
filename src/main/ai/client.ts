@@ -8,6 +8,7 @@ export function apiUrl(env: NodeJS.ProcessEnv = process.env): string {
 
 // The base URL is always passed, so ANTHROPIC_BASE_URL in the user's environment cannot send
 // their key elsewhere; an explicit key also stops the SDK reading any other credential.
+// No retries: a retry waits out the server's retry-after while the Writer says nothing.
 export function createClient(apiKey: string): Anthropic {
-  return new Anthropic({ apiKey, baseURL: apiUrl(), maxRetries: 1 })
+  return new Anthropic({ apiKey, baseURL: apiUrl(), maxRetries: 0 })
 }

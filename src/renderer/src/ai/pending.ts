@@ -229,7 +229,7 @@ export function acceptPending(editor: AnyEditor): void {
 
 function decorations(state: EditorState): DecorationSet | null {
   const pending = pendingOf(state)
-  if (!pending) return null
+  if (!pending?.rendered) return null
   const { removed, added } = pendingRanges(pending)
   const out: Decoration[] = []
   const mark = (range: Range, kind: 'removed' | 'added'): void => {

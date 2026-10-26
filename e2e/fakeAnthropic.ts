@@ -178,7 +178,11 @@ export class FakeAnthropic {
       if (i > 0) continue
       if (reply.hold) await new Promise<void>((resolve) => this.releases.push(resolve))
       if (res.destroyed) return
-      if (reply.drop) return void res.destroy()
+      if (reply.drop) {
+        // After a moment, so the first piece is on its way, as when a network goes mid-answer.
+        await sleep(100)
+        return void res.destroy()
+      }
       if (reply.streamError) {
         event('error', {
           error: { type: reply.streamError, message: 'Overloaded' }
