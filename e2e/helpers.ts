@@ -1,6 +1,6 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { ElectronApplication, Page } from '@playwright/test'
+import type { ElectronApplication, Locator, Page } from '@playwright/test'
 import { expect } from './fixtures'
 
 export const editor = '.bn-editor'
@@ -88,9 +88,13 @@ async function settleCaret(page: Page): Promise<void> {
     .toBe(true)
 }
 
+export async function placeCaret(target: Locator, clickCount = 1): Promise<void> {
+  await target.click({ clickCount })
+  await settleCaret(target.page())
+}
+
 export async function clickInEditor(page: Page, text: string, clickCount = 1): Promise<void> {
-  await page.locator(editor).getByText(text).click({ clickCount })
-  await settleCaret(page)
+  await placeCaret(page.locator(editor).getByText(text), clickCount)
 }
 
 export async function pressInEditor(page: Page, key: string): Promise<void> {
