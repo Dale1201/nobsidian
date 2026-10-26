@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mkdtemp, readFile, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -247,13 +247,39 @@ describe('requests', () => {
       }
     })
     const r = request()
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
     await expect(broken.start(r, send)).resolves.toBeUndefined()
+    expect(logged).toHaveBeenCalledWith('AI request failed:', new Error('no client'))
+    logged.mockRestore()
     expect(events).toEqual([
       {
         name: 'ai:error',
         data: expect.objectContaining({ requestId: r.requestId, kind: 'network' })
       }
     ])
+  })
+
+  it('never reach Anthropic when cancelled or ended while the key is still being read', async () => {
+    const cold = (): AiService =>
+      new AiService({
+        keys: new KeyStore(join(dir, 'key.bin'), codec),
+        usage: new UsageLedger(join(dir, 'usage.json')),
+        model: () => model,
+        client: (apiKey) => new Anthropic({ apiKey, baseURL: fake.url, maxRetries: 0 })
+      })
+    const stops = [
+      (ai: AiService, r: AiStart) => ai.cancel(r.requestId),
+      (ai: AiService, r: AiStart) => ai.end(r.sessionId)
+    ]
+    for (const stop of stops) {
+      const ai = cold()
+      const r = request()
+      const running = ai.start(r, send)
+      stop(ai, r)
+      await running
+      expect(last()).toEqual({ name: 'ai:done', data: { requestId: r.requestId } })
+    }
+    expect(fake.messages()).toHaveLength(0)
   })
 
   it('stop the running request when the Writer ends', async () => {

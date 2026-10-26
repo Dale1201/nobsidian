@@ -100,17 +100,25 @@ export class AiService {
 
   /** Streams one request; every outcome is reported through `send`, and it never rejects. */
   async start(request: AiStart, send: AiSend): Promise<void> {
+    const { requestId, sessionId } = request
+    // Registered before anything is awaited, so a cancel or an end is never missed.
+    const controller = new AbortController()
+    this.running.set(requestId, { sessionId, controller })
     try {
-      await this.stream(request, send)
+      await this.stream(request, send, controller)
     } catch (err) {
-      send('ai:error', { requestId: request.requestId, ...aiError(err) })
+      if (!(err instanceof Anthropic.APIError)) console.error('AI request failed:', err)
+      send('ai:error', { requestId, ...aiError(err) })
+    } finally {
+      this.running.delete(requestId)
     }
   }
 
-  private async stream(request: AiStart, send: AiSend): Promise<void> {
+  private async stream(request: AiStart, send: AiSend, controller: AbortController): Promise<void> {
     const { requestId } = request
     const fail = (error: AiError): void => send('ai:error', { requestId, ...error })
     const key = await this.options.keys.get()
+    if (controller.signal.aborted) return send('ai:done', { requestId })
     if (!key) return fail({ kind: 'auth', message: 'Add your Anthropic API key in Settings.' })
 
     const previous = this.sessions.get(request.sessionId)
@@ -126,7 +134,6 @@ export class AiService {
     this.sessions.set(request.sessionId, session)
 
     const model = this.options.model()
-    const controller = new AbortController()
     let idle: ReturnType<typeof setTimeout> | undefined
     let timedOut = false
     const touch = (): void => {
@@ -153,7 +160,6 @@ export class AiService {
       },
       { signal: controller.signal }
     )
-    this.running.set(requestId, { sessionId: request.sessionId, controller })
     touch()
     let received = 0
     stream.on('streamEvent', (event) => {
@@ -204,7 +210,6 @@ export class AiService {
       fail(timedOut ? { kind: 'network', message: aiError(null).message } : aiError(err))
     } finally {
       clearTimeout(idle)
-      this.running.delete(requestId)
     }
   }
 }

@@ -40,7 +40,7 @@ describe('messages', () => {
     expect(page.startsWith('<page title="A &quot;b&quot; &lt;c> &amp; d">')).toBe(true)
   })
 
-  it('keeps the system prompt identical and free of the markers it describes as not part of the page', () => {
+  it('keeps dates out of the system prompt, and tells Claude never to write the markers', () => {
     expect(SYSTEM_PROMPT).toContain('never write them')
     expect(SYSTEM_PROMPT).not.toMatch(/\d{4}-\d{2}-\d{2}/)
   })
