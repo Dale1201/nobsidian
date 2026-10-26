@@ -437,7 +437,8 @@ button {
   height: 22px;
   flex: none;
 }
-.sidebar-row-toggle {
+/* Outranks .icon-button's display, which comes later. */
+.sidebar-row-lead .sidebar-row-toggle {
   position: absolute;
   inset: 0;
   display: none;
@@ -716,6 +717,20 @@ button.breadcrumb:hover {
 }
 
 /* ---------- page ---------- */
+/* A press on the scrollbar targets the scroller itself, so it never reaches .page-end. */
+.page-scroll.editable {
+  display: flex;
+  flex-direction: column;
+}
+.page-scroll.editable > * {
+  flex: none;
+}
+.page-scroll.editable > .page-body {
+  padding-bottom: 0;
+}
+.page-scroll.editable > .page-end {
+  flex: 1 0 30vh;
+}
 .page-scroll {
   flex: 1;
   overflow-y: auto;

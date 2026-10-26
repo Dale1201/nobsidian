@@ -189,7 +189,7 @@ export function PageView({
           message="This page's frontmatter couldn't be read, so it's shown as text."
         />
       )}
-      <div className="page-scroll" data-testid="page-scroll" ref={scrollRef}>
+      <div className="page-scroll editable" data-testid="page-scroll" ref={scrollRef}>
         {ready && (
           <>
             <PageCover meta={doc.meta} onChange={updateMeta} />
@@ -222,6 +222,15 @@ export function PageView({
                 />
               </EditorErrorBoundary>
             </div>
+            {/* Like Notion, the space below the last block is a place to start typing. */}
+            <div
+              className="page-end"
+              onMouseDown={(e) => {
+                if (e.button !== 0 || e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return
+                e.preventDefault()
+                editorRef.current?.focusEnd()
+              }}
+            />
           </>
         )}
       </div>
