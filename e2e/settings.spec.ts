@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { GOOD_KEY } from './fakeAnthropic'
 import { expect, test } from './fixtures'
-import { clickMenuItem } from './helpers'
+import { clickMenuItem, editor, newPage } from './helpers'
 
 const settingsFile = async (userData: string): Promise<Record<string, unknown>> =>
   JSON.parse(await readFile(join(userData, 'settings.json'), 'utf8'))
@@ -94,4 +94,56 @@ test('the AI section checks the key, picks the model and counts what was spent',
 
   await dialog.getByRole('button', { name: 'Remove' }).click()
   await expect(dialog.getByLabel('Anthropic API key')).toBeVisible()
+})
+
+test('Settings takes the keyboard from the page, and gives focus back to a select', async ({
+  nb
+}) => {
+  const { page, app } = nb
+  await newPage(page, 'Draft')
+  await page.keyboard.type('abc')
+  await expect(page.locator(editor)).toContainText('abc')
+
+  await clickMenuItem(app, 'Settings…')
+  const dialog = page.getByRole('dialog', { name: 'Settings' })
+  await expect(dialog).toBeVisible()
+  await expect(dialog.locator(':focus')).toHaveCount(1)
+  await page.keyboard.type('zzz')
+  await expect(page.locator(editor)).not.toContainText('zzz')
+  await page.keyboard.press('Tab')
+  await expect(dialog.locator(':focus')).toHaveCount(1)
+
+  const model = dialog.getByRole('button', { name: 'Model' })
+  await model.click()
+  await page.getByRole('menuitem', { name: 'Claude Haiku 5.5' }).click()
+  await expect(model).toBeFocused()
+})
+
+test('the key field reports a failed save or remove instead of sticking', async ({ nb }) => {
+  const { page, app } = nb
+  await clickMenuItem(app, 'Settings…')
+  const dialog = page.getByRole('dialog', { name: 'Settings' })
+  const field = dialog.getByLabel('Anthropic API key')
+  await expect(field).toBeVisible()
+
+  await app.evaluate(({ ipcMain }) => ipcMain.removeHandler('ai:setKey'))
+  await field.fill(GOOD_KEY)
+  await dialog.getByRole('button', { name: 'Save' }).click()
+  await expect(dialog.getByRole('alert')).toHaveText("Couldn't save the key.")
+  await expect(dialog.getByRole('button', { name: 'Save' })).toBeEnabled()
+})
+
+test('a failed remove says so and keeps the key', async ({ nb }) => {
+  const { page, app } = nb
+  await clickMenuItem(app, 'Settings…')
+  const dialog = page.getByRole('dialog', { name: 'Settings' })
+  const field = dialog.getByLabel('Anthropic API key')
+  await field.fill(GOOD_KEY)
+  await field.press('Enter')
+  await expect(dialog).toContainText('sk-ant-…a1b2')
+
+  await app.evaluate(({ ipcMain }) => ipcMain.removeHandler('ai:clearKey'))
+  await dialog.getByRole('button', { name: 'Remove' }).click()
+  await expect(dialog.getByRole('alert')).toHaveText("Couldn't remove the key.")
+  await expect(dialog).toContainText('sk-ant-…a1b2')
 })

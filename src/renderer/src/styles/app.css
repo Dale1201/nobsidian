@@ -1572,8 +1572,7 @@ button.breadcrumb:hover {
 .settings-link:hover {
   color: var(--text);
 }
-.settings-select,
-.settings-button-outline {
+.settings-select {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -1589,8 +1588,7 @@ button.breadcrumb:hover {
 .settings-select svg {
   color: var(--text-secondary);
 }
-.settings-select:hover,
-.settings-button-outline:hover {
+.settings-select:hover {
   background: var(--hover);
 }
 .menu.settings-menu {

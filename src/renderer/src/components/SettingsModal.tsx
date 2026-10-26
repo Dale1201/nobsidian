@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { AI_MODELS, isAiModel, type AiModel } from '@shared/ai'
 import type { ThemePreference } from '@shared/ipc'
 import { useAi } from '../ai/aiStore'
@@ -65,9 +65,11 @@ function Select<T extends string>({
   onChange: (value: T) => void
 }): React.JSX.Element {
   const [anchor, setAnchor] = useState<DOMRect | null>(null)
+  const button = useRef<HTMLButtonElement>(null)
   return (
     <>
       <button
+        ref={button}
         type="button"
         className="settings-select"
         aria-label={label}
@@ -82,7 +84,10 @@ function Select<T extends string>({
           anchor={anchor}
           align="end"
           className="settings-menu"
-          onClose={() => setAnchor(null)}
+          onClose={() => {
+            setAnchor(null)
+            button.current?.focus()
+          }}
           entries={options.map((o) => ({
             kind: 'item',
             id: o.id,
@@ -274,6 +279,7 @@ export function SettingsModal({ section }: { section: SettingsSection }): React.
                 type="button"
                 className={`settings-nav-item ${item.id === section ? 'active' : ''}`}
                 aria-current={item.id === section ? 'page' : undefined}
+                autoFocus={item.id === section}
                 onClick={() => useApp.getState().setOverlay({ kind: 'settings', section: item.id })}
               >
                 <span className="settings-nav-icon">{item.icon}</span>

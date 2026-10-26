@@ -8,25 +8,36 @@ export function KeyField({ onSaved }: { onSaved?: () => void }): React.JSX.Eleme
   const [state, setState] = useState<
     { kind: 'idle' } | { kind: 'checking' } | { kind: 'saved' } | { kind: 'error'; message: string }
   >({ kind: 'idle' })
+  const [removeFailed, setRemoveFailed] = useState(false)
 
-  if (status && !status.encryptionAvailable) {
+  if (!status) return <></>
+  if (!status.encryptionAvailable) {
     return (
       <div className="settings-key-note">
         This Mac can&apos;t store the key safely, so AI can&apos;t be set up.
       </div>
     )
   }
-  if (status?.hasKey) {
+  if (status.hasKey) {
     return (
       <div className="settings-key">
         <span className="settings-key-hint">{status.keyHint}</span>
         {state.kind === 'saved' && <span className="settings-key-ok">✓ Key works</span>}
+        {removeFailed && (
+          <span className="settings-key-error" role="alert">
+            Couldn&apos;t remove the key.
+          </span>
+        )}
         <button
           type="button"
           className="button-secondary settings-button"
           onClick={() => {
             setState({ kind: 'idle' })
-            void useAi.getState().clearKey()
+            setRemoveFailed(false)
+            useAi
+              .getState()
+              .clearKey()
+              .catch(() => setRemoveFailed(true))
           }}
         >
           Remove
@@ -36,7 +47,11 @@ export function KeyField({ onSaved }: { onSaved?: () => void }): React.JSX.Eleme
   }
   const save = async (): Promise<void> => {
     setState({ kind: 'checking' })
-    const result = await useAi.getState().setKey(key)
+    const result = await useAi
+      .getState()
+      .setKey(key)
+      .catch(() => null)
+    if (!result) return setState({ kind: 'error', message: "Couldn't save the key." })
     if (!result.ok) return setState({ kind: 'error', message: result.error })
     setKey('')
     setState({ kind: 'saved' })
