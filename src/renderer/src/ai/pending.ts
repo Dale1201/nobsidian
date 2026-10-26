@@ -49,9 +49,13 @@ function containerDepth($pos: ResolvedPos): number {
   return -1
 }
 
+// A column holds blocks directly, without a block group.
+const holdsBlocks = (node: Node): boolean =>
+  node.type.name === 'blockGroup' || node.type.name === 'column'
+
 /** The run of sibling blocks that holds both ends of the selection. */
 function touchedBlocks($from: ResolvedPos, $to: ResolvedPos): Range {
-  const range = $from.blockRange($to, (node) => node.type.name === 'blockGroup')
+  const range = $from.blockRange($to, holdsBlocks)
   if (range) return { from: range.start, to: range.end }
   const d = containerDepth($from)
   return { from: $from.before(d), to: $from.after(d) }
@@ -60,7 +64,7 @@ function touchedBlocks($from: ResolvedPos, $to: ResolvedPos): Range {
 /** The child group of the last block in `blocks`, when the selection ends before it. */
 function keptChildren(doc: Node, blocks: Range, to: number): Range | null {
   const last = doc.resolve(blocks.to).nodeBefore
-  if (!last || last.childCount < 2) return null
+  if (last?.type.name !== 'blockContainer' || last.childCount < 2) return null
   const from = blocks.to - last.nodeSize + 1 + last.firstChild!.nodeSize
   return to <= from ? { from, to: blocks.to - 1 } : null
 }
@@ -178,7 +182,7 @@ export function resultBlocks(markdown: string): Block[] {
 
 /** Claude's answer for a selection inside a code block: plain text, without a wrapping fence. */
 function codeFragment(editor: AnyEditor, markdown: string): Fragment {
-  const text = CODE_FENCE.exec(markdown.trim())?.[1] ?? markdown
+  const text = CODE_FENCE.exec(markdown.trim())?.[1] ?? markdown.replace(/\n$/, '')
   return text ? Fragment.from(editor.pmSchema.text(text)) : Fragment.empty
 }
 
@@ -187,7 +191,7 @@ function fitsInline(blocks: Block[]): boolean {
   return blocks.length === 1 && blocks[0].type === 'paragraph' && blocks[0].children.length === 0
 }
 
-/** Shows `markdown` as the pending result, in place of the previous one. */
+/** Shows `markdown` as the pending result, in place of the previous one, or throws a RangeError. */
 export function renderPending(editor: AnyEditor, markdown: string): void {
   const state = editor.prosemirrorState
   const pending = pendingOf(state)
@@ -203,6 +207,11 @@ export function renderPending(editor: AnyEditor, markdown: string): void {
       : blockFragment(editor, blocks)
   const at = isInline ? pending.inline!.to : pending.insertAt
   const { added } = pendingRanges(pending)
+  // Placed exactly as given or not at all, so `addedSize` stays true.
+  const $at = state.tr.delete(added.from, added.to).doc.resolve(at)
+  if (fragment.size && !$at.parent.canReplace($at.index(), $at.index(), fragment)) {
+    throw new RangeError(`This result cannot go in a ${$at.parent.type.name}.`)
+  }
   // Small steps rather than a whole-document swap, so the undo history before the Writer survives.
   editor.transact((tr) => {
     tr.setMeta('addToHistory', false)
@@ -288,12 +297,12 @@ function decorations(state: EditorState): DecorationSet | null {
     }
     // Whole blocks, or a block's own content when its children lie outside the range.
     state.doc.nodesBetween(range.from, range.to, (node, pos) => {
-      if (node.type.name === 'blockGroup') return true
+      if (holdsBlocks(node)) return true
       if (pos >= range.from && pos + node.nodeSize <= range.to) {
         out.push(Decoration.node(pos, pos + node.nodeSize, { class: `nb-ai-${kind}-block` }))
         return false
       }
-      return node.type.name === 'blockContainer'
+      return node.type.name === 'blockContainer' || node.type.name === 'columnList'
     })
   }
   const kept = !pending.isInline && pending.keep

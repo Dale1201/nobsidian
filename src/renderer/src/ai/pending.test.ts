@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
-import { BlockNoteEditor, type Block, type PartialBlock } from '@blocknote/core'
+import { BlockNoteEditor, BlockNoteSchema, type Block, type PartialBlock } from '@blocknote/core'
+import { withMultiColumn } from '@blocknote/xl-multi-column'
 import { TextSelection } from 'prosemirror-state'
 import { describe, expect, it } from 'vitest'
 import {
@@ -420,6 +421,12 @@ describe("Claude's answers", () => {
     renderPending(editor, '```python\na**2\n```')
     acceptPending(editor)
     expect(texts(editor)).toEqual(['return a**2 + __init__'])
+
+    select(editor, 'a**2')
+    beginPending(editor, 'edit')
+    renderPending(editor, 'b\n')
+    acceptPending(editor)
+    expect(texts(editor)).toEqual(['return b + __init__'])
   })
 
   it('keep a heading or a to-do what it is after an inline edit', () => {
@@ -440,5 +447,62 @@ describe("Claude's answers", () => {
       ['checkListItem', expect.objectContaining({ checked: true })]
     ])
     expect(texts(editor)).toEqual(['Release plan', 'Reserve the room'])
+  })
+})
+
+describe('blocks in columns', () => {
+  function columns(): Editor {
+    const editor = BlockNoteEditor.create({
+      schema: withMultiColumn(BlockNoteSchema.create()),
+      initialContent: [
+        {
+          type: 'columnList',
+          children: [
+            { type: 'column', children: [{ type: 'paragraph', content: 'Left.' }] },
+            { type: 'column', children: [{ type: 'paragraph', content: 'Right.' }] }
+          ]
+        }
+      ] as never,
+      extensions: [aiPending]
+    }) as unknown as Editor
+    editor.mount(document.createElement('div'))
+    return editor
+  }
+
+  const shape = (editor: Editor): Tree =>
+    tree((editor.document[0].children as Block[]).flatMap((column) => column.children))
+
+  it('replace only the column the selection is in', () => {
+    const editor = columns()
+    select(editor, 'Left.')
+    beginPending(editor, 'edit')
+    renderPending(editor, 'Left, then.\n\nMore.')
+    expect(marked(editor, 'nb-ai-removed-block')).toEqual(['Left.'])
+    acceptPending(editor)
+    expect(editor.document[0].children.map((c) => tree(c.children))).toEqual([
+      ['Left, then.', 'More.'],
+      ['Right.']
+    ])
+  })
+
+  it('keep one block in a column that comes back empty', () => {
+    const editor = columns()
+    beginPending(editor, 'edit', [editor.document[0].children[0].children[0].id])
+    renderPending(editor, '')
+    acceptPending(editor)
+    expect(shape(editor)).toEqual(['', 'Right.'])
+  })
+
+  it('are refused, changing nothing, where the page cannot take them', () => {
+    const editor = columns()
+    select(editor, 'Left.')
+    beginPending(editor, 'edit')
+    renderPending(editor, 'Left, then.\n\nMore.')
+    const before = editor.prosemirrorState.doc
+    const nested =
+      '<div data-columns>\n\n<div data-column>\n\nA\n\n</div>\n\n<div data-column>\n\nB\n\n</div>\n\n</div>'
+    expect(() => renderPending(editor, nested)).toThrow(RangeError)
+    expect(editor.prosemirrorState.doc.eq(before)).toBe(true)
+    expect(marked(editor, 'nb-ai-added-block')).toEqual(['Left, then.', 'More.'])
   })
 })

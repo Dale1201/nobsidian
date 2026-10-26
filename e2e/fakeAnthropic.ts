@@ -9,6 +9,8 @@ export interface FakeReply {
   text?: string
   /** Streamed as a tool call whose input is { markdown }. */
   tool?: { name: string; markdown: string }
+  /** Streamed whole as a text block before the tool call. */
+  preamble?: string
   /** How many pieces the text or tool input is cut into. */
   chunks?: number
   /** Pause before each piece, in milliseconds. */
@@ -163,8 +165,17 @@ export class FakeAnthropic {
       }
     })
     const tool = reply.tool
+    const index = tool && reply.preamble ? 1 : 0
+    if (index) {
+      event('content_block_start', { index: 0, content_block: { type: 'text', text: '' } })
+      event('content_block_delta', {
+        index: 0,
+        delta: { type: 'text_delta', text: reply.preamble }
+      })
+      event('content_block_stop', { index: 0 })
+    }
     event('content_block_start', {
-      index: 0,
+      index,
       content_block: tool
         ? { type: 'tool_use', id: 'toolu_fake', name: tool.name, input: {} }
         : { type: 'text', text: '' }
@@ -175,7 +186,7 @@ export class FakeAnthropic {
       if (reply.delayMs) await sleep(reply.delayMs)
       if (res.destroyed) return
       event('content_block_delta', {
-        index: 0,
+        index,
         delta: tool
           ? { type: 'input_json_delta', partial_json: part }
           : { type: 'text_delta', text: part }
@@ -195,7 +206,7 @@ export class FakeAnthropic {
         return void res.end()
       }
     }
-    event('content_block_stop', { index: 0 })
+    event('content_block_stop', { index })
     event('message_delta', {
       delta: {
         stop_reason: reply.stopReason ?? (tool ? 'tool_use' : 'end_turn'),

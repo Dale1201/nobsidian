@@ -1,4 +1,4 @@
-import { readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Page } from '@playwright/test'
 import { GOOD_KEY } from './fakeAnthropic'
@@ -8,9 +8,9 @@ import { clickMenuItem, editor, waitForFile } from './helpers'
 const PAGE = 'Intro.\n\nWe spent the hour arguing about launch.\n\nOutro.\n'
 const MARKS = '.nb-ai-added, .nb-ai-removed, .nb-ai-added-block, .nb-ai-removed-block'
 
-async function setUp(nb: AppFixture): Promise<Page> {
+async function setUp(nb: AppFixture, body = PAGE): Promise<Page> {
   await nb.page.evaluate((key) => window.api.invoke('ai:setKey', { key }), GOOD_KEY)
-  await writeFile(join(nb.workspace, 'Notes.md'), PAGE)
+  await writeFile(join(nb.workspace, 'Notes.md'), body)
   await writeFile(join(nb.workspace, 'Other.md'), 'Elsewhere.\n')
   const page = await nb.relaunch()
   await page.getByTestId('sidebar-row-Notes').click()
@@ -24,6 +24,9 @@ const blockText = (page: Page, index: number): Promise<string | null> =>
     .locator('.bn-block-content')
     .nth(index)
     .evaluate((el) => el.textContent)
+
+const columnsOf = (left: string, right: string): string =>
+  `<div data-columns>\n\n<div data-column>\n\n${left}\n\n</div>\n\n<div data-column>\n\n${right}\n\n</div>\n\n</div>\n\n`
 
 async function askAbout(page: Page, text: string): Promise<void> {
   await page.locator(editor).getByText(text).click({ clickCount: 3 })
@@ -202,6 +205,7 @@ test('quitting while Claude writes keeps the page as it was', async ({ nb, anthr
 test('with AI turned off in Settings, nothing in the editor offers it', async ({ nb }) => {
   const page = await setUp(nb)
   await clickMenuItem(nb.app, 'Settings…')
+  await page.getByRole('dialog', { name: 'Settings' }).getByRole('button', { name: 'AI' }).click()
   await page.getByRole('switch', { name: 'Show AI in the editor' }).click()
   await page.keyboard.press('Escape')
 
@@ -256,4 +260,79 @@ test('the Writer and its diff look right in light and dark', async ({ nb, anthro
     'rgba(35, 131, 226, 0.18)'
   )
   await expect(page.locator('.nb-ai-removed')).toHaveCSS('color', 'rgb(223, 84, 82)')
+})
+
+test('Cmd+J on a clicked image writes below it, and never into it', async ({ nb, anthropic }) => {
+  await mkdir(join(nb.workspace, 'attachments'), { recursive: true })
+  await writeFile(
+    join(nb.workspace, 'attachments', 'pic.svg'),
+    '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100"><rect width="200" height="100" fill="teal"/></svg>'
+  )
+  const page = await setUp(nb, 'Intro.\n\n![](attachments/pic.svg)\n\nOutro.\n')
+  const writer = page.getByRole('dialog', { name: 'AI' })
+  await page.locator(`${editor} img`).click()
+  await page.keyboard.press('Meta+j')
+  await expect(writer.getByRole('option').first()).toHaveText('Continue writing')
+
+  anthropic.reply({ text: 'A teal box.' })
+  await writer.getByRole('option', { name: 'Continue writing' }).click()
+  await expect(page.locator('.nb-ai-added-block')).toHaveText('A teal box.')
+  const sent = (anthropic.messages()[0].messages as { content: { text: string }[] }[])[0]
+  expect(sent.content[0].text).toContain('Intro.\n\n[image]\n\n⟦cursor⟧\n\nOutro.')
+  await writer.getByRole('button', { name: 'Accept' }).click()
+  await expect(writer).toBeHidden()
+  await expect(page.locator('.bn-block-content')).toHaveCount(4)
+  await expect(page.locator('.bn-block-content').nth(1)).toHaveAttribute(
+    'data-content-type',
+    'image'
+  )
+  await expect.poll(() => blockText(page, 2)).toBe('A teal box.')
+})
+
+test('the Writer lines up with the page column when the page starts with columns', async ({
+  nb
+}) => {
+  const toggle = '<details>\n<summary>Left.</summary>\n\nInside.\n\n</details>'
+  const page = await setUp(nb, `${columnsOf(toggle, 'Right.')}Intro.\n\nOutro.\n`)
+  const writer = page.getByRole('dialog', { name: 'AI' })
+  await askAbout(page, 'Outro.')
+  await expect(writer).toBeVisible()
+  const column = await page
+    .locator('.bn-block-content', { hasText: 'Outro.' })
+    .evaluate((el) => el.getBoundingClientRect().left)
+  const box = await writer.boundingBox()
+  expect(Math.abs(box!.x - column)).toBeLessThan(1)
+})
+
+test('an answer the page cannot take ends with an error and keeps the change under review', async ({
+  nb,
+  anthropic
+}) => {
+  const page = await setUp(nb, `${columnsOf('Left.', 'Right.')}Outro.\n`)
+  const writer = page.getByRole('dialog', { name: 'AI' })
+  const box = writer.getByRole('textbox', { name: 'Ask AI' })
+  // Columns cannot go inside a column.
+  const unplaceable = { text: columnsOf('A', 'B') }
+
+  anthropic.reply(unplaceable)
+  await askAbout(page, 'Left.')
+  await writer.getByRole('option', { name: 'Proofread' }).click()
+  await expect(writer.getByRole('alert')).toHaveText('The answer could not be placed here.')
+  await expect(writer.getByRole('button', { name: 'Stop' })).toBeHidden()
+  await expect(page.locator(MARKS)).toHaveCount(0)
+  await expect(page.locator(editor)).toContainText('Left.')
+
+  anthropic.reply({ text: 'Goodbye.\n\nFor now.' }, unplaceable)
+  await writer.getByRole('option', { name: 'Improve writing' }).click()
+  await expect(page.locator('.nb-ai-added-block')).toHaveText(['Goodbye.', 'For now.'])
+  await expect(page.locator('.nb-ai-removed-block')).toHaveText(['Left.'])
+  await box.fill('as columns')
+  await box.press('Enter')
+  await expect(writer.getByRole('alert')).toHaveText('The answer could not be placed here.')
+  await expect(page.locator('.nb-ai-added-block')).toHaveText(['Goodbye.', 'For now.'])
+  await writer.getByRole('button', { name: 'Accept' }).click()
+  await expect(writer).toBeHidden()
+  await expect.poll(() => blockText(page, 0)).toBe('Goodbye.')
+  await expect.poll(() => blockText(page, 2)).toBe('Right.')
+  await waitForFile(join(nb.workspace, 'Notes.md'), 'For now.')
 })

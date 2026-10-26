@@ -161,6 +161,26 @@ test('Undo leaves no trace, Stop keeps what came, and clicking away accepts', as
   await page.waitForTimeout(800)
   expect(await file(nb)).toBe(before)
 
+  // In Review, Esc is ignored and Cmd+Z in the empty input undoes.
+  await selectParagraph(page, 'Outro.')
+  await page.keyboard.press('Meta+j')
+  anthropic.reply({ text: 'Farewell.' })
+  await writer.getByRole('option', { name: 'Improve writing' }).click()
+  await expect(writer.getByRole('button', { name: 'Accept' })).toBeVisible()
+  const box = writer.getByRole('textbox', { name: 'Ask AI' })
+  await expect(box).toBeFocused()
+  await page.keyboard.press('Escape')
+  await expect(writer.getByRole('button', { name: 'Accept' })).toBeVisible()
+  await expect(page.locator('.nb-ai-added')).toHaveText('Farewell.')
+  await expect(box).toBeFocused()
+  await page.keyboard.press('Meta+z')
+  await expect(writer).toBeHidden()
+  await expect(page.locator(editor)).toContainText('Outro.')
+  await expect(page.locator(editor)).not.toContainText('Farewell.')
+  await expect(page.locator(MARKS)).toHaveCount(0)
+  await pastSaveDebounce(page)
+  expect(await file(nb)).toBe(before)
+
   await selectParagraph(page, 'Outro.')
   await page.keyboard.press('Meta+j')
   anthropic.reply({ text: 'A much longer goodbye than before.', chunks: 4, hold: true })
@@ -269,6 +289,28 @@ test('typed instructions edit or reply, and a follow-up revises the change', asy
   const translate = (anthropic.messages()[3].messages as { content: { text: string }[] }[])[0]
   expect(translate.content[1].text).toBe('Translate to French. Apply it to the selection.')
   expect(anthropic.messages()[3]).not.toHaveProperty('tools')
+})
+
+test('text Claude writes before an edit is not left on screen as a reply', async ({
+  nb,
+  anthropic
+}) => {
+  const page = await setUp(nb)
+  const writer = page.getByRole('dialog', { name: 'AI' })
+  const box = writer.getByRole('textbox', { name: 'Ask AI' })
+
+  await selectParagraph(page, 'Outro.')
+  await page.keyboard.press('Meta+j')
+  anthropic.reply({
+    preamble: 'Sure, here is a final version.',
+    tool: { name: 'edit', markdown: 'The end.' }
+  })
+  await box.fill('make it final')
+  await box.press('Enter')
+  await expect(page.locator('.nb-ai-added')).toHaveText('The end.')
+  await expect(writer.getByRole('button', { name: 'Accept' })).toBeVisible()
+  await expect(writer.locator('.nb-writer-reply')).toHaveCount(0)
+  await expect(writer).not.toContainText('Sure')
 })
 
 test('a follow-up still lands after a reply, and a reply leaves a change in review', async ({

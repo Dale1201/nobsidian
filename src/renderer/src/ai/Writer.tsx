@@ -8,7 +8,7 @@ import type { AppEditor } from '../editor/schema'
 import { useAppEditor } from '../editor/useAppEditor'
 import { useApp } from '../store'
 import { useAi } from './aiStore'
-import { pageMarkdown } from './context'
+import { nodeSelectedBlock, pageMarkdown } from './context'
 import { KeyField } from './KeyField'
 import { KEYS_URL, openExternal } from './links'
 import {
@@ -49,7 +49,11 @@ interface Turn {
   mode: AiMode | null
   text: string
   stopped: boolean
+  /** The page could not take the result where it goes. */
+  misfit: boolean
 }
+
+const MISFIT: AiError = { kind: 'request', message: 'The answer could not be placed here.' }
 
 const WIDTH = 400
 
@@ -71,7 +75,9 @@ function syncSelection(editor: AppEditor): void {
 
 function newSession(editor: AppEditor): Session {
   const selectedBlocks = selectedBlockIds(editor)
-  const textSelected = !editor.prosemirrorState.selection.empty
+  // A clicked image or other node is worked around like a cursor after its block.
+  const state = editor.prosemirrorState
+  const textSelected = !state.selection.empty && !nodeSelectedBlock(state)
   const mark = selectedBlocks.length
     ? { selectedBlocks }
     : textSelected
@@ -143,8 +149,13 @@ export function WriterHost({
     frame.current = 0
     const current = request.current
     // A turn that brought nothing leaves the result under review as it is.
-    if (current?.text && current.mode !== 'reply' && hasPending(editor))
+    if (!current?.text || current.mode === 'reply' || current.misfit || !hasPending(editor)) return
+    try {
       renderPending(editor, current.text)
+    } catch {
+      current.misfit = true
+      void api.invoke('ai:cancel', { requestId: current.id })
+    }
   }, [editor])
 
   // Written to the element directly: it follows every keystroke of the stream.
@@ -157,7 +168,8 @@ export function WriterHost({
     const pos = Math.min(anchorPos(editor), editor.prosemirrorState.doc.content.size)
     const coords = view.coordsAtPos(pos, -1)
     const box = container.getBoundingClientRect()
-    const column = dom.querySelector('.bn-block-content')?.getBoundingClientRect() ?? box
+    // The page's own column: its first block may be a column, a toggle or a callout.
+    const column = (dom.querySelector(':scope > .bn-block-group') ?? dom).getBoundingClientRect()
     const left = column.left - box.left
     el.style.top = `${coords.bottom - box.top + 6}px`
     el.style.left = `${left}px`
@@ -201,7 +213,7 @@ export function WriterHost({
     session.current = s
     setSelection(s.selection)
     const { selection } = editor.prosemirrorState
-    if (!selection.empty && !s.selectedBlocks.length) {
+    if (s.selection && !s.selectedBlocks.length) {
       setHighlight(editor, { from: selection.from, to: selection.to })
       // The highlight stands in for the selection, which would keep the formatting toolbar up.
       editor.transact((tr) => tr.setSelection(TextSelection.create(tr.doc, selection.to)))
@@ -235,7 +247,7 @@ export function WriterHost({
     }
     if (s.selectedBlocks.length) selectBlocks(editor, s.selectedBlocks)
     const id = crypto.randomUUID()
-    request.current = { id, mode: null, text: '', stopped: false }
+    request.current = { id, mode: null, text: '', stopped: false, misfit: false }
     setError(null)
     setReply('')
     setQuery('')
@@ -254,10 +266,11 @@ export function WriterHost({
 
   // Each request reports to the Writer that started it, through its id.
   useEffect(() => {
-    const finish = (failed: AiError | null): void => {
+    const finish = (error: AiError | null): void => {
       const current = request.current
       if (!current) return
       render()
+      const failed = current.misfit ? MISFIT : error
       // An edit that finished with nothing deletes the selection.
       const deleted =
         !failed &&
@@ -266,8 +279,8 @@ export function WriterHost({
         !current.text &&
         hasPending(editor)
       if (deleted) renderPending(editor, '')
-      if (current.text || deleted) setAnswered(true)
       const rendered = pendingOf(editor.prosemirrorState)?.rendered ?? false
+      if (rendered || (current.text && !current.misfit)) setAnswered(true)
       if (!rendered && hasPending(editor)) undoPending(editor)
       setError(failed)
       setPhase(rendered ? 'review' : current.mode === 'reply' && current.text ? 'reply' : 'prompt')
@@ -282,6 +295,8 @@ export function WriterHost({
           setReply(delta.text)
           return
         }
+        // Text before a tool call arrives as a reply; an edit or insert replaces it.
+        setReply('')
         if (!frame.current) frame.current = requestAnimationFrame(render)
       }),
       api.on('ai:done', (done) => {

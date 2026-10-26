@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { BlockNoteEditor, type PartialBlock } from '@blocknote/core'
-import { TextSelection } from 'prosemirror-state'
+import { NodeSelection, TextSelection } from 'prosemirror-state'
 import { expect, it } from 'vitest'
 import { pageMarkdown } from './context'
 
@@ -48,6 +48,19 @@ it('marks the cursor', () => {
   const editor = editorWith(page())
   editor.setTextCursorPosition('b', 'end')
   expect(pageMarkdown(editor, { cursor: true })).toContain('Launch in November.⟦cursor⟧')
+})
+
+it('marks the cursor after a node-selected block, such as a clicked image', () => {
+  const editor = editorWith(page())
+  let at = -1
+  editor.prosemirrorState.doc.descendants((node, pos) => {
+    if (node.type.name === 'image') at = pos
+    return at === -1
+  })
+  editor.transact((tr) => tr.setSelection(NodeSelection.create(tr.doc, at)))
+  expect(pageMarkdown(editor, { cursor: true })).toBe(
+    '## Plan\n\nLaunch in November.\n\n[image]\n\n⟦cursor⟧\n\n- QA\n\n  [file]\n'
+  )
 })
 
 it('wraps selected blocks, and never sends media', () => {
