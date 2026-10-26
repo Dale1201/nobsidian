@@ -1,7 +1,7 @@
 # Nobsidian - AI Writer Design Spec
 
 Date: 2026-10-26
-Status: Draft for review
+Status: Approved; updated with what the prototype taught
 
 ## 1. Purpose
 
@@ -61,10 +61,10 @@ Asking questions about the workspace, turning pages into to-dos or tables, AI bl
 
 - **Toolbar.** "Ask AI" is the first item of the formatting toolbar, with a sparkle icon and the tooltip "Ask AI to help edit, review, or generate text." plus ⌘J.
 - **⌘J.** Opens the Writer on the selection, or at the cursor when nothing is selected.
-- **Slash menu.** An "AI" group at the top holds one item, "Ask AI", matched by `ai`, `ask` and `write`.
+- **Slash menu.** An "AI" group at the end holds one item, "Ask AI", matched by `ai`, `ask`, `write` and `claude`; it is last so Text stays first, as in Notion.
 - **Space.** In an empty paragraph, heading or list item, Space with no modifier opens the Writer.
   It does nothing special in code blocks, tables, or while an input method is composing.
-- **Hint.** When AI is available, empty lines show "Press ‘space’ for AI or ‘/’ for commands" in place of the current hint.
+- **Hint.** When AI is available, empty paragraphs show "Press ‘space’ for AI or ‘/’ for commands"; otherwise Notion's "Press ‘/’ for commands…" replaces BlockNote's default.
 - **Available** means: AI is shown in Settings, a key is saved, and `navigator.onLine` is true.
 - **No key.** Every entry point except Space opens the setup card (section 8.3).
   Space types a space.
@@ -117,7 +117,7 @@ With a selection Claude may edit it or reply; without one it may insert at the c
 | State | Popup shows | Keys |
 |---|---|---|
 | Prompt | Input and Skills | Enter sends, Esc closes |
-| Writing | "Writing…" and a square Stop button | Esc and clicks outside are ignored |
+| Writing | "Writing…" in a read-only input, and a square Stop button | Esc and clicks outside are ignored |
 | Review | Input reading "Edit with AI", Undo ⌘Z, blue Accept ↵ | Enter accepts, ⌘Z undoes, Esc is ignored, typing then Enter sends a follow-up |
 | Reply | The answer, rendered as Markdown, and "Insert below" | Esc or clicking outside closes |
 | Error | One red line (section 9), plus Undo and Accept when a partial change exists | As Review |
@@ -133,7 +133,10 @@ A follow-up typed in Review revises the pending change: the conversation so far 
 - The new content is real document content right after it, decorated as added: a light blue background.
 - Inserts have only new content.
 - Stream steps are applied with `addToHistory: false`, so they never enter undo history.
-- The plugin maps both ranges through every transaction.
+- Each render deletes the previous result and inserts the new one, so positions never drift and the undo history from before the Writer survives; replacing the whole document would wipe it.
+- Nothing is decorated until the first text arrives.
+- While a change is pending the page is read-only.
+- The text selection is kept as a highlight while the Writer is open, and the caret collapses, so the formatting toolbar gets out of the way.
 
 ### 5.2 Targets
 
@@ -149,18 +152,25 @@ A follow-up typed in Review revises the pending change: the conversation so far 
 - **Accept** (Enter, the button, or a click outside after writing) first restores the original document without history, then applies the final result as one transaction that does enter history.
   One ⌘Z later restores the original exactly.
 - **Undo** (⌘Z or the button) restores the original document without history and closes the popup.
+  The change is cleared in a step of its own after the content, so the editor does not save a page that is already as it was saved.
 - Undo during writing stops the request first.
 
 ### 5.4 Saving
 
-- Opening the Writer saves any pending typing first (`saveNow`).
-- While a change is pending, the page editor skips saves, and other tabs of the same page are not updated.
-- If the page must save while a change is pending (its tab closes, the app quits, or the workspace closes), the pending change is undone first, so only accepted text ever reaches disk.
+- The editor does not report its content to the page editor while a change is pending, so typing from before the Writer saves as usual and the change itself never does.
+- When the page must save while a change is pending (its tab closes, the app quits, or the workspace closes), it saves the last content it was told of, so only accepted text ever reaches disk.
+- Content arriving from another tab of the same page closes the Writer first.
 - After Accept the editor saves as it does after typing.
 
-### 5.5 Scope
+### 5.5 Claude's answer
 
-- One Writer per tab; opening it again in the same tab closes the old one.
+- A code fence around the whole answer (` ```markdown ` or ` ```md `) is taken off; other fences stay.
+- Images, video, audio, files and drawings in the answer are left out, so an answer can never make the page or the popup load a remote file.
+
+### 5.6 Scope
+
+- One Writer per tab.
+- Opening the Writer reads the browser's selection first: ProseMirror takes a click's selection a few milliseconds later, and a fast ⌘J would otherwise act on the old one.
 - Leaving the page or closing its tab stops the request and undoes the pending change.
 - A page changed outside the app while a change is pending is handled after Accept or Undo by the existing conflict flow.
 
@@ -174,7 +184,8 @@ A follow-up typed in Review revises the pending change: the conversation so far 
   - `output_config: { effort: 'low' }`, with thinking left at the model's default and never displayed;
   - `fallbacks: 'default'` with the beta `server-side-fallback-2026-07-01`, so a refusal is retried by Anthropic's router (Opus 5.5 and Sonnet 5.5 only).
 - No `temperature`, `top_p` or `top_k`; the API rejects them since 2026-10-21.
-- `maxRetries: 1` and a 60-second idle timeout between stream events.
+- `maxRetries: 0`: a retry would wait out the server's `retry-after` while the Writer says nothing.
+- A 60-second idle timeout between stream events.
 
 ### 6.2 Messages
 
@@ -188,7 +199,8 @@ A follow-up typed in Review revises the pending change: the conversation so far 
   2. A text block with the skill's instruction, or the typed text.
 - Follow-ups append the assistant response's full `content` unchanged (thinking blocks included), then a user message with the follow-up.
 - Page Markdown comes from the existing serializer.
-- Images, files, drawings and embeds are replaced by `[image]`, `[file]`, `[drawing]` and `[embed]`.
+- Images, video, audio, files and drawings are replaced by `[image]`, `[video]`, `[audio]`, `[file]` and `[drawing]`, written as raw Markdown so the brackets are not escaped.
+- Selected blocks are wrapped by markers on lines of their own.
 - Pages over 100,000 characters keep the 100,000 characters centred on the selection, with `[…]` where text was cut.
 
 ### 6.3 Tools for free text
@@ -212,9 +224,11 @@ New folder `src/main/ai/`:
   - Refuses to save when `safeStorage.isEncryptionAvailable()` is false.
   - Only `hasKey` and a hint (`sk-ant-…` plus the last four characters) ever leave this module.
   - Under `NOBSIDIAN_E2E=1` a test codec stands in for `safeStorage`, so tests never touch the macOS Keychain.
-- `client.ts`: builds the SDK client from the key; reads `NOBSIDIAN_AI_BASE_URL` only under `NOBSIDIAN_E2E=1`.
+- `codecs.ts`: the `safeStorage` codec, and the test codec.
+- `client.ts`: builds the SDK client from the key, always passing the base URL so `ANTHROPIC_BASE_URL` in the user's environment cannot redirect the key; reads `NOBSIDIAN_AI_BASE_URL` only under `NOBSIDIAN_E2E=1`.
 - `prompts.ts`: pure functions that build `system`, messages and tools for a skill or instruction.
-- `session.ts`: one entry per open Writer, holding the conversation and the active `AbortController`.
+- `service.ts`: key checks, status, and streaming; keeps one conversation per open Writer and an `AbortController` per request.
+- `handlers.ts`: the IPC handlers; events go back to the window that asked.
 - `usage.ts`
   - A ledger in `<userData>/ai-usage.json` keyed by month (`2026-10`): requests, input, output, cache write and cache read tokens, and dollars.
   - Dollars come from the price table below, using the model named in the response, which differs from the request when a fallback served it.
@@ -230,6 +244,7 @@ Prices per million tokens, from Anthropic's pricing page on 2026-10-26:
 | `claude-haiku-5-5` | $0.10 | $0.125 | $0.01 | $0.50 |
 
 Haiku 5.5 is dearer above 100,000 input tokens; the 100,000-character page cap keeps requests well below that.
+Models a refusal fallback may answer with (Opus 5, Opus 4.8, Sonnet 5, Fable 5.1) are priced too, and an unknown model at the dearest known rates, so the total never reads low.
 
 ### 7.1 IPC
 
@@ -240,7 +255,7 @@ Added to `IpcContract`:
 | `ai:status` | none | `{ hasKey, keyHint, encryptionAvailable, month: { requests, dollars } }` |
 | `ai:setKey` | `{ key }` | `{ ok: true }` or `{ ok: false, error }`, after checking the key with `models.list` |
 | `ai:clearKey` | none | none |
-| `ai:start` | `{ sessionId, requestId, skill?, instruction?, page, target, followUp? }` | none |
+| `ai:start` | `{ sessionId, requestId, title, markdown, skill?, instruction?, followUp?, selection }` | none |
 | `ai:cancel` | `{ requestId }` | none |
 | `ai:end` | `{ sessionId }` | none |
 
@@ -249,8 +264,8 @@ Added to `IpcEvents`:
 | Event | Data |
 |---|---|
 | `ai:delta` | `{ requestId, mode: 'edit' \| 'insert' \| 'reply', text }`, the full text so far |
-| `ai:done` | `{ requestId, stopReason }` |
-| `ai:error` | `{ requestId, kind, message, retryAfter? }` |
+| `ai:done` | `{ requestId }` |
+| `ai:error` | `{ requestId, kind, message }` |
 
 Non-secret settings join `Settings`: `ai: { enabled: boolean; model: string }`, defaulting to `{ enabled: true, model: 'claude-opus-5-5' }`.
 
@@ -258,9 +273,11 @@ Non-secret settings join `Settings`: `ai: { enabled: boolean; model: string }`, 
 
 ### 8.1 Window
 
-- A Settings modal in Notion's layout: a left nav on the sidebar background, and the section on the right.
-- Opened with ⌘, (a new app menu item "Settings…") and from a new "Settings" row in the sidebar's top group.
-- Two sections: **Appearance**, holding the existing theme choice, and **AI**.
+- A Settings modal with the measurements of Notion's (web client, 2026-10-25): 90vw up to 1512px wide, the window's height less 100px, 12px radius; a 240px nav on the sidebar background; pages padded 36px by up to 60px, at most 800px wide; 26px page titles, 16px section titles over a divider, 14px row labels over 13px descriptions; a 30 by 18px toggle.
+- Opened with ⌘, (a new app menu item "Settings…") and from a new "Settings" row at the bottom of the sidebar, above Trash.
+- The nav groups pages as Notion does: **Account › Preferences** and **Features › AI**.
+- **Preferences** has an Appearance section with a **Theme** row, "Choose a theme for Nobsidian on this device": Use system setting, Light, Dark.
+- **AI** is described as "Write and edit your pages with Claude, using your own Anthropic API key.", with a General section (the rows below) and a Usage section.
 
 ### 8.2 AI section
 
@@ -307,6 +324,8 @@ Saving a working key turns the card into the prompt.
 
 ### 10.1 Unit (vitest)
 
+Editor tests mount a real BlockNote editor under `happy-dom` (a dev dependency), since an editor's plugins only exist once it is mounted.
+
 - `prompts.ts`: system prompt bytes stable across calls; page block with markers and `cache_control`; image, file and drawing placeholders; the 100,000-character cut; tools only for free text.
 - `usage.ts`: cost for each model, with cache writes and reads; month rollover.
 - `errors.ts`: each SDK error class to its kind.
@@ -321,6 +340,7 @@ Saving a working key turns the card into the prompt.
 
 - `POST /v1/messages` streams the real event sequence: `message_start`, `content_block_start`, `content_block_delta` (`text_delta` or `input_json_delta`), `content_block_stop`, `message_delta` with usage and stop reason, then `message_stop`.
 - `GET /v1/models` answers the key check.
+- The key is read from `x-api-key` or a bearer token; the SDK sends the latter.
 - Each test scripts the next responses:
   - text or a tool call, split into chunks with delays;
   - held open until released;
@@ -352,14 +372,15 @@ Saving a working key turns the card into the prompt.
 New:
 
 - `src/main/ai/` (section 7) and its tests
-- `src/shared/ai.ts`: skills, kinds and IPC types shared by both sides
-- `src/renderer/src/ai/`: the Writer popup, `aiPending` plugin, entry point wiring, the setup card
-- `src/renderer/src/components/SettingsModal.tsx` with its Appearance and AI sections
-- `e2e/fakeAnthropic.ts`, `e2e/ai.spec.ts`, `e2e/settings.spec.ts`
+- `src/shared/ai.ts`: models, skills and IPC types shared by both sides
+- `src/renderer/src/ai/`: the pending change plugin, page context, Writer, its model and entry points, the key field, the AI store and links
+- `src/renderer/src/components/SettingsModal.tsx`
+- `e2e/fakeAnthropic.ts`, `e2e/window.d.ts`, `e2e/ai-service.spec.ts`, `e2e/settings.spec.ts`, `e2e/ai.spec.ts`, `e2e/ai-edges.spec.ts`
 
 Changed:
 
 - `src/shared/ipc.ts`, `src/main/handlers.ts`, `src/main/settings.ts`, `src/main/menu.ts`
 - `src/renderer/src/editor/Editor.tsx` (toolbar button, ⌘J, Space, hint), `slashItems.tsx` (AI group)
-- `src/renderer/src/components/PageEditor.tsx` (skip saves while a change is pending), `Sidebar.tsx` (Settings row)
-- `e2e/fixtures.ts`, `package.json` (`@anthropic-ai/sdk`), `.gitignore` (`.superpowers/`)
+- `src/renderer/src/components/PageEditor.tsx` (passes the title), `Sidebar.tsx` (Settings row), `App.tsx`, `store.ts`, `icons.tsx`
+- `src/renderer/src/styles/app.css`, `tokens.css`, `editor/editor.css`
+- `e2e/fixtures.ts`, `e2e/helpers.ts`, `e2e/toolbar.spec.ts`, `package.json` (`@anthropic-ai/sdk`, `happy-dom`)
