@@ -49,8 +49,11 @@ export interface Rescue {
   conflicted: boolean
 }
 
+export type SettingsSection = 'preferences' | 'ai'
+
 export type Overlay =
   | { kind: 'search' }
+  | { kind: 'settings'; section: SettingsSection }
   | { kind: 'move'; pageId: string }
   | { kind: 'history'; pageId: string }
   | { kind: 'drawing'; session: DrawingSession }

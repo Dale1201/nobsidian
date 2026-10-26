@@ -3,7 +3,7 @@ import type { TrashItem } from '@shared/types'
 import { findNode } from '../lib/tree'
 import { deleteForeverTitle } from '../lib/trash'
 import { useApp } from '../store'
-import { ComposeIcon, PlusIcon, SearchIcon, TrashIcon } from './icons'
+import { ComposeIcon, PlusIcon, SearchIcon, SettingsIcon, TrashIcon } from './icons'
 import { ConfirmDialog } from './Modal'
 import { Menu } from './menu/Menu'
 import { SidebarRow } from './SidebarRow'
@@ -106,6 +106,15 @@ export function Sidebar(): React.JSX.Element {
         </div>
       </div>
       <div className="sidebar-footer">
+        <button
+          className="sidebar-row"
+          onClick={() => app().setOverlay({ kind: 'settings', section: 'preferences' })}
+        >
+          <span className="page-icon">
+            <SettingsIcon size={18} />
+          </span>
+          <span className="sidebar-row-title">Settings</span>
+        </button>
         <button
           ref={setTrashButton}
           className={`sidebar-row ${trash ? 'menu-open' : ''}`}

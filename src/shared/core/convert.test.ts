@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Block } from './blocks'
-import { markdownToBlocks } from './parse'
+import { closeContainers, markdownToBlocks } from './parse'
 import { blocksToMarkdown } from './serialize'
 import { normalizeBlocks } from './normalize'
 
@@ -138,6 +138,19 @@ describe('markdownToBlocks structure', () => {
     const blocks = markdownToBlocks('<div data-columns>\n\nNo close\n')
     expect(blocks[0]).toMatchObject({ type: 'raw' })
     expect(blocks[1]).toMatchObject({ type: 'paragraph' })
+  })
+
+  it('closes the columns and toggles that Markdown cut off part way has opened', () => {
+    const cut =
+      '<div data-columns>\n\n<div data-column>\n\nA\n\n</div>\n\n<div data-column>\n\n<details>\n<summary>T</summary>\n\nIn'
+    expect(closeContainers(cut)).toBe(`${cut}\n\n</details>\n\n</div>\n\n</div>\n`)
+    expect(markdownToBlocks(closeContainers(cut))).toMatchObject([
+      { type: 'columnList', children: [{ type: 'column' }, { type: 'column' }] }
+    ])
+    const whole = '<div data-columns>\n\n<div data-column>\n\nA\n\n</div>\n\n</div>\n'
+    expect(closeContainers(whole)).toBe(whole)
+    const code = '```html\n<div data-columns>\n'
+    expect(closeContainers(code)).toBe(code)
   })
 })
 

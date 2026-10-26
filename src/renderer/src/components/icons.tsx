@@ -266,3 +266,52 @@ export const DrawingIcon = (p: IconProps): React.JSX.Element => (
     <path d="M14.2 2.9a1.9 1.9 0 0 1 2.7 2.7l-8.6 8.6a2 2 0 0 1-.9.5l-3 .8a.6.6 0 0 1-.7-.7l.8-3a2 2 0 0 1 .5-.9l8.6-8.6Zm1.6 1.1a.4.4 0 0 0-.5 0l-1 1 .5.5 1-1a.4.4 0 0 0 0-.5Zm-2 2.1-.5-.5-6.6 6.6a.5.5 0 0 0-.1.2l-.4 1.4 1.4-.4.2-.1 6.6-6.6-.6-.6ZM3 17.25c0-.4.3-.75.75-.75h12.5a.75.75 0 0 1 0 1.5H3.75a.75.75 0 0 1-.75-.75Z" />
   </Svg>
 )
+
+export const SettingsIcon = (p: IconProps): React.JSX.Element => (
+  <Svg {...p}>
+    <path
+      d="M8.6 2.75h2.8l.45 2 1.55.9 1.95-.62 1.4 2.42-1.5 1.38v1.78l1.5 1.38-1.4 2.42-1.95-.62-1.55.9-.45 2H8.6l-.45-2-1.55-.9-1.95.62-1.4-2.42 1.5-1.38V9.83l-1.5-1.38 1.4-2.42 1.95.62 1.55-.9.45-2Z"
+      {...stroke}
+    />
+    <circle cx="10" cy="10" r="2.4" {...stroke} />
+  </Svg>
+)
+
+export const SparkleIcon = (p: IconProps): React.JSX.Element => (
+  <Svg {...p}>
+    <path d="M10 2.5c.45 3.9 1.65 5.1 5.5 5.55-3.85.45-5.05 1.65-5.5 5.55-.45-3.9-1.65-5.1-5.5-5.55 3.85-.45 5.05-1.65 5.5-5.55Z" />
+    <path d="M15.25 12.5c.2 1.6.7 2.1 2.25 2.3-1.55.2-2.05.7-2.25 2.3-.2-1.6-.7-2.1-2.25-2.3 1.55-.2 2.05-.7 2.25-2.3Z" />
+  </Svg>
+)
+
+export const ArrowUpIcon = (p: IconProps): React.JSX.Element => (
+  <Svg {...p}>
+    <path d="M10 15.5v-11M5.5 9 10 4.5 14.5 9" {...stroke} strokeWidth={1.8} />
+  </Svg>
+)
+
+export const StopIcon = (p: IconProps): React.JSX.Element => (
+  <Svg {...p}>
+    <rect x="6.5" y="6.5" width="7" height="7" rx="1.5" />
+  </Svg>
+)
+
+export const CheckIcon = (p: IconProps): React.JSX.Element => (
+  <Svg {...p}>
+    <path d="m5 10.5 3.25 3.25L15 7" {...stroke} strokeWidth={1.8} />
+  </Svg>
+)
+
+export const UndoIcon = (p: IconProps): React.JSX.Element => (
+  <Svg {...p}>
+    <path d="M7.5 5 4.5 8l3 3M4.75 8h6.5a3.75 3.75 0 0 1 0 7.5H9" {...stroke} />
+  </Svg>
+)
+
+export const SlidersIcon = (p: IconProps): React.JSX.Element => (
+  <Svg {...p}>
+    <path d="M3.5 6h6M13.5 6h3M3.5 14h3M10.5 14h6" {...stroke} />
+    <circle cx="11.5" cy="6" r="2" {...stroke} />
+    <circle cx="8.5" cy="14" r="2" {...stroke} />
+  </Svg>
+)

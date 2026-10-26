@@ -11,6 +11,7 @@ test('the selection toolbar has Notion buttons in Notion order', async ({ nb }) 
     .locator('button')
     .evaluateAll((els) => els.map((el) => el.getAttribute('aria-label') ?? el.textContent?.trim()))
   expect(names).toEqual([
+    'Ask AI',
     'Turn into',
     'Create link',
     'Bold',

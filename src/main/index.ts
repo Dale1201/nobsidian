@@ -21,6 +21,12 @@ import { startImportWorker } from './import/start-worker'
 import { send } from './ipc'
 import { buildMenu } from './menu'
 import { SettingsStore } from './settings'
+import { safeStorageCodec, testCodec } from './ai/codecs'
+import { registerAiHandlers } from './ai/handlers'
+import { KeyStore } from './ai/keyStore'
+import { AiService } from './ai/service'
+import { UsageLedger } from './ai/usage'
+import { DEFAULT_AI_MODEL, isAiModel } from '../shared/ai'
 import { windowControls } from '../shared/window'
 
 if (process.env.NOBSIDIAN_USER_DATA) app.setPath('userData', process.env.NOBSIDIAN_USER_DATA)
@@ -69,6 +75,18 @@ const ctx: AppContext = {
   }),
   window: () => mainWindow
 }
+
+const ai = new AiService({
+  keys: new KeyStore(
+    join(app.getPath('userData'), 'anthropic-key.bin'),
+    process.env.NOBSIDIAN_E2E === '1' ? testCodec : safeStorageCodec
+  ),
+  usage: new UsageLedger(join(app.getPath('userData'), 'ai-usage.json')),
+  model: () => {
+    const model = ctx.settings.get().ai?.model
+    return isAiModel(model) ? model : DEFAULT_AI_MODEL
+  }
+})
 
 /** Saved bounds, unless the display they were on is gone. */
 function restoredBounds(): Partial<Rectangle> {
@@ -230,6 +248,7 @@ app.whenReady().then(async () => {
   })
 
   registerHandlers(ctx)
+  registerAiHandlers(ai)
   Menu.setApplicationMenu(buildMenu(() => mainWindow))
   updateMenu(ctx)
   createWindow()

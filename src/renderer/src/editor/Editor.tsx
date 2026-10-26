@@ -26,6 +26,11 @@ import {
 import { locales as multiColumnLocales, multiColumnDropCursor } from '@blocknote/xl-multi-column'
 import { createContext, useContext, useEffect, useImperativeHandle, useRef, type Ref } from 'react'
 import type { Block } from '@shared/core/blocks'
+import { AskAiButton, WriterKeys } from '../ai/entryPoints'
+import { useAiAccess } from '../ai/useAiAccess'
+import { aiPending, hasPending } from '../ai/pending'
+import { WriterHost } from '../ai/Writer'
+import { closeWriter, openWriter } from '../ai/writerRegistry'
 import { registerDrawingEditor } from '../drawing/session'
 import { errorReason, useApp } from '../store'
 import { readNotionClipboard, type NotionClipboard } from '@shared/notion/paste'
@@ -81,6 +86,10 @@ export type EditorProps = {
   editable?: boolean
   /** False while the page's tab is hidden, so files dropped on the window go elsewhere. */
   acceptsFiles?: boolean
+  /** False while the page's tab is hidden, which closes its AI Writer. */
+  active?: boolean
+  /** The page's title, which the AI Writer sends along with the page. */
+  title?: string
   /** Applied by Cmd+Shift+H. */
   lastColor?: PickedColor
   onPickColor?(picked: PickedColor): void
@@ -114,6 +123,7 @@ function AppFormattingToolbar(): React.JSX.Element {
   const defaults = new Map(getFormattingToolbarItems().map((item) => [String(item.key), item]))
   return (
     <FormattingToolbar>
+      <AskAiButton key="askAi" />
       <TurnIntoButton key="turnInto" />
       {TOOLBAR_KEYS.map((key) => defaults.get(key))}
       <AppCreateLinkButton key="createLinkButton" />
@@ -200,6 +210,8 @@ export function Editor(props: EditorProps): React.JSX.Element {
         ...en.toggle_blocks,
         add_block_button: 'Empty toggle. Click or drop blocks inside.'
       },
+      // Notion's hint; the AI hint replaces it while AI can be used (editor.css).
+      placeholders: { ...en.placeholders, default: 'Press ‘/’ for commands…' },
       formatting_toolbar: {
         ...en.formatting_toolbar,
         bold: shortcut('Bold', 'ModB'),
@@ -217,7 +229,8 @@ export function Editor(props: EditorProps): React.JSX.Element {
       blockSelection,
       markdownShortcuts,
       tildeStrike,
-      notionKeys
+      notionKeys,
+      aiPending
     ],
     uploadFile: (file) => props.uploadFile(file),
     resolveFileUrl: (url) => props.resolveFileUrl(url),
@@ -282,12 +295,14 @@ export function Editor(props: EditorProps): React.JSX.Element {
   })
 
   const pickerItems = usePickerItems(editor, props.createLinkedPage)
+  const { shown: aiShown, online: aiOnline } = useAiAccess()
 
   const replacing = useRef(false)
   useImperativeHandle(
     props.contentRef,
     () => ({
       replace: (blocks) => {
+        closeWriter(editor)
         replacing.current = true
         try {
           editor.transact((tr) => {
@@ -370,11 +385,12 @@ export function Editor(props: EditorProps): React.JSX.Element {
             editor={editor}
             theme={props.theme}
             editable={props.editable !== false}
+            className={props.editable !== false ? 'nb-writer-host' : undefined}
             slashMenu={false}
             formattingToolbar={false}
             linkToolbar={false}
             sideMenu={false}
-            onChange={(ed) => replacing.current || props.onChange(ed.document)}
+            onChange={(ed) => replacing.current || hasPending(ed) || props.onChange(ed.document)}
           >
             <BlockMenuHost>
               {props.editable !== false && (
@@ -397,7 +413,15 @@ export function Editor(props: EditorProps): React.JSX.Element {
               <SuggestionMenuController
                 triggerCharacter="/"
                 getItems={(query: string): Promise<SlashItem[]> =>
-                  querySlashItems(editor, { createSubPage: props.createSubPage }, query)
+                  querySlashItems(
+                    editor,
+                    {
+                      createSubPage: props.createSubPage,
+                      askAi: aiShown ? () => openWriter(editor) : undefined,
+                      askAiOffline: !aiOnline
+                    },
+                    query
+                  )
                 }
                 suggestionMenuComponent={SlashMenu}
               />
@@ -406,6 +430,12 @@ export function Editor(props: EditorProps): React.JSX.Element {
               <LinkToolbarController linkToolbar={AppLinkToolbar} />
               <HighlightShortcut color={props.lastColor ?? DEFAULT_COLOR} />
               <BlockSelectionKeys />
+              {props.editable !== false && (
+                <>
+                  <WriterKeys />
+                  <WriterHost title={props.title ?? ''} active={props.active !== false} />
+                </>
+              )}
             </BlockMenuHost>
           </BlockNoteView>
         </ColorPickContext.Provider>

@@ -1,5 +1,6 @@
 import { mkdir, readFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
+import { DEFAULT_AI_MODEL } from '../shared/ai'
 import type { Settings } from '../shared/ipc'
 import { writeFileAtomic } from './workspace/fs-utils'
 
@@ -11,7 +12,8 @@ export const DEFAULT_SETTINGS: Settings = {
   lastPage: {},
   tabs: {},
   recent: {},
-  lastColor: { kind: 'background', color: 'yellow' }
+  lastColor: { kind: 'background', color: 'yellow' },
+  ai: { enabled: true, model: DEFAULT_AI_MODEL }
 }
 
 export class SettingsStore {
