@@ -186,9 +186,14 @@ function codeFragment(editor: AnyEditor, markdown: string): Fragment {
   return text ? Fragment.from(editor.pmSchema.text(text)) : Fragment.empty
 }
 
-/** An answer still arriving, as far as it can be shown: a line of HTML waits until it is whole. */
+/**
+ * An answer still arriving, as far as it can be shown: a line of HTML, or a toggle's opening
+ * tag and summary line, waits until it is whole.
+ */
 function settled(markdown: string): string {
-  return closeContainers(markdown.replace(/(^|\n)<[^\n]*$/, '$1'))
+  return closeContainers(
+    markdown.replace(/(^|\n)<details[^\n]*>(\n[^\n]*)?$/, '$1').replace(/(^|\n)<[^\n]*$/, '$1')
+  )
 }
 
 function fitsInline(blocks: Block[]): boolean {

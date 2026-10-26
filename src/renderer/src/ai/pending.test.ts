@@ -496,13 +496,18 @@ describe('blocks in columns', () => {
     expect(shape(editor)).toEqual(['', 'Right.'])
   })
 
-  it('stream as columns, never as raw Markdown, where the page can take them', () => {
+  function topLevel(): Editor {
     const editor = BlockNoteEditor.create({
       schema: withMultiColumn(BlockNoteSchema.create()),
       initialContent: page(),
       extensions: [aiPending]
     }) as unknown as Editor
     editor.mount(document.createElement('div'))
+    return editor
+  }
+
+  it('stream as columns, never as raw Markdown, where the page can take them', () => {
+    const editor = topLevel()
     select(editor, 'Outro.')
     beginPending(editor, 'edit')
     for (let n = 1; n <= NESTED.length; n++) {
@@ -513,6 +518,28 @@ describe('blocks in columns', () => {
     acceptPending(editor)
     expect(editor.document.map((b) => b.type)).toEqual(['paragraph', 'paragraph', 'columnList'])
     expect(editor.document[2].children.map((c) => tree(c.children))).toEqual([['A'], ['B']])
+  })
+
+  it('stream toggles as toggles, never as raw Markdown, at the top level or in a column', () => {
+    const answers = [
+      'Intro.\n\n<details>\n<summary>A long toggle title here</summary>\n\nInside.\n\n</details>\n',
+      '<details data-heading="2">\n<summary>Heading toggle</summary>\n\nBody.\n\n</details>\n'
+    ]
+    for (const answer of answers) {
+      for (const editor of [topLevel(), columns()]) {
+        select(editor, editor.document.length > 1 ? 'Outro.' : 'Left.')
+        beginPending(editor, 'edit')
+        for (let n = 1; n <= answer.length; n++) {
+          const frame = JSON.stringify(answer.slice(0, n))
+          // This schema has no raw block, so a raw one would throw here.
+          expect(() => renderPending(editor, answer.slice(0, n), true), frame).not.toThrow()
+          const types: string[] = []
+          editor.prosemirrorState.doc.descendants((node) => void types.push(node.type.name))
+          expect(types, frame).not.toContain('raw')
+        }
+        undoPending(editor)
+      }
+    }
   })
 
   it('show nothing of an answer until some of it is whole', () => {
