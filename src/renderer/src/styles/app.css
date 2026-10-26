@@ -600,6 +600,9 @@ button {
   color: var(--text-tertiary);
   cursor: default;
 }
+.menu-item.disabled.active {
+  background: none;
+}
 .menu-item-icon {
   width: 20px;
   height: 20px;

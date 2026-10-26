@@ -4,7 +4,7 @@ import { SparkleIcon } from '../components/icons'
 import { useAppEditor } from '../editor/useAppEditor'
 import { setAiAvailable } from './pending'
 import { useAiAccess } from './useAiAccess'
-import { opensOnSpace } from './writerModel'
+import { isPlainSpace, opensOnSpace } from './writerModel'
 import { openWriter } from './writerRegistry'
 
 export function AskAiButton(): React.JSX.Element | null {
@@ -47,7 +47,7 @@ export function WriterKeys(): null {
         if (online) openWriter(editor)
         return
       }
-      if (!ready) return
+      if (!ready || !isPlainSpace(event)) return
       const { selection } = editor.prosemirrorState
       const parent = selection.$from.parent
       const block = editor.getTextCursorPosition().block

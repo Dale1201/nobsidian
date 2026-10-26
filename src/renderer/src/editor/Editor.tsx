@@ -293,7 +293,7 @@ export function Editor(props: EditorProps): React.JSX.Element {
   })
 
   const pickerItems = usePickerItems(editor, props.createLinkedPage)
-  const { shown: aiShown } = useAiAccess()
+  const { shown: aiShown, online: aiOnline } = useAiAccess()
 
   const replacing = useRef(false)
   useImperativeHandle(
@@ -414,7 +414,8 @@ export function Editor(props: EditorProps): React.JSX.Element {
                     editor,
                     {
                       createSubPage: props.createSubPage,
-                      askAi: aiShown ? () => openWriter(editor) : undefined
+                      askAi: aiShown ? () => openWriter(editor) : undefined,
+                      askAiOffline: !aiOnline
                     },
                     query
                   )

@@ -12,6 +12,8 @@ export type SlashItemOptions = {
   createSubPage: () => Promise<string>
   /** Opens the AI Writer; absent while AI is hidden. */
   askAi?: () => void
+  /** Greys the AI item out while offline. */
+  askAiOffline?: boolean
 }
 
 // The suggestion menu removes the "/" query before onItemClick runs, so the
@@ -32,7 +34,12 @@ async function insertPageLink(
   }
 }
 
-export type SlashItem = DefaultReactSuggestionItem & { key: string; hint?: string }
+export type SlashItem = DefaultReactSuggestionItem & {
+  key: string
+  hint?: string
+  disabled?: boolean
+  tooltip?: string
+}
 
 const LABELS: Record<string, { title: string; hint?: string; aliases?: string[] }> = {
   paragraph: { title: 'Text', aliases: ['text', 'plain'] },
@@ -104,6 +111,7 @@ function customItems(editor: AppEditor, opts: SlashItemOptions): SlashItem[] {
             title: 'Ask AI',
             aliases: ['ai', 'ask', 'write', 'claude'],
             icon: <SparkleIcon size={18} />,
+            ...(opts.askAiOffline ? { disabled: true, tooltip: 'AI is unavailable offline' } : {}),
             onItemClick: askAi
           }
         ]

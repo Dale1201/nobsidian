@@ -130,7 +130,7 @@ export function WriterHost({
     () => (reply ? editor.blocksToHTMLLossy(resultBlocks(reply) as never) : ''),
     [editor, reply]
   )
-  const shown = phase === 'prompt' && !error ? matchingSkills(skills, query) : []
+  const shown = phase === 'prompt' ? matchingSkills(skills, query) : []
 
   const render = useCallback((): void => {
     cancelAnimationFrame(frame.current)
@@ -166,6 +166,7 @@ export function WriterHost({
       if (current && phase === 'writing') void api.invoke('ai:cancel', { requestId: current.id })
       request.current = null
       cancelAnimationFrame(frame.current)
+      frame.current = 0
       if (hasPending(editor)) undoPending(editor)
       setHighlight(editor, null)
       void api.invoke('ai:end', { sessionId: s.id })
@@ -219,7 +220,7 @@ export function WriterHost({
     const s = session.current
     if (!s) return
     const followUp = s.answered
-    if (!followUp && !hasPending(editor)) {
+    if (!hasPending(editor)) {
       const skill = ask.skill ? skills.find((k) => k.id === ask.skill) : null
       const placement = skill ? placementOf(skill.kind) : placementForText(s.selection)
       if (placement) beginPending(editor, placement, s.selectedBlocks)
@@ -228,6 +229,7 @@ export function WriterHost({
     const id = crypto.randomUUID()
     request.current = { id, mode: null, text: '' }
     setError(null)
+    setReply('')
     setQuery('')
     setPhase('writing')
     void api.invoke('ai:start', {
@@ -247,12 +249,10 @@ export function WriterHost({
     const finish = (failed: AiError | null): void => {
       const current = request.current
       if (!current) return
-      render()
-      if (session.current) session.current.answered = true
+      if (current.text) render()
+      if (session.current && current.text) session.current.answered = true
       const rendered = pendingOf(editor.prosemirrorState)?.rendered ?? false
-      if (current.mode === 'reply' || !rendered) {
-        if (hasPending(editor)) undoPending(editor)
-      }
+      if (!rendered && hasPending(editor)) undoPending(editor)
       setError(failed)
       setPhase(rendered ? 'review' : current.mode === 'reply' && current.text ? 'reply' : 'prompt')
     }
@@ -308,13 +308,20 @@ export function WriterHost({
     if (!open) return
     const onDown = (e: MouseEvent): void => {
       if (popup.current?.contains(e.target as Node)) return
-      if (phase === 'writing') return
+      if (phase === 'writing') {
+        // The page does not take clicks while Claude writes.
+        if (editor.domElement?.contains(e.target as Node)) {
+          e.preventDefault()
+          e.stopPropagation()
+        }
+        return
+      }
       if (phase === 'review') accept()
       else close()
     }
     document.addEventListener('mousedown', onDown, true)
     return () => document.removeEventListener('mousedown', onDown, true)
-  }, [open, phase, accept, close])
+  }, [open, phase, editor, accept, close])
 
   if (!open || !editor.domElement?.parentElement) return null
 
@@ -322,7 +329,7 @@ export function WriterHost({
     const text = query.trim()
     const s = session.current
     if (!s) return
-    if (phase === 'prompt' && !error && shown.length && query === query.trimStart()) {
+    if (phase === 'prompt' && shown.length && query === query.trimStart()) {
       const skill = shown[Math.min(activeSkill, shown.length - 1)]
       if (skill && (!text || matchingSkills([skill], query).length)) return choose(skill)
     }
@@ -355,7 +362,7 @@ export function WriterHost({
       setActiveSkill((i) => (i + step + shown.length) % shown.length)
     } else if (e.key === 'Escape') {
       e.preventDefault()
-      if (phase === 'prompt' || phase === 'reply' || phase === 'setup') close()
+      if (phase === 'prompt' || phase === 'reply') close()
     } else if (e.key === 'Backspace' && !query && phase === 'prompt') {
       e.preventDefault()
       close()
@@ -384,6 +391,12 @@ export function WriterHost({
       role="dialog"
       aria-label="AI"
       onMouseDown={(e) => e.stopPropagation()}
+      onKeyDown={(e) => {
+        if (phase === 'setup' && e.key === 'Escape') {
+          e.preventDefault()
+          close()
+        }
+      }}
     >
       {phase === 'setup' ? (
         <div className="nb-writer-setup">
@@ -403,14 +416,14 @@ export function WriterHost({
               Learn more
             </button>
           </p>
-          <KeyField onSaved={() => setPhase('prompt')} />
+          <KeyField autoFocus onSaved={() => setPhase('prompt')} />
           <button type="button" className="nb-writer-link" onClick={() => openExternal(KEYS_URL)}>
             Get a key from Anthropic
           </button>
         </div>
       ) : (
         <>
-          {phase === 'reply' && reply && (
+          {(phase === 'reply' || phase === 'review') && reply && (
             <div
               className="nb-writer-reply"
               onClick={(e) => {

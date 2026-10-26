@@ -2,7 +2,13 @@ import { useState } from 'react'
 import { useAi } from './aiStore'
 
 /** Pasting and checking a key, or showing the one that is saved. */
-export function KeyField({ onSaved }: { onSaved?: () => void }): React.JSX.Element {
+export function KeyField({
+  autoFocus,
+  onSaved
+}: {
+  autoFocus?: boolean
+  onSaved?: () => void
+}): React.JSX.Element {
   const status = useAi((s) => s.status)
   const [key, setKey] = useState('')
   const [state, setState] = useState<
@@ -72,6 +78,7 @@ export function KeyField({ onSaved }: { onSaved?: () => void }): React.JSX.Eleme
           aria-label="Anthropic API key"
           placeholder="Paste your API key"
           autoComplete="off"
+          autoFocus={autoFocus}
           spellCheck={false}
           value={key}
           onChange={(e) => {

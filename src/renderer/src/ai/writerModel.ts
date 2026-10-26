@@ -1,4 +1,5 @@
 import { SKILLS, type Skill, type SkillKind } from '@shared/ai'
+import { filterEntries, type MenuEntry } from '../components/menu/model'
 import type { Placement } from './pending'
 
 export function skillsFor(selection: boolean): Skill[] {
@@ -7,12 +8,9 @@ export function skillsFor(selection: boolean): Skill[] {
 
 /** Skills whose label or words match what was typed; all of them for an empty box. */
 export function matchingSkills(skills: Skill[], query: string): Skill[] {
-  const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean)
-  if (words.length === 0) return skills
-  return skills.filter((s) => {
-    const label = s.label.toLowerCase().replace('…', '')
-    return words.every((w) => label.includes(w))
-  })
+  const entries: MenuEntry[] = skills.map((s) => ({ kind: 'item', id: s.id, label: s.label }))
+  const ids = new Set(filterEntries(entries, query).map((e) => (e.kind === 'item' ? e.id : '')))
+  return skills.filter((s) => ids.has(s.id))
 }
 
 /** The skill a prefilled prompt belongs to, while the user has kept its opening words. */
@@ -43,12 +41,21 @@ const TEXT_BLOCKS = new Set([
   'quote'
 ])
 
+type SpaceEvent = Pick<
+  KeyboardEvent,
+  'key' | 'metaKey' | 'ctrlKey' | 'altKey' | 'shiftKey' | 'isComposing'
+>
+
+/** A bare Space, which is cheap to check before looking at the block it was typed in. */
+export function isPlainSpace(event: SpaceEvent): boolean {
+  if (event.key !== ' ' || event.isComposing) return false
+  return !(event.metaKey || event.ctrlKey || event.altKey || event.shiftKey)
+}
+
 /** Space opens the Writer only at the start of an empty line of text, as in Notion. */
 export function opensOnSpace(
-  event: Pick<KeyboardEvent, 'key' | 'metaKey' | 'ctrlKey' | 'altKey' | 'shiftKey' | 'isComposing'>,
+  event: SpaceEvent,
   block: { type: string; empty: boolean; selectionEmpty: boolean }
 ): boolean {
-  if (event.key !== ' ' || event.isComposing) return false
-  if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return false
-  return block.selectionEmpty && block.empty && TEXT_BLOCKS.has(block.type)
+  return isPlainSpace(event) && block.selectionEmpty && block.empty && TEXT_BLOCKS.has(block.type)
 }

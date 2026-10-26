@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  isPlainSpace,
   matchingSkills,
   opensOnSpace,
   placementForText,
@@ -68,6 +69,12 @@ describe('Space', () => {
     expect(opensOnSpace(key, line)).toBe(true)
     expect(opensOnSpace(key, { ...line, type: 'heading' })).toBe(true)
     expect(opensOnSpace(key, { ...line, type: 'checkListItem' })).toBe(true)
+  })
+
+  it('tells a bare Space from the rest before the line is looked at', () => {
+    expect(isPlainSpace(key)).toBe(true)
+    expect(isPlainSpace({ ...key, metaKey: true })).toBe(false)
+    expect(isPlainSpace({ ...key, key: 'a' })).toBe(false)
   })
 
   it('types a space anywhere else', () => {

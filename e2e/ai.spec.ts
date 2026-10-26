@@ -22,6 +22,9 @@ const file = (nb: AppFixture): Promise<string> => readFile(join(nb.workspace, 'N
 // The diff and the selection the Writer keeps; the editor itself carries nb-ai-available.
 const MARKS = '.nb-ai-added, .nb-ai-removed, .nb-ai-added-block, .nb-ai-removed-block'
 
+// Past the editor's 500ms save debounce, so a change that leaked into saving would show up.
+const pastSaveDebounce = (page: Page): Promise<void> => page.waitForTimeout(1500)
+
 async function selectParagraph(page: Page, text: string): Promise<void> {
   await page.locator(editor).getByText(text).click({ clickCount: 3 })
 }
@@ -47,11 +50,13 @@ test('Make shorter streams a diff into the page, saved only once accepted', asyn
   await expect(page.locator('.nb-ai-added')).toHaveText('We argue')
   await expect(page.locator('.nb-ai-removed')).toHaveText('We spent the hour arguing about launch.')
   await expect(writer.getByRole('button', { name: 'Stop' })).toBeVisible()
+  await pastSaveDebounce(page)
   expect(await file(nb)).toBe(before)
 
   anthropic.release()
   await expect(page.locator('.nb-ai-added')).toHaveText('We argued about launch.')
   await expect(writer.getByRole('button', { name: 'Accept' })).toBeVisible()
+  await pastSaveDebounce(page)
   expect(await file(nb)).toBe(before)
 
   const sent = (anthropic.messages()[0].messages as { content: { text: string }[] }[])[0]
@@ -117,7 +122,17 @@ test('with no key, the Writer asks for one first', async ({ nb, anthropic }) => 
   const writer = page.getByRole('dialog', { name: 'AI' })
   await expect(writer).toContainText('Set up AI')
   await expect(writer).toContainText('Images, files, drawings and other pages are never sent.')
-  await writer.getByLabel('Anthropic API key').fill(GOOD_KEY)
+  const field = writer.getByLabel('Anthropic API key')
+  await expect(field).toBeFocused()
+  await page.keyboard.type('Q')
+  await expect(field).toHaveValue('Q')
+  await expect(page.locator(editor)).not.toContainText('Q')
+  await page.keyboard.press('Escape')
+  await expect(writer).toBeHidden()
+
+  await selectParagraph(page, 'Intro.')
+  await page.keyboard.press('Meta+j')
+  await field.fill(GOOD_KEY)
   await writer.getByRole('button', { name: 'Save' }).click()
   await expect(writer.getByRole('option', { name: 'Improve writing' })).toBeVisible()
   anthropic.reply({ text: 'Hello.' })
@@ -254,4 +269,89 @@ test('typed instructions edit or reply, and a follow-up revises the change', asy
   const translate = (anthropic.messages()[3].messages as { content: { text: string }[] }[])[0]
   expect(translate.content[1].text).toBe('Translate to French. Apply it to the selection.')
   expect(anthropic.messages()[3]).not.toHaveProperty('tools')
+})
+
+test('a follow-up still lands after a reply, and a reply leaves a change in review', async ({
+  nb,
+  anthropic
+}) => {
+  const page = await setUp(nb)
+  const writer = page.getByRole('dialog', { name: 'AI' })
+  const box = writer.getByRole('textbox', { name: 'Ask AI' })
+
+  await selectParagraph(page, 'Outro.')
+  await page.keyboard.press('Meta+j')
+  anthropic.reply(
+    { tool: { name: 'reply', markdown: 'It closes the page.' } },
+    { tool: { name: 'edit', markdown: 'The end.' } },
+    { tool: { name: 'reply', markdown: 'Yes, it is final now.' } }
+  )
+  await box.fill('what is this for?')
+  await box.press('Enter')
+  await expect(writer.locator('.nb-writer-reply')).toHaveText('It closes the page.')
+  await box.fill('make it final')
+  await box.press('Enter')
+  await expect(page.locator('.nb-ai-added')).toHaveText('The end.')
+  await expect(writer.locator('.nb-writer-reply')).toHaveCount(0)
+
+  await box.fill('is it final?')
+  await box.press('Enter')
+  await expect(writer.locator('.nb-writer-reply')).toHaveText('Yes, it is final now.')
+  await expect(page.locator('.nb-ai-added')).toHaveText('The end.')
+  await expect(writer.getByRole('button', { name: 'Accept' })).toBeVisible()
+  await writer.getByRole('button', { name: 'Accept' }).click()
+  await expect(page.locator(editor)).toContainText('The end.')
+  await expect(page.locator(editor)).not.toContainText('Outro.')
+})
+
+test('after an error with nothing written, a skill can be retried', async ({ nb, anthropic }) => {
+  const page = await setUp(nb)
+  const writer = page.getByRole('dialog', { name: 'AI' })
+
+  await selectParagraph(page, 'Outro.')
+  await page.keyboard.press('Meta+j')
+  anthropic.reply({ status: 529 }, { status: 529 })
+  await writer.getByRole('option', { name: 'Improve writing' }).click()
+  await expect(writer.getByRole('alert')).toContainText('Claude is busy right now.')
+  await expect(page.locator(MARKS)).toHaveCount(0)
+  await expect(page.locator(editor)).toContainText('Outro.')
+
+  anthropic.reply({ text: 'Goodbye.' })
+  await writer.getByRole('option', { name: 'Proofread' }).click()
+  await expect(page.locator('.nb-ai-added')).toHaveText('Goodbye.')
+  await expect(writer.getByRole('button', { name: 'Accept' })).toBeVisible()
+})
+
+test('the page ignores clicks while Claude writes', async ({ nb, anthropic }) => {
+  const page = await setUp(nb)
+  const writer = page.getByRole('dialog', { name: 'AI' })
+
+  await selectParagraph(page, 'Outro.')
+  await page.keyboard.press('Meta+j')
+  anthropic.reply({ text: 'It ends the notes.', chunks: 2, hold: true })
+  await writer.getByRole('option', { name: 'Explain' }).click()
+  await expect(writer.getByRole('button', { name: 'Stop' })).toBeVisible()
+  await page.locator(editor).getByText('Intro.').click()
+  await expect(page.locator(editor)).not.toBeFocused()
+  await expect(writer.getByRole('textbox', { name: 'Ask AI' })).toBeFocused()
+
+  anthropic.release()
+  await expect(writer.locator('.nb-writer-reply')).toHaveText('It ends the notes.')
+})
+
+test('offline, the AI slash item is greyed out and does nothing', async ({ nb }) => {
+  const page = await setUp(nb)
+  const writer = page.getByRole('dialog', { name: 'AI' })
+
+  await page.evaluate(() => window.dispatchEvent(new Event('offline')))
+  await page.locator(editor).getByText('Outro.').click()
+  await page.keyboard.press('Meta+ArrowRight')
+  await page.keyboard.press('Enter')
+  await page.keyboard.type('/ai')
+  const item = page.getByRole('option', { name: /Ask AI/ })
+  await expect(item).toHaveAttribute('aria-disabled', 'true')
+  await expect(item).toHaveAttribute('title', 'AI is unavailable offline')
+  await page.keyboard.press('Enter')
+  await item.click({ force: true })
+  await expect(writer).toBeHidden()
 })
