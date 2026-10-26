@@ -125,7 +125,8 @@ With a selection Claude may edit it or reply; without one it may insert at the c
 
 A follow-up typed in Review revises the pending change: the conversation so far is sent again with the follow-up, and the new result replaces the pending change.
 A follow-up after Stop revises the last completed result, since a stopped answer is never added to the conversation.
-A follow-up that brings nothing back, or fails, leaves the change under review as it was.
+A follow-up that brings nothing back, or fails before any text arrives, leaves the change under review as it was.
+A follow-up that fails after some text shows that text in place of the change under review, as any error after some text does (section 9).
 An edit that deliberately comes back empty shows as a deletion of the selection, with Undo and Accept.
 
 ## 5. How changes land
@@ -153,8 +154,12 @@ An edit that deliberately comes back empty shows as a deletion of the selection,
 - A rewritten block whose children the selection leaves out keeps them: while pending they show unmarked under the struck parent, and on Accept they move under the last new block.
 - A selection inside a code block is replaced with Claude's answer as plain text, never parsed as Markdown, without a wrapping fence or a trailing newline.
 - Pending ranges follow any edit made by others while the change is pending, so the change stays where it was shown.
-- A result the page cannot take where it goes, such as columns inside a column, is not placed: the request ends with "The answer could not be placed here." and any change already under review stays.
 - Streamed Markdown is parsed with the app's existing Markdown parser on each text delta, coalesced to one render per animation frame.
+- While an answer streams, only what is whole so far is shown: a line of HTML waits until it ends, and columns and toggles still open are closed, so they stream as blocks rather than raw Markdown.
+- While an answer streams, a frame the page cannot take where it goes is skipped, and the last one that fitted stays on screen.
+- Only the whole answer, or the text so far at Stop or an error, decides whether it fits.
+- A result the page cannot take where it goes, such as columns inside a column, is not placed: the request ends with "The answer could not be placed here.", anything of it shown while it streamed goes, and the change under review before the request, if any, comes back as it was.
+- Insert below with a reply the page cannot take there inserts nothing and shows the same line.
 
 ### 5.3 Accept and Undo
 
@@ -332,7 +337,7 @@ Saving a working key turns the card into the prompt.
 | `refusal` | `stop_reason: refusal` after fallbacks | "Claude declined this request." |
 | `truncated` | `stop_reason: max_tokens` | "The response was cut off." |
 
-- An error after some text keeps the partial pending change, with Undo and Accept.
+- An error after some text keeps the partial pending change, with Undo and Accept, unless the page cannot take it there (section 5.2).
 - A result the page cannot take where it goes shows "The answer could not be placed here." as a `request` error (section 5.2).
 - The renderer listens for `online` and `offline` events and updates the entry points at once.
 - Nothing is queued while offline.
@@ -343,7 +348,7 @@ Saving a working key turns the card into the prompt.
 
 Editor tests mount a real BlockNote editor under `happy-dom` (a dev dependency), since an editor's plugins only exist once it is mounted.
 
-- `prompts.ts`: system prompt bytes stable across calls; page block with markers and `cache_control`; image, file and drawing placeholders; the 100,000-character cut; tools only for free text.
+- `prompts.ts`: no dates in the system prompt, which tells Claude never to write the markers; page block with markers and `cache_control`; image, file and drawing placeholders; the 100,000-character cut; tools only for free text.
 - `usage.ts`: cost for each model, with cache writes and reads; month rollover.
 - `errors.ts`: each SDK error class to its kind.
 - `keyStore.ts`: encrypt, read, delete and hint with `safeStorage` mocked; refusal when encryption is unavailable.
@@ -375,6 +380,7 @@ Editor tests mount a real BlockNote editor under `happy-dom` (a dev dependency),
 - Stop keeps the partial change.
 - Clicking outside after writing accepts.
 - Summarize inserts below; Continue writing inserts at the cursor; Explain shows a reply and Insert below works.
+- Translate page on a page with columns streams the columns as columns and never as raw Markdown; an answer the page cannot take ends with an error and restores the change under review; a reply that cannot go below the selection is not inserted.
 - A typed question gets a reply; a typed instruction gets an edit.
 - A follow-up revises the pending change.
 - Each error kind shows its message; 401 links to Settings.
