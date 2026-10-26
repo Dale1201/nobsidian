@@ -1,8 +1,15 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { GOOD_KEY } from './fakeAnthropic'
+import type { ElectronApplication, Page } from '@playwright/test'
 import { expect, test } from './fixtures'
 import { clickMenuItem, editor, newPage } from './helpers'
+
+// The menu command is ignored until the workspace has loaded, which the sidebar shows.
+async function openSettings(page: Page, app: ElectronApplication): Promise<void> {
+  await expect(page.getByRole('button', { name: 'Settings' })).toBeVisible()
+  await clickMenuItem(app, 'Settings…')
+}
 
 const settingsFile = async (userData: string): Promise<Record<string, unknown>> =>
   JSON.parse(await readFile(join(userData, 'settings.json'), 'utf8'))
@@ -37,7 +44,7 @@ test('the AI section checks the key, picks the model and counts what was spent',
   anthropic
 }) => {
   const { page, app } = nb
-  await clickMenuItem(app, 'Settings…')
+  await openSettings(page, app)
   const dialog = page.getByRole('dialog', { name: 'Settings' })
   await expect(dialog).toContainText('Images, files, drawings and other pages are never sent.')
   await expect(dialog).toContainText('$0.00')
@@ -104,7 +111,7 @@ test('Settings takes the keyboard from the page, and gives focus back to a selec
   await page.keyboard.type('abc')
   await expect(page.locator(editor)).toContainText('abc')
 
-  await clickMenuItem(app, 'Settings…')
+  await openSettings(page, app)
   const dialog = page.getByRole('dialog', { name: 'Settings' })
   await expect(dialog).toBeVisible()
   await expect(dialog.locator(':focus')).toHaveCount(1)
@@ -121,7 +128,7 @@ test('Settings takes the keyboard from the page, and gives focus back to a selec
 
 test('the key field reports a failed save or remove instead of sticking', async ({ nb }) => {
   const { page, app } = nb
-  await clickMenuItem(app, 'Settings…')
+  await openSettings(page, app)
   const dialog = page.getByRole('dialog', { name: 'Settings' })
   const field = dialog.getByLabel('Anthropic API key')
   await expect(field).toBeVisible()
@@ -135,7 +142,7 @@ test('the key field reports a failed save or remove instead of sticking', async 
 
 test('a failed remove says so and keeps the key', async ({ nb }) => {
   const { page, app } = nb
-  await clickMenuItem(app, 'Settings…')
+  await openSettings(page, app)
   const dialog = page.getByRole('dialog', { name: 'Settings' })
   const field = dialog.getByLabel('Anthropic API key')
   await field.fill(GOOD_KEY)
