@@ -15,6 +15,7 @@ import { join, normalize, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { is } from '@electron-toolkit/utils'
 import { ASSET_SCHEME, EXCALIDRAW_HOST } from '../shared/ipc'
+import { contextMenuTemplate } from './contextMenu'
 import { openWorkspace, registerHandlers, updateMenu, type AppContext } from './handlers'
 import { ImportService } from './import/service'
 import { startImportWorker } from './import/start-worker'
@@ -108,6 +109,13 @@ function createWindow(): void {
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (/^(https?|mailto):/i.test(url)) void shell.openExternal(url)
     return { action: 'deny' }
+  })
+  win.webContents.on('context-menu', (_event, params) => {
+    const template = contextMenuTemplate(params, {
+      replace: (suggestion) => win.webContents.replaceMisspelling(suggestion),
+      learn: (word) => win.webContents.session.addWordToSpellCheckerDictionary(word)
+    })
+    if (template.length > 0) Menu.buildFromTemplate(template).popup({ window: win })
   })
   win.webContents.on('will-navigate', (event, url) => {
     if (!(
