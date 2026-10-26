@@ -41,12 +41,20 @@ test('right-clicking a misspelled word offers fixes that replace it', async ({ n
   await expect(block).toHaveText('Fix this mispeled word')
 
   const word = await wordCenter(block, 'mispeled')
+  // Under load Chromium can skip checking a typed word; retyping the space after it asks again.
   await expect
-    .poll(async () => {
-      await page.mouse.click(word.x, word.y, { button: 'right' })
-      return (await menuLabels(app))[0]
-    })
-    .toBe('misspelled')
+    .poll(
+      async () => {
+        await page.mouse.click(word.x, word.y, { button: 'right' })
+        if ((await menuLabels(app))[0] === 'misspelled') return true
+        await page.keyboard.press('Meta+ArrowRight')
+        await page.keyboard.press('Backspace')
+        await page.keyboard.type(' ')
+        return false
+      },
+      { message: 'the right-click menu offers "misspelled"', timeout: 15_000 }
+    )
+    .toBe(true)
   expect(await menuLabels(app)).toEqual(
     expect.arrayContaining(['Learn Spelling', 'Cut', 'Copy', 'Paste'])
   )
