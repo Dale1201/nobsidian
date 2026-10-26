@@ -18,7 +18,22 @@ export function buildMenu(getWindow: () => BrowserWindow | null): Menu {
       click: command(cmd)
     }))
   const template: MenuItemConstructorOptions[] = [
-    { role: 'appMenu' },
+    {
+      role: 'appMenu',
+      submenu: [
+        { role: 'about' },
+        { type: 'separator' },
+        { label: 'Settings…', accelerator: 'CmdOrCtrl+,', click: command('settings') },
+        { type: 'separator' },
+        { role: 'services' },
+        { type: 'separator' },
+        { role: 'hide' },
+        { role: 'hideOthers' },
+        { role: 'unhide' },
+        { type: 'separator' },
+        { role: 'quit' }
+      ]
+    },
     {
       label: 'File',
       submenu: [

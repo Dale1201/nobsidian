@@ -54,6 +54,7 @@ export type MenuCommand =
   | 'open-folder'
   | 'import-notion'
   | 'search'
+  | 'settings'
   | 'toggle-sidebar'
   | 'toggle-theme'
   | 'back'

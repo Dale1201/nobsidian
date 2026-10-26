@@ -4,6 +4,7 @@ import { HistoryModal } from './components/HistoryModal'
 import { ImportDrop } from './components/ImportDrop'
 import { ImportPanel } from './components/ImportPanel'
 import { SearchModal } from './components/SearchModal'
+import { SettingsModal } from './components/SettingsModal'
 import { Sidebar } from './components/Sidebar'
 import { TabBar } from './components/TabBar'
 import { TabPanes } from './components/TabPanes'
@@ -72,6 +73,7 @@ export function App(): React.JSX.Element | null {
         if (cmd === 'open-folder') void app.chooseWorkspace()
         if (cmd === 'import-notion') void app.startImport()
         if (cmd === 'search' && canSearch()) app.setOverlay({ kind: 'search' })
+        if (cmd === 'settings' && canSearch()) app.setOverlay({ kind: 'settings', section: 'ai' })
         if (cmd === 'back') app.back()
         if (cmd === 'forward') app.forward()
         if (cmd === 'new-tab') app.newTab()
@@ -105,6 +107,7 @@ export function App(): React.JSX.Element | null {
               <TabPanes theme={theme} />
             </div>
             {overlay?.kind === 'search' && <SearchModal />}
+            {overlay?.kind === 'settings' && <SettingsModal section={overlay.section} />}
             {overlay?.kind === 'move' && <SearchModal moving={overlay.pageId} />}
             {overlay?.kind === 'history' && <HistoryModal pageId={overlay.pageId} theme={theme} />}
             <ImportDrop />

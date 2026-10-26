@@ -1,6 +1,6 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { Page } from '@playwright/test'
+import type { ElectronApplication, Page } from '@playwright/test'
 import { expect } from './fixtures'
 
 export const editor = '.bn-editor'
@@ -50,4 +50,14 @@ export async function openFile(
   await page.getByTestId(`sidebar-row-${name}`).click()
   await expect(page.locator(editor)).toBeVisible()
   return page
+}
+
+/** Clicks a native menu item; Playwright's key presses never reach the menu. */
+export async function clickMenuItem(app: ElectronApplication, label: string): Promise<void> {
+  await app.evaluate(({ Menu }, label) => {
+    Menu.getApplicationMenu()
+      ?.items.flatMap((i) => i.submenu?.items ?? [])
+      .find((i) => i.label === label)
+      ?.click()
+  }, label)
 }
