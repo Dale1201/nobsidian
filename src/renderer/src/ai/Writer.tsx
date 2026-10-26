@@ -1,0 +1,531 @@
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { TextSelection } from 'prosemirror-state'
+import type { AiError, AiMode, Skill, SkillId } from '@shared/ai'
+import { ArrowUpIcon, CheckIcon, SparkleIcon, StopIcon, UndoIcon } from '../components/icons'
+import { selectBlocks, selectedBlockIds } from '../editor/blockSelection'
+import type { AppEditor } from '../editor/schema'
+import { useAppEditor } from '../editor/useAppEditor'
+import { useApp } from '../store'
+import { useAi } from './aiStore'
+import { pageMarkdown } from './context'
+import { KeyField } from './KeyField'
+import { KEYS_URL, openExternal } from './links'
+import {
+  acceptPending,
+  beginPending,
+  hasPending,
+  pendingOf,
+  pendingRanges,
+  renderPending,
+  resultBlocks,
+  setHighlight,
+  undoPending
+} from './pending'
+import {
+  matchingSkills,
+  placementForText,
+  placementOf,
+  prefilledSkill,
+  skillsFor
+} from './writerModel'
+import { registerWriter } from './writerRegistry'
+
+const api = window.api
+
+type Phase = 'setup' | 'prompt' | 'writing' | 'review' | 'reply'
+
+interface Session {
+  id: string
+  /** Whether there is text or blocks to work on, rather than a cursor. */
+  selection: boolean
+  selectedBlocks: string[]
+  /** The page as it was when the Writer opened, with the selection marked. */
+  markdown: string
+  /** Set once a turn finished, so later instructions revise it. */
+  answered: boolean
+}
+
+const WIDTH = 400
+
+// A click just before the shortcut may not have reached the editor state yet.
+function syncSelection(editor: AppEditor): void {
+  const view = editor.prosemirrorView
+  const dom = window.getSelection()
+  if (!dom?.anchorNode || !dom.focusNode || !view.dom.contains(dom.anchorNode)) return
+  try {
+    const anchor = view.posAtDOM(dom.anchorNode, dom.anchorOffset)
+    const head = view.posAtDOM(dom.focusNode, dom.focusOffset)
+    const { selection } = view.state
+    if (selection.anchor === anchor && selection.head === head) return
+    editor.transact((tr) => tr.setSelection(TextSelection.create(tr.doc, anchor, head)))
+  } catch {
+    // The DOM selection is not in text; the editor's own selection stands.
+  }
+}
+
+function newSession(editor: AppEditor): Session {
+  const selectedBlocks = selectedBlockIds(editor)
+  const textSelected = !editor.prosemirrorState.selection.empty
+  const mark = selectedBlocks.length
+    ? { selectedBlocks }
+    : textSelected
+      ? { selection: true as const }
+      : { cursor: true as const }
+  return {
+    id: crypto.randomUUID(),
+    selection: selectedBlocks.length > 0 || textSelected,
+    selectedBlocks,
+    markdown: pageMarkdown(editor, mark),
+    answered: false
+  }
+}
+
+/** Where the Writer sits: under the change, or under the selection or cursor. */
+function anchorPos(editor: AppEditor): number {
+  const state = editor.prosemirrorState
+  const pending = pendingOf(state)
+  if (pending?.rendered) {
+    const { removed, added } = pendingRanges(pending)
+    return Math.max(added.to, removed?.to ?? 0)
+  }
+  const ids = selectedBlockIds(editor)
+  if (ids.length) {
+    let end = state.selection.to
+    state.doc.descendants((node, pos) => {
+      if (node.type.name === 'blockContainer' && ids.includes(node.attrs.id))
+        end = pos + node.nodeSize
+      return true
+    })
+    return end
+  }
+  return state.selection.to
+}
+
+export function WriterHost({
+  title,
+  active
+}: {
+  title: string
+  /** False while the editor's tab is hidden. */
+  active: boolean
+}): React.JSX.Element | null {
+  const editor = useAppEditor()
+  const [open, setOpen] = useState(false)
+  const [phase, setPhase] = useState<Phase>('prompt')
+  const [query, setQuery] = useState('')
+  const [reply, setReply] = useState('')
+  const [error, setError] = useState<AiError | null>(null)
+  const [activeSkill, setActiveSkill] = useState(0)
+  const [selection, setSelection] = useState(false)
+  const session = useRef<Session | null>(null)
+  const request = useRef<{ id: string; mode: AiMode | null; text: string } | null>(null)
+  const frame = useRef(0)
+  const popup = useRef<HTMLDivElement>(null)
+  const input = useRef<HTMLInputElement>(null)
+
+  const skills = skillsFor(selection)
+  // The editor's own HTML for the reply, so it reads like the page it would be inserted into.
+  const replyHtml = useMemo(
+    () => (reply ? editor.blocksToHTMLLossy(resultBlocks(reply) as never) : ''),
+    [editor, reply]
+  )
+  const shown = phase === 'prompt' && !error ? matchingSkills(skills, query) : []
+
+  const render = useCallback((): void => {
+    cancelAnimationFrame(frame.current)
+    frame.current = 0
+    const current = request.current
+    if (current && current.mode !== 'reply' && hasPending(editor))
+      renderPending(editor, current.text)
+  }, [editor])
+
+  // Written to the element directly: it follows every keystroke of the stream.
+  const place = useCallback((): void => {
+    const dom = editor.domElement
+    const container = dom?.parentElement
+    const el = popup.current
+    if (!dom || !container || !el) return
+    const view = editor.prosemirrorView
+    const pos = Math.min(anchorPos(editor), editor.prosemirrorState.doc.content.size)
+    const coords = view.coordsAtPos(pos, -1)
+    const box = container.getBoundingClientRect()
+    const column = dom.querySelector('.bn-block-content')?.getBoundingClientRect() ?? box
+    const left = column.left - box.left
+    el.style.top = `${coords.bottom - box.top + 6}px`
+    el.style.left = `${left}px`
+    el.style.width = `${Math.min(WIDTH, box.width - left)}px`
+  }, [editor])
+
+  /** `refocus` is false when the Writer goes because its tab or page did, which keep focus. */
+  const close = useCallback(
+    (refocus = true): void => {
+      const s = session.current
+      if (!s) return
+      const current = request.current
+      if (current && phase === 'writing') void api.invoke('ai:cancel', { requestId: current.id })
+      request.current = null
+      cancelAnimationFrame(frame.current)
+      if (hasPending(editor)) undoPending(editor)
+      setHighlight(editor, null)
+      void api.invoke('ai:end', { sessionId: s.id })
+      session.current = null
+      setOpen(false)
+      if (refocus) editor.focus()
+    },
+    [editor, phase]
+  )
+
+  const accept = useCallback((): void => {
+    render()
+    request.current = null
+    acceptPending(editor)
+    close()
+  }, [editor, render, close])
+
+  const openWriter = useCallback((): void => {
+    if (session.current || !editor.isEditable) return
+    const ai = useApp.getState().settings?.ai
+    if (ai && !ai.enabled) return
+    if (!useAi.getState().online) return
+    if (!selectedBlockIds(editor).length) syncSelection(editor)
+    const s = newSession(editor)
+    session.current = s
+    setSelection(s.selection)
+    const { selection } = editor.prosemirrorState
+    if (!selection.empty && !s.selectedBlocks.length) {
+      setHighlight(editor, { from: selection.from, to: selection.to })
+      // The highlight stands in for the selection, which would keep the formatting toolbar up.
+      editor.transact((tr) => tr.setSelection(TextSelection.create(tr.doc, selection.to)))
+    }
+    setQuery('')
+    setReply('')
+    setError(null)
+    setActiveSkill(0)
+    setPhase(useAi.getState().status?.hasKey ? 'prompt' : 'setup')
+    setOpen(true)
+  }, [editor])
+
+  const closeRef = useRef(close)
+  useLayoutEffect(() => {
+    closeRef.current = close
+  })
+  useEffect(
+    () => registerWriter(editor, { open: openWriter, close: () => closeRef.current(false) }),
+    [editor, openWriter]
+  )
+
+  const run = (ask: { skill?: SkillId; instruction?: string }): void => {
+    const s = session.current
+    if (!s) return
+    const followUp = s.answered
+    if (!followUp && !hasPending(editor)) {
+      const skill = ask.skill ? skills.find((k) => k.id === ask.skill) : null
+      const placement = skill ? placementOf(skill.kind) : placementForText(s.selection)
+      if (placement) beginPending(editor, placement, s.selectedBlocks)
+    }
+    if (s.selectedBlocks.length) selectBlocks(editor, s.selectedBlocks)
+    const id = crypto.randomUUID()
+    request.current = { id, mode: null, text: '' }
+    setError(null)
+    setQuery('')
+    setPhase('writing')
+    void api.invoke('ai:start', {
+      sessionId: s.id,
+      requestId: id,
+      title,
+      markdown: s.markdown,
+      selection: s.selection,
+      ...(ask.skill ? { skill: ask.skill } : {}),
+      ...(ask.instruction ? { instruction: ask.instruction } : {}),
+      ...(followUp ? { followUp: true } : {})
+    })
+  }
+
+  // Each request reports to the Writer that started it, through its id.
+  useEffect(() => {
+    const finish = (failed: AiError | null): void => {
+      const current = request.current
+      if (!current) return
+      render()
+      if (session.current) session.current.answered = true
+      const rendered = pendingOf(editor.prosemirrorState)?.rendered ?? false
+      if (current.mode === 'reply' || !rendered) {
+        if (hasPending(editor)) undoPending(editor)
+      }
+      setError(failed)
+      setPhase(rendered ? 'review' : current.mode === 'reply' && current.text ? 'reply' : 'prompt')
+    }
+    const offs = [
+      api.on('ai:delta', (delta) => {
+        const current = request.current
+        if (!current || delta.requestId !== current.id) return
+        current.mode = delta.mode
+        current.text = delta.text
+        if (delta.mode === 'reply') {
+          setReply(delta.text)
+          return
+        }
+        if (!frame.current) frame.current = requestAnimationFrame(render)
+      }),
+      api.on('ai:done', (done) => {
+        if (done.requestId === request.current?.id) finish(null)
+      }),
+      api.on('ai:error', (failed) => {
+        if (failed.requestId === request.current?.id) finish(failed)
+      })
+    ]
+    return () => offs.forEach((off) => off())
+  }, [editor, render])
+
+  // A hidden tab or a closed page takes its Writer with it.
+  useEffect(() => {
+    if (!active) closeRef.current(false)
+  }, [active])
+  useEffect(() => () => closeRef.current(false), [])
+
+  useLayoutEffect(() => {
+    if (!open) return
+    place()
+    const off = editor.onChange(place)
+    window.addEventListener('resize', place)
+    return () => {
+      off?.()
+      window.removeEventListener('resize', place)
+    }
+  }, [open, phase, reply, editor, place])
+
+  useEffect(() => {
+    if (open) popup.current?.scrollIntoView({ block: 'nearest' })
+  }, [open, phase])
+
+  useEffect(() => {
+    if (open && phase !== 'writing' && phase !== 'setup') input.current?.focus()
+  }, [open, phase])
+
+  // Clicking away keeps a finished change, and leaves a running one alone, as in Notion.
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e: MouseEvent): void => {
+      if (popup.current?.contains(e.target as Node)) return
+      if (phase === 'writing') return
+      if (phase === 'review') accept()
+      else close()
+    }
+    document.addEventListener('mousedown', onDown, true)
+    return () => document.removeEventListener('mousedown', onDown, true)
+  }, [open, phase, accept, close])
+
+  if (!open || !editor.domElement?.parentElement) return null
+
+  const send = (): void => {
+    const text = query.trim()
+    const s = session.current
+    if (!s) return
+    if (phase === 'prompt' && !error && shown.length && query === query.trimStart()) {
+      const skill = shown[Math.min(activeSkill, shown.length - 1)]
+      if (skill && (!text || matchingSkills([skill], query).length)) return choose(skill)
+    }
+    if (!text) {
+      if (phase === 'review') accept()
+      return
+    }
+    const prefilled = prefilledSkill(skills, query)
+    run(
+      prefilled && !s.answered ? { skill: prefilled.id, instruction: text } : { instruction: text }
+    )
+  }
+
+  const choose = (skill: Skill): void => {
+    if (skill.prefill) {
+      setQuery(skill.prefill)
+      input.current?.focus()
+      return
+    }
+    run({ skill: skill.id })
+  }
+
+  const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>): void => {
+    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+      e.preventDefault()
+      send()
+    } else if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && shown.length) {
+      e.preventDefault()
+      const step = e.key === 'ArrowDown' ? 1 : -1
+      setActiveSkill((i) => (i + step + shown.length) % shown.length)
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      if (phase === 'prompt' || phase === 'reply' || phase === 'setup') close()
+    } else if (e.key === 'Backspace' && !query && phase === 'prompt') {
+      e.preventDefault()
+      close()
+    } else if (e.key === 'z' && e.metaKey && !e.shiftKey && !query && phase === 'review') {
+      e.preventDefault()
+      close()
+    }
+  }
+
+  const insertReply = (): void => {
+    const s = session.current
+    if (!s) return
+    if (s.selection) beginPending(editor, 'insertBelow', s.selectedBlocks)
+    else beginPending(editor, 'insertAtCursor')
+    renderPending(editor, reply)
+    acceptPending(editor)
+    close()
+  }
+
+  const placeholder = phase === 'writing' ? 'Writing…' : 'Edit with AI'
+
+  return createPortal(
+    <div
+      ref={popup}
+      className="nb-writer"
+      role="dialog"
+      aria-label="AI"
+      onMouseDown={(e) => e.stopPropagation()}
+    >
+      {phase === 'setup' ? (
+        <div className="nb-writer-setup">
+          <div className="nb-writer-setup-title">Set up AI</div>
+          <p>
+            Nobsidian uses Claude, with your own Anthropic API key. AI features send the text of the
+            page you&apos;re on to Anthropic. Images, files, drawings and other pages are never
+            sent.{' '}
+            <button
+              type="button"
+              className="nb-writer-link"
+              onClick={() => {
+                close()
+                useApp.getState().setOverlay({ kind: 'settings', section: 'ai' })
+              }}
+            >
+              Learn more
+            </button>
+          </p>
+          <KeyField onSaved={() => setPhase('prompt')} />
+          <button type="button" className="nb-writer-link" onClick={() => openExternal(KEYS_URL)}>
+            Get a key from Anthropic
+          </button>
+        </div>
+      ) : (
+        <>
+          {phase === 'reply' && reply && (
+            <div
+              className="nb-writer-reply"
+              onClick={(e) => {
+                const link = (e.target as HTMLElement).closest('a')
+                if (!link) return
+                e.preventDefault()
+                openExternal(link.href)
+              }}
+              dangerouslySetInnerHTML={{ __html: replyHtml }}
+            />
+          )}
+          <div className="nb-writer-input-row">
+            <SparkleIcon size={18} className="nb-writer-icon" />
+            <input
+              ref={input}
+              className="nb-writer-input"
+              aria-label="Ask AI"
+              placeholder={placeholder}
+              value={query}
+              readOnly={phase === 'writing'}
+              onChange={(e) => {
+                setQuery(e.target.value)
+                setActiveSkill(0)
+              }}
+              onKeyDown={onKeyDown}
+            />
+            {phase === 'writing' ? (
+              <button
+                type="button"
+                className="nb-writer-stop"
+                aria-label="Stop"
+                title="Stop"
+                onClick={() => {
+                  const current = request.current
+                  if (current) void api.invoke('ai:cancel', { requestId: current.id })
+                }}
+              >
+                <StopIcon size={16} />
+              </button>
+            ) : phase === 'review' && !query ? (
+              <div className="nb-writer-actions">
+                <button
+                  type="button"
+                  className="nb-writer-undo"
+                  title="Undo ⌘Z"
+                  onClick={() => close()}
+                >
+                  <UndoIcon size={16} />
+                  Undo
+                </button>
+                <button
+                  type="button"
+                  className="nb-writer-accept"
+                  title="Accept ↵"
+                  onClick={accept}
+                >
+                  <CheckIcon size={16} />
+                  Accept
+                </button>
+              </div>
+            ) : phase === 'reply' && !query ? (
+              <button type="button" className="nb-writer-insert" onClick={insertReply}>
+                Insert below
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="nb-writer-send"
+                aria-label="Submit"
+                disabled={!query.trim()}
+                onClick={send}
+              >
+                <ArrowUpIcon size={14} />
+              </button>
+            )}
+          </div>
+          {error && (
+            <div className="nb-writer-error" role="alert">
+              {error.message}
+              {error.kind === 'auth' && (
+                <button
+                  type="button"
+                  className="nb-writer-link"
+                  onClick={() => {
+                    close()
+                    useApp.getState().setOverlay({ kind: 'settings', section: 'ai' })
+                  }}
+                >
+                  Open Settings
+                </button>
+              )}
+            </div>
+          )}
+          {shown.length > 0 && (
+            <div className="nb-writer-skills" role="listbox" aria-label="Skills">
+              <div className="nb-writer-skills-title">Skills</div>
+              {shown.map((skill, i) => (
+                <button
+                  key={skill.id}
+                  type="button"
+                  role="option"
+                  aria-selected={i === activeSkill}
+                  className={`nb-writer-skill ${i === activeSkill ? 'active' : ''}`}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onMouseEnter={() => setActiveSkill(i)}
+                  onClick={() => choose(skill)}
+                >
+                  {skill.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </div>,
+    editor.domElement.parentElement
+  )
+}

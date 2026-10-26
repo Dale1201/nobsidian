@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { useAi } from './ai/aiStore'
 import { DrawingHost } from './drawing/DrawingHost'
 import { HistoryModal } from './components/HistoryModal'
 import { ImportDrop } from './components/ImportDrop'
@@ -38,6 +39,7 @@ export function App(): React.JSX.Element | null {
 
   useEffect(() => {
     void useApp.getState().init()
+    void useAi.getState().refresh()
     const offTree = api.on('tree:changed', (snapshot) => useApp.getState().applySnapshot(snapshot))
     const offFlush = api.on('app:flush', () => {
       void flushAll()

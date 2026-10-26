@@ -251,6 +251,7 @@ export function PageEditor({
     <Editor
       initialBlocks={initialBlocks}
       contentRef={content}
+      title={doc.title}
       drawingSlot={{ tabId, pageId: doc.id }}
       theme={theme}
       acceptsFiles={active}

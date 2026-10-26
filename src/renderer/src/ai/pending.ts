@@ -48,8 +48,7 @@ function containerDepth($pos: ResolvedPos): number {
 }
 
 /** The run of sibling blocks that holds both ends of the selection. */
-function touchedBlocks(state: EditorState): Range {
-  const { $from, $to } = state.selection
+function touchedBlocks($from: ResolvedPos, $to: ResolvedPos): Range {
   const range = $from.blockRange($to, (node) => node.type.name === 'blockGroup')
   if (range) return { from: range.start, to: range.end }
   const d = containerDepth($from)
@@ -73,18 +72,20 @@ function blockRange(doc: Node, ids: string[]): Range | null {
 
 /** Where a result for `placement` goes, given the selection or the selected blocks. */
 export function placementRanges(
-  state: EditorState,
+  doc: Node,
+  selection: Range,
   placement: Placement,
   selectedBlocks: string[] = []
 ): Omit<Pending, 'rendered' | 'isInline' | 'addedSize'> {
-  const doc = state.doc
   if (placement === 'editPage') {
     const end = 1 + doc.firstChild!.content.size
     return { inline: null, blocks: { from: 1, to: end }, insertAt: end }
   }
-  const { $from, $to, empty } = state.selection
+  const $from = doc.resolve(selection.from)
+  const $to = doc.resolve(selection.to)
+  const empty = selection.from === selection.to
   const picked = selectedBlocks.length ? blockRange(doc, selectedBlocks) : null
-  const touched = picked ?? touchedBlocks(state)
+  const touched = picked ?? touchedBlocks($from, $to)
   if (placement === 'insertBelow') return { inline: null, blocks: null, insertAt: touched.to }
   if (placement === 'insertAtCursor') {
     const d = containerDepth($from)
@@ -102,14 +103,24 @@ export function placementRanges(
   return { inline, blocks: touched, insertAt: touched.to }
 }
 
-/** Starts a pending change; nothing is shown until the first render. */
+/**
+ * Starts a pending change on the highlighted text, or else the selection; nothing is shown
+ * until the first render.
+ */
 export function beginPending(
   editor: AnyEditor,
   placement: Placement,
   selectedBlocks: string[] = []
 ): void {
+  const state = editor.prosemirrorState
+  const selection = uiKey.getState(state)?.highlight ?? state.selection
   const pending: Pending = {
-    ...placementRanges(editor.prosemirrorState, placement, selectedBlocks),
+    ...placementRanges(
+      state.doc,
+      { from: selection.from, to: selection.to },
+      placement,
+      selectedBlocks
+    ),
     rendered: false,
     isInline: false,
     addedSize: 0
@@ -176,11 +187,17 @@ export function pendingRanges(pending: Pending): { removed: Range | null; added:
   return { removed, added: { from: at, to: at + pending.addedSize } }
 }
 
+// Cleared in a step of its own, after the content: the editor saves on content changes made
+// while nothing is pending, and the page is by then exactly as it was saved.
 function restore(editor: AnyEditor, pending: Pending): void {
   const { added } = pendingRanges(pending)
   editor.transact((tr) => {
     tr.setMeta('addToHistory', false)
     tr.delete(added.from, added.to)
+    tr.setMeta(key, { ...pending, addedSize: 0 })
+  })
+  editor.transact((tr) => {
+    tr.setMeta('addToHistory', false)
     tr.setMeta(key, null)
   })
 }
@@ -234,6 +251,32 @@ function decorations(state: EditorState): DecorationSet | null {
   return DecorationSet.create(state.doc, out)
 }
 
+interface WriterUi {
+  /** The selection the Writer works on, kept visible while focus is in the Writer. */
+  highlight: Range | null
+  /** Whether AI can be used, which changes the empty-line hint. */
+  available: boolean
+}
+
+const uiKey = new PluginKey<WriterUi>('nbAiWriterUi')
+
+function setUi(editor: AnyEditor, patch: Partial<WriterUi>): void {
+  const current = uiKey.getState(editor.prosemirrorState)
+  if (!current) return
+  editor.transact((tr) => {
+    tr.setMeta('addToHistory', false)
+    tr.setMeta(uiKey, { ...current, ...patch })
+  })
+}
+
+export function setHighlight(editor: AnyEditor, range: Range | null): void {
+  setUi(editor, { highlight: range })
+}
+
+export function setAiAvailable(editor: AnyEditor, available: boolean): void {
+  if (uiKey.getState(editor.prosemirrorState)?.available !== available) setUi(editor, { available })
+}
+
 export const aiPending = createExtension({
   key: 'nbAiPending',
   prosemirrorPlugins: [
@@ -246,7 +289,35 @@ export const aiPending = createExtension({
           return next === undefined ? value : next
         }
       },
-      props: { decorations }
+      props: {
+        decorations,
+        // The page waits while a change is pending; clicking it accepts or ends the change.
+        editable: (state) => pendingOf(state) === null
+      }
+    }),
+    new Plugin<WriterUi>({
+      key: uiKey,
+      state: {
+        init: () => ({ highlight: null, available: false }),
+        apply: (tr, value) => {
+          const next = (tr.getMeta(uiKey) as WriterUi | undefined) ?? value
+          if (!next.highlight || !tr.docChanged) return next
+          const from = tr.mapping.map(next.highlight.from, 1)
+          const to = tr.mapping.map(next.highlight.to, -1)
+          return { ...next, highlight: from < to ? { from, to } : null }
+        }
+      },
+      props: {
+        decorations: (state) => {
+          const highlight = uiKey.getState(state)?.highlight
+          if (!highlight || pendingOf(state)?.rendered) return null
+          return DecorationSet.create(state.doc, [
+            Decoration.inline(highlight.from, highlight.to, { class: 'nb-ai-selected' })
+          ])
+        },
+        attributes: (state): Record<string, string> =>
+          uiKey.getState(state)?.available ? { class: 'nb-ai-available' } : {}
+      }
     })
   ]
 })
