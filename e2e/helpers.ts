@@ -61,3 +61,39 @@ export async function clickMenuItem(app: ElectronApplication, label: string): Pr
       ?.click()
   }, label)
 }
+
+/**
+ * ProseMirror reads a caret moved by a click or a key on the next `selectionchange`, so a key
+ * pressed at once would act on the old caret. Waits until the editor's selection is the DOM's.
+ */
+async function settleCaret(page: Page): Promise<void> {
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        type Editor = {
+          state: { selection: { anchor: number; head: number } }
+          view: { posAtDOM: (node: Node, offset: number) => number }
+        }
+        const editor = (document.activeElement?.closest('.ProseMirror') as { editor?: Editor })
+          ?.editor
+        const dom = getSelection()
+        if (!editor || !dom?.anchorNode || !dom.focusNode) return false
+        const { anchor, head } = editor.state.selection
+        return (
+          editor.view.posAtDOM(dom.anchorNode, dom.anchorOffset) === anchor &&
+          editor.view.posAtDOM(dom.focusNode, dom.focusOffset) === head
+        )
+      })
+    )
+    .toBe(true)
+}
+
+export async function clickInEditor(page: Page, text: string, clickCount = 1): Promise<void> {
+  await page.locator(editor).getByText(text).click({ clickCount })
+  await settleCaret(page)
+}
+
+export async function pressInEditor(page: Page, key: string): Promise<void> {
+  await page.keyboard.press(key)
+  await settleCaret(page)
+}

@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import type { Page } from '@playwright/test'
 import { GOOD_KEY } from './fakeAnthropic'
 import { expect, test, type AppFixture } from './fixtures'
-import { editor, waitForFile } from './helpers'
+import { clickInEditor, editor, pressInEditor, waitForFile } from './helpers'
 
 const PAGE = 'Intro.\n\nWe spent the hour arguing about launch.\n\nOutro.\n'
 
@@ -26,7 +26,7 @@ const MARKS = '.nb-ai-added, .nb-ai-removed, .nb-ai-added-block, .nb-ai-removed-
 const pastSaveDebounce = (page: Page): Promise<void> => page.waitForTimeout(1500)
 
 async function selectParagraph(page: Page, text: string): Promise<void> {
-  await page.locator(editor).getByText(text).click({ clickCount: 3 })
+  await clickInEditor(page, text, 3)
 }
 
 test('Make shorter streams a diff into the page, saved only once accepted', async ({
@@ -89,8 +89,8 @@ test('every entry point opens the Writer, and Space only on an empty line', asyn
   await page.keyboard.press('Escape')
   await expect(writer).toBeHidden()
 
-  await page.locator(editor).getByText('Outro.').click()
-  await page.keyboard.press('Meta+ArrowRight')
+  await clickInEditor(page, 'Outro.')
+  await pressInEditor(page, 'Meta+ArrowRight')
   await page.keyboard.press('Enter')
   await expect(page.locator('[data-is-empty-and-focused]')).toHaveCSS(
     'content',
@@ -192,7 +192,7 @@ test('Undo leaves no trace, Stop keeps what came, and clicking away accepts', as
   await expect(writer.getByRole('button', { name: 'Accept' })).toBeVisible()
   await expect(page.locator('.nb-ai-added')).toHaveText('A much lo')
 
-  await page.locator(editor).getByText('Intro.').click()
+  await clickInEditor(page, 'Intro.')
   await expect(writer).toBeHidden()
   await waitForFile(join(nb.workspace, 'Notes.md'), 'A much lo')
   expect(await file(nb)).not.toContain('Outro.')
@@ -215,8 +215,8 @@ test('Summarize inserts below, Continue writing at the cursor, Explain replies',
     'Launch slips.'
   )
 
-  await page.locator(editor).getByText('Intro.').click()
-  await page.keyboard.press('Meta+ArrowRight')
+  await clickInEditor(page, 'Intro.')
+  await pressInEditor(page, 'Meta+ArrowRight')
   await page.keyboard.press('Meta+j')
   anthropic.reply({ text: 'More intro.' })
   await writer.getByRole('option', { name: 'Continue writing' }).click()
@@ -386,8 +386,8 @@ test('offline, the AI slash item is greyed out and does nothing', async ({ nb })
   const writer = page.getByRole('dialog', { name: 'AI' })
 
   await page.evaluate(() => window.dispatchEvent(new Event('offline')))
-  await page.locator(editor).getByText('Outro.').click()
-  await page.keyboard.press('Meta+ArrowRight')
+  await clickInEditor(page, 'Outro.')
+  await pressInEditor(page, 'Meta+ArrowRight')
   await page.keyboard.press('Enter')
   await page.keyboard.type('/ai')
   const item = page.getByRole('option', { name: /Ask AI/ })

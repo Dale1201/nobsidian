@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import type { Page } from '@playwright/test'
 import { GOOD_KEY } from './fakeAnthropic'
 import { expect, test, type AppFixture } from './fixtures'
-import { clickMenuItem, editor, waitForFile } from './helpers'
+import { clickInEditor, clickMenuItem, editor, pressInEditor, waitForFile } from './helpers'
 
 const PAGE = 'Intro.\n\nWe spent the hour arguing about launch.\n\nOutro.\n'
 const MARKS = '.nb-ai-added, .nb-ai-removed, .nb-ai-added-block, .nb-ai-removed-block'
@@ -29,7 +29,7 @@ const columnsOf = (left: string, right: string): string =>
   `<div data-columns>\n\n<div data-column>\n\n${left}\n\n</div>\n\n<div data-column>\n\n${right}\n\n</div>\n\n</div>\n\n`
 
 async function askAbout(page: Page, text: string): Promise<void> {
-  await page.locator(editor).getByText(text).click({ clickCount: 3 })
+  await clickInEditor(page, text, 3)
   await page.keyboard.press('Meta+j')
 }
 
@@ -88,14 +88,14 @@ test('offline, AI is greyed out and Space types a space', async ({ nb }) => {
   const page = await setUp(nb)
   await page.context().setOffline(true)
   await page.evaluate(() => window.dispatchEvent(new Event('offline')))
-  await page.locator(editor).getByText('Intro.').click({ clickCount: 3 })
+  await clickInEditor(page, 'Intro.', 3)
   const button = page.getByRole('button', { name: 'Ask AI' })
   await expect(button).toBeDisabled()
   await page.keyboard.press('Meta+j')
   await expect(page.getByRole('dialog', { name: 'AI' })).toBeHidden()
   await button.hover()
   await expect(page.getByText('AI is unavailable offline')).toBeVisible()
-  await page.keyboard.press('ArrowRight')
+  await pressInEditor(page, 'ArrowRight')
   await page.keyboard.press('Enter')
   await page.keyboard.press('Space')
   await expect(page.getByRole('dialog', { name: 'AI' })).toBeHidden()
@@ -183,8 +183,8 @@ test('nothing is marked before the first text arrives', async ({ nb, anthropic }
 test('quitting while Claude writes keeps the page as it was', async ({ nb, anthropic }) => {
   const page = await setUp(nb)
   const before = await readFile(join(nb.workspace, 'Notes.md'), 'utf8')
-  await page.locator(editor).getByText('Intro.').click()
-  await page.keyboard.press('Meta+ArrowRight')
+  await clickInEditor(page, 'Intro.')
+  await pressInEditor(page, 'Meta+ArrowRight')
   await page.keyboard.type(' Typed.')
   anthropic.reply({ text: 'A rewrite in progress.', chunks: 4, hold: true })
   await askAbout(page, 'Outro.')
@@ -209,12 +209,12 @@ test('with AI turned off in Settings, nothing in the editor offers it', async ({
   await page.getByRole('switch', { name: 'Show AI in the editor' }).click()
   await page.keyboard.press('Escape')
 
-  await page.locator(editor).getByText('Intro.').click({ clickCount: 3 })
+  await clickInEditor(page, 'Intro.', 3)
   await expect(page.getByRole('button', { name: 'Bold' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Ask AI' })).toHaveCount(0)
   await page.keyboard.press('Meta+j')
   await expect(page.getByRole('dialog', { name: 'AI' })).toBeHidden()
-  await page.keyboard.press('ArrowRight')
+  await pressInEditor(page, 'ArrowRight')
   await page.keyboard.press('Enter')
   await expect(page.locator('[data-is-empty-and-focused]')).toHaveCSS(
     'content',
@@ -366,7 +366,7 @@ test('a page with columns streams its translation as columns, and Accept saves t
   const writer = page.getByRole('dialog', { name: 'AI' })
   const box = writer.getByRole('textbox', { name: 'Ask AI' })
   const rawSeen = await watchForRaw(page)
-  await page.locator(editor).getByText('Outro.').click()
+  await clickInEditor(page, 'Outro.')
   await page.keyboard.press('Meta+j')
   await box.fill('Translate page')
   await writer.getByRole('option', { name: 'Translate page to…' }).click()
@@ -431,8 +431,8 @@ test('a reply the page cannot take where it would go is not inserted', async ({
   await page.keyboard.press('Escape')
   await expect(writer).toBeHidden()
   await expect(page.locator(editor)).toHaveAttribute('contenteditable', 'true')
-  await page.locator(editor).getByText('Outro.').click()
-  await page.keyboard.press('End')
+  await clickInEditor(page, 'Outro.')
+  await pressInEditor(page, 'End')
   await page.keyboard.type(' Typed.')
   await waitForFile(join(nb.workspace, 'Notes.md'), 'Outro. Typed.')
 })
