@@ -71,11 +71,11 @@ export class UsageLedger {
 
   private async load(): Promise<Record<string, MonthUsage>> {
     if (this.months) return this.months
-    try {
-      this.months = JSON.parse(await readFile(this.file, 'utf8')) as Record<string, MonthUsage>
-    } catch {
-      this.months = {}
-    }
+    const parsed: unknown = await readFile(this.file, 'utf8')
+      .then(JSON.parse)
+      .catch(() => null)
+    const plain = typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
+    this.months = plain ? (parsed as Record<string, MonthUsage>) : {}
     return this.months
   }
 

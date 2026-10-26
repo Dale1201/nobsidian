@@ -10,6 +10,7 @@ import type { UsageLedger } from './usage'
 type MessageParam = Anthropic.Beta.Messages.BetaMessageParam
 type ContentBlock = Anthropic.Beta.Messages.BetaContentBlock
 type Tool = Anthropic.Beta.Messages.BetaTool
+type Delta = Anthropic.Beta.Messages.BetaRawContentBlockDeltaEvent['delta']
 
 export type AiSend = <E extends 'ai:delta' | 'ai:done' | 'ai:error'>(
   event: E,
@@ -27,6 +28,13 @@ export const MAX_TOKENS = 32_000
 export const IDLE_TIMEOUT_MS = 60_000
 const FALLBACK_MODELS: AiModel[] = ['claude-opus-5-5', 'claude-sonnet-5-5']
 
+function deltaLength(delta: Delta): number {
+  if (delta.type === 'text_delta') return delta.text.length
+  if (delta.type === 'input_json_delta') return delta.partial_json.length
+  if (delta.type === 'thinking_delta') return delta.thinking.length
+  return 0
+}
+
 export interface AiServiceOptions {
   keys: KeyStore
   usage: UsageLedger
@@ -37,7 +45,7 @@ export interface AiServiceOptions {
 
 export class AiService {
   private sessions = new Map<string, Session>()
-  private running = new Map<string, AbortController>()
+  private running = new Map<string, { sessionId: string; controller: AbortController }>()
   private readonly client: (key: string) => Anthropic
 
   constructor(private readonly options: AiServiceOptions) {
@@ -80,15 +88,26 @@ export class AiService {
   }
 
   cancel(requestId: string): void {
-    this.running.get(requestId)?.abort()
+    this.running.get(requestId)?.controller.abort()
   }
 
   end(sessionId: string): void {
     this.sessions.delete(sessionId)
+    for (const run of this.running.values()) {
+      if (run.sessionId === sessionId) run.controller.abort()
+    }
   }
 
-  /** Streams one request; every outcome is reported through `send`. */
+  /** Streams one request; every outcome is reported through `send`, and it never rejects. */
   async start(request: AiStart, send: AiSend): Promise<void> {
+    try {
+      await this.stream(request, send)
+    } catch (err) {
+      send('ai:error', { requestId: request.requestId, ...aiError(err) })
+    }
+  }
+
+  private async stream(request: AiStart, send: AiSend): Promise<void> {
     const { requestId } = request
     const fail = (error: AiError): void => send('ai:error', { requestId, ...error })
     const key = await this.options.keys.get()
@@ -108,7 +127,6 @@ export class AiService {
 
     const model = this.options.model()
     const controller = new AbortController()
-    this.running.set(requestId, controller)
     let idle: ReturnType<typeof setTimeout> | undefined
     let timedOut = false
     const touch = (): void => {
@@ -135,9 +153,12 @@ export class AiService {
       },
       { signal: controller.signal }
     )
+    this.running.set(requestId, { sessionId: request.sessionId, controller })
     touch()
+    let received = 0
     stream.on('streamEvent', (event) => {
       touch()
+      if (event.type === 'content_block_delta') received += deltaLength(event.delta)
       if (event.type === 'content_block_start' && event.content_block.type === 'tool_use') {
         const name = event.content_block.name
         if (name === 'edit' || name === 'insert' || name === 'reply') {
@@ -157,8 +178,12 @@ export class AiService {
     try {
       const message = await stream.finalMessage()
       await this.options.usage.add(message.model, message.usage).catch(() => {})
-      session.messages = [...messages, { role: 'assistant', content: message.content }]
-      session.last = message.content
+      // The API rejects an empty turn, or an empty text block, in a follow-up.
+      const content = message.content.filter((block) => block.type !== 'text' || block.text)
+      if (content.length) {
+        session.messages = [...messages, { role: 'assistant', content }]
+        session.last = content
+      }
       if (message.stop_reason === 'refusal') {
         return fail({ kind: 'refusal', message: 'Claude declined this request.' })
       }
@@ -167,8 +192,14 @@ export class AiService {
       }
       send('ai:done', { requestId })
     } catch (err) {
+      // Output tokens are only reported at the end, so the text that arrived stands in for them.
       const partial = stream.currentMessage
-      if (partial) await this.options.usage.add(partial.model, partial.usage).catch(() => {})
+      if (partial) {
+        const output_tokens = Math.max(partial.usage.output_tokens, Math.ceil(received / 3))
+        await this.options.usage
+          .add(partial.model, { ...partial.usage, output_tokens })
+          .catch(() => {})
+      }
       if (controller.signal.aborted && !timedOut) return send('ai:done', { requestId })
       fail(timedOut ? { kind: 'network', message: aiError(null).message } : aiError(err))
     } finally {

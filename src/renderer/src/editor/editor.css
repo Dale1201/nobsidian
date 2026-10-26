@@ -658,7 +658,8 @@
   text-decoration: line-through;
 }
 .nb-ai-removed,
-.nb-ai-removed-block > .bn-block > .bn-block-content {
+.nb-ai-removed-block > .bn-block > .bn-block-content,
+.bn-block-content.nb-ai-removed-block {
   background: var(--ai-removed);
 }
 .nb-ai-added,

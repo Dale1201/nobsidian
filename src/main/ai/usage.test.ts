@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it } from 'vitest'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { costOf, monthKey, UsageLedger } from './usage'
@@ -55,4 +55,12 @@ it('adds responses up per month and keeps them across restarts', async () => {
 
 it('starts empty when the file is missing or corrupt', async () => {
   expect((await new UsageLedger(join(dir, 'missing.json')).month()).dollars).toBe(0)
+  for (const [i, text] of ['null', '[]', '{"2026-10": ', '7'].entries()) {
+    const file = join(dir, `corrupt-${i}.json`)
+    await writeFile(file, text)
+    const ledger = new UsageLedger(file)
+    expect((await ledger.month()).requests).toBe(0)
+    await ledger.add('claude-opus-5-5', { input_tokens: 10, output_tokens: 1 })
+    expect((await new UsageLedger(file).month()).requests).toBe(1)
+  }
 })

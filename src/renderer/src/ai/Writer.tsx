@@ -44,6 +44,13 @@ interface Session {
   markdown: string
 }
 
+interface Turn {
+  id: string
+  mode: AiMode | null
+  text: string
+  stopped: boolean
+}
+
 const WIDTH = 400
 
 // A click just before the shortcut may not have reached the editor state yet.
@@ -117,7 +124,7 @@ export function WriterHost({
   const [selection, setSelection] = useState(false)
   const [answered, setAnswered] = useState(false)
   const session = useRef<Session | null>(null)
-  const request = useRef<{ id: string; mode: AiMode | null; text: string } | null>(null)
+  const request = useRef<Turn | null>(null)
   const frame = useRef(0)
   const popup = useRef<HTMLDivElement>(null)
   const input = useRef<HTMLInputElement>(null)
@@ -228,7 +235,7 @@ export function WriterHost({
     }
     if (s.selectedBlocks.length) selectBlocks(editor, s.selectedBlocks)
     const id = crypto.randomUUID()
-    request.current = { id, mode: null, text: '' }
+    request.current = { id, mode: null, text: '', stopped: false }
     setError(null)
     setReply('')
     setQuery('')
@@ -251,7 +258,15 @@ export function WriterHost({
       const current = request.current
       if (!current) return
       render()
-      if (current.text) setAnswered(true)
+      // An edit that finished with nothing deletes the selection.
+      const deleted =
+        !failed &&
+        !current.stopped &&
+        current.mode === 'edit' &&
+        !current.text &&
+        hasPending(editor)
+      if (deleted) renderPending(editor, '')
+      if (current.text || deleted) setAnswered(true)
       const rendered = pendingOf(editor.prosemirrorState)?.rendered ?? false
       if (!rendered && hasPending(editor)) undoPending(editor)
       setError(failed)
@@ -457,7 +472,9 @@ export function WriterHost({
                 title="Stop"
                 onClick={() => {
                   const current = request.current
-                  if (current) void api.invoke('ai:cancel', { requestId: current.id })
+                  if (!current) return
+                  current.stopped = true
+                  void api.invoke('ai:cancel', { requestId: current.id })
                 }}
               >
                 <StopIcon size={16} />

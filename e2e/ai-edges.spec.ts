@@ -19,6 +19,12 @@ async function setUp(nb: AppFixture): Promise<Page> {
   return page
 }
 
+const blockText = (page: Page, index: number): Promise<string | null> =>
+  page
+    .locator('.bn-block-content')
+    .nth(index)
+    .evaluate((el) => el.textContent)
+
 async function askAbout(page: Page, text: string): Promise<void> {
   await page.locator(editor).getByText(text).click({ clickCount: 3 })
   await page.keyboard.press('Meta+j')
@@ -84,10 +90,13 @@ test('offline, AI is greyed out and Space types a space', async ({ nb }) => {
   await expect(button).toBeDisabled()
   await page.keyboard.press('Meta+j')
   await expect(page.getByRole('dialog', { name: 'AI' })).toBeHidden()
+  await button.hover()
+  await expect(page.getByText('AI is unavailable offline')).toBeVisible()
   await page.keyboard.press('ArrowRight')
   await page.keyboard.press('Enter')
   await page.keyboard.press('Space')
   await expect(page.getByRole('dialog', { name: 'AI' })).toBeHidden()
+  await expect.poll(() => blockText(page, 1)).toBe(' ')
 
   await page.context().setOffline(false)
   await page.evaluate(() => window.dispatchEvent(new Event('online')))
@@ -113,9 +122,59 @@ test('leaving the page while Claude writes removes the change', async ({ nb, ant
   await expect(page.locator('.tab-pane.active .nb-ai-added')).toHaveCount(0)
   await expect(page.getByRole('dialog', { name: 'AI' })).toBeHidden()
   await expect(page.locator('.tab-pane.active ' + editor)).toContainText('Outro.')
+  await expect.poll(() => anthropic.streaming).toBe(0)
   anthropic.release()
-  await page.waitForTimeout(500)
+  await expect(page.locator(MARKS)).toHaveCount(0)
+  await expect(page.locator('.tab-pane.active ' + editor)).toContainText('Outro.')
+  await expect(page.locator('.tab-pane.active ' + editor)).not.toContainText('A rewrite')
   expect(await readFile(join(nb.workspace, 'Notes.md'), 'utf8')).toBe(before)
+})
+
+test('closing the tab while Claude writes removes the change', async ({ nb, anthropic }) => {
+  const page = await setUp(nb)
+  const before = await readFile(join(nb.workspace, 'Notes.md'), 'utf8')
+  await clickMenuItem(nb.app, 'New Tab')
+  await page.getByTestId('sidebar-row-Other').click()
+  await page.getByTestId('tab-Notes').click()
+  anthropic.reply({ text: 'A rewrite in progress.', chunks: 4, hold: true })
+  await askAbout(page, 'Outro.')
+  await page
+    .getByRole('dialog', { name: 'AI' })
+    .getByRole('option', { name: 'Improve writing' })
+    .click()
+  await expect(page.locator('.nb-ai-added')).toBeVisible()
+
+  await clickMenuItem(nb.app, 'Close Tab')
+  await expect(page.getByTestId('tab-Notes')).toHaveCount(0)
+  await expect(page.getByRole('dialog', { name: 'AI' })).toBeHidden()
+  await expect.poll(() => anthropic.streaming).toBe(0)
+  anthropic.release()
+  expect(await readFile(join(nb.workspace, 'Notes.md'), 'utf8')).toBe(before)
+  await page.getByTestId('sidebar-row-Notes').click()
+  const pane = page.locator('.tab-pane.active ' + editor)
+  await expect(pane).toContainText('Outro.')
+  await expect(pane).not.toContainText('A rewrite')
+  await expect(page.locator(MARKS)).toHaveCount(0)
+})
+
+test('nothing is marked before the first text arrives', async ({ nb, anthropic }) => {
+  const page = await setUp(nb)
+  const writer = page.getByRole('dialog', { name: 'AI' })
+  anthropic.reply({ text: '', hold: true })
+  await askAbout(page, 'Outro.')
+  await writer.getByRole('option', { name: 'Improve writing' }).click()
+  await expect(writer.getByRole('button', { name: 'Stop' })).toBeVisible()
+  await expect.poll(() => anthropic.streaming).toBe(1)
+  await expect(page.locator(MARKS)).toHaveCount(0)
+  await writer.getByRole('button', { name: 'Stop' }).click()
+  await expect(writer.getByRole('button', { name: 'Stop' })).toBeHidden()
+  await expect(page.locator(MARKS)).toHaveCount(0)
+  await expect(page.locator(editor)).toContainText('Outro.')
+
+  anthropic.reply({ text: 'Goodbye.' })
+  await writer.getByRole('option', { name: 'Proofread' }).click()
+  await expect(page.locator('.nb-ai-removed')).toHaveText('Outro.')
+  await expect(page.locator('.nb-ai-added')).toHaveText('Goodbye.')
 })
 
 test('quitting while Claude writes keeps the page as it was', async ({ nb, anthropic }) => {
@@ -158,6 +217,10 @@ test('with AI turned off in Settings, nothing in the editor offers it', async ({
     /Press ‘\/’ for commands…/,
     { pseudo: 'after' }
   )
+  await page.keyboard.press('Space')
+  await expect(page.getByRole('dialog', { name: 'AI' })).toBeHidden()
+  await expect.poll(() => blockText(page, 1)).toBe(' ')
+  await page.keyboard.press('Backspace')
   await page.keyboard.type('/ai')
   await expect(page.getByRole('option', { name: /Ask AI/ })).toHaveCount(0)
 })
@@ -187,6 +250,7 @@ test('the Writer and its diff look right in light and dark', async ({ nb, anthro
 
   await clickMenuItem(nb.app, 'Toggle Dark Mode')
   await expect(writer).toHaveCSS('background-color', 'rgb(32, 32, 32)')
+  await expect(writer).toHaveCSS('box-shadow', /rgb\(56, 56, 54\) 0px 0px 0px 1px/)
   await expect(page.locator('.nb-ai-added')).toHaveCSS(
     'background-color',
     'rgba(35, 131, 226, 0.18)'

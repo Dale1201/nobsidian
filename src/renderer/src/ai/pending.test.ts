@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { BlockNoteEditor, type PartialBlock } from '@blocknote/core'
+import { BlockNoteEditor, type Block, type PartialBlock } from '@blocknote/core'
 import { TextSelection } from 'prosemirror-state'
 import { describe, expect, it } from 'vitest'
 import {
@@ -44,6 +44,41 @@ function cursorIn(editor: Editor, id: string): void {
 
 const texts = (editor: Editor): string[] =>
   editor.document.map((b) => (b.content as { text?: string }[]).map((c) => c.text ?? '').join(''))
+
+type Tree = (string | [string, Tree])[]
+
+const textOf = (block: Block): string =>
+  (block.content as { text?: string }[]).map((c) => c.text ?? '').join('')
+
+const tree = (blocks: Block[]): Tree =>
+  blocks.map((b) => (b.children.length ? [textOf(b), tree(b.children)] : textOf(b)))
+
+/** Where `text` starts in the document. */
+function posOf(editor: Editor, text: string): number {
+  let at = -1
+  editor.prosemirrorState.doc.descendants((node, pos) => {
+    const i = node.isText ? node.text!.indexOf(text) : -1
+    if (at === -1 && i !== -1) at = pos + i
+    return at === -1
+  })
+  return at
+}
+
+const marked = (editor: Editor, cls: string): string[] =>
+  [...editor.domElement!.querySelectorAll(`.${cls}`)].map((el) => el.textContent ?? '')
+
+const nested = (): PartialBlock[] => [
+  {
+    id: 'p',
+    type: 'bulletListItem',
+    content: 'Parent',
+    children: [
+      { id: 'c1', type: 'bulletListItem', content: 'Child one' },
+      { id: 'c2', type: 'bulletListItem', content: 'Child two' }
+    ]
+  },
+  { id: 'after', type: 'paragraph', content: 'After' }
+]
 
 const page = (): PartialBlock[] => [
   { id: 'a', type: 'paragraph', content: 'Intro.' },
@@ -187,6 +222,109 @@ describe('blocks', () => {
     expect(editor.document).toHaveLength(1)
     expect(texts(editor)).toEqual([''])
   })
+
+  it('remove a first block that comes back empty, keeping the rest', () => {
+    const editor = editorWith(page())
+    beginPending(editor, 'edit', ['a'])
+    renderPending(editor, '')
+    acceptPending(editor)
+    expect(texts(editor)).toEqual(['We spent the hour arguing about launch.', 'Outro.'])
+  })
+})
+
+describe('nested blocks', () => {
+  it('mark a change inside a child block', () => {
+    const editor = editorWith(nested())
+    select(editor, 'one')
+    beginPending(editor, 'edit')
+    renderPending(editor, 'X.\n\nY.')
+    expect(marked(editor, 'nb-ai-removed-block')).toEqual(['Child one'])
+    expect(marked(editor, 'nb-ai-added-block')).toEqual(['X.', 'Y.'])
+  })
+
+  it('mark blocks inserted below a child block', () => {
+    const editor = editorWith(nested())
+    select(editor, 'one')
+    beginPending(editor, 'insertBelow')
+    renderPending(editor, 'Summary.')
+    expect(marked(editor, 'nb-ai-added-block')).toEqual(['Summary.'])
+  })
+
+  it('keep the children of a rewritten block when only its own text was selected', () => {
+    const editor = editorWith(nested())
+    const before = editor.document
+    select(editor, 'Parent')
+    beginPending(editor, 'edit')
+    renderPending(editor, 'A.\n\nB.')
+    expect(marked(editor, 'nb-ai-removed-block')).toEqual(['Parent'])
+    const inline = [...editor.domElement!.querySelectorAll('.bn-inline-content')]
+    for (const child of ['Child one', 'Child two']) {
+      const el = inline.find((e) => e.textContent === child)!
+      expect(el.closest('.nb-ai-removed-block, .nb-ai-removed')).toBeNull()
+    }
+    acceptPending(editor)
+    expect(tree(editor.document)).toEqual(['A.', ['B.', ['Child one', 'Child two']], 'After'])
+    editor.undo()
+    expect(editor.document).toEqual(before)
+  })
+
+  it('keep children after a result that already has its own', () => {
+    const editor = editorWith(nested())
+    select(editor, 'Parent')
+    beginPending(editor, 'edit')
+    renderPending(editor, '- A.\n    - A1.')
+    acceptPending(editor)
+    expect(tree(editor.document)).toEqual([['A.', ['A1.', 'Child one', 'Child two']], 'After'])
+  })
+
+  it('replace the children too when the selection reaches into them, or picks the block', () => {
+    const editor = editorWith(nested())
+    const before = editor.document
+    select(editor, 'Parent', 'one')
+    beginPending(editor, 'edit')
+    renderPending(editor, 'A.\n\nB.')
+    acceptPending(editor)
+    expect(tree(editor.document)).toEqual(['A.', 'B.', 'After'])
+    editor.undo()
+    expect(editor.document).toEqual(before)
+
+    beginPending(editor, 'edit', ['p'])
+    renderPending(editor, 'A.')
+    acceptPending(editor)
+    expect(tree(editor.document)).toEqual(['A.', 'After'])
+  })
+})
+
+describe('edits made by others while pending', () => {
+  it('move the change along with them', () => {
+    const editor = editorWith(page())
+    select(editor, 'Outro')
+    beginPending(editor, 'edit')
+    renderPending(editor, 'Bye')
+    const intro = posOf(editor, 'Intro.')
+    editor.transact((tr) => tr.insertText('Hello. ', intro))
+    renderPending(editor, 'Goodbye')
+    acceptPending(editor)
+    expect(texts(editor)).toEqual([
+      'Hello. Intro.',
+      'We spent the hour arguing about launch.',
+      'Goodbye.'
+    ])
+  })
+
+  it('leave them in place on Undo', () => {
+    const editor = editorWith(page())
+    beginPending(editor, 'edit', ['b'])
+    renderPending(editor, 'Brand new text')
+    const intro = posOf(editor, 'Intro.')
+    editor.transact((tr) => tr.insertText('Hi ', intro))
+    undoPending(editor)
+    expect(texts(editor)).toEqual([
+      'Hi Intro.',
+      'We spent the hour arguing about launch.',
+      'Outro.'
+    ])
+  })
 })
 
 describe('undo', () => {
@@ -232,6 +370,15 @@ describe('decorations', () => {
     expect(dom.querySelectorAll('[class*="nb-ai-"]')).toHaveLength(0)
   })
 
+  it('mark nothing until the first text arrives', () => {
+    const editor = editorWith(page())
+    beginPending(editor, 'edit', ['c'])
+    const dom = editor.domElement!
+    expect(dom.querySelectorAll('.nb-ai-removed-block, .nb-ai-removed')).toHaveLength(0)
+    renderPending(editor, 'Bye.')
+    expect(marked(editor, 'nb-ai-removed-block')).toEqual(['Outro.'])
+  })
+
   it('mark inline words while pending', () => {
     const editor = editorWith(page())
     select(editor, 'the hour')
@@ -251,12 +398,28 @@ describe("Claude's answers", () => {
     ])
     expect(resultBlocks('```md\nPlain.\n```\n').map((b) => b.type)).toEqual(['paragraph'])
     expect(resultBlocks('```ts\nconst a = 1\n```').map((b) => b.type)).toEqual(['codeBlock'])
+    expect(resultBlocks('```\nconst a = 1\n```').map((b) => b.type)).toEqual(['codeBlock'])
   })
 
   it('never bring images or files into the page', () => {
     const blocks = resultBlocks('Look:\n\n![chart](https://example.com/pixel.png)\n\nDone.')
     expect(blocks.map((b) => b.type)).toEqual(['paragraph', 'paragraph'])
     expect(JSON.stringify(blocks)).not.toContain('example.com')
+  })
+
+  it('go into a code block as they are, never as Markdown', () => {
+    const editor = editorWith([{ id: 'k', type: 'codeBlock', content: 'return x' }])
+    select(editor, 'x')
+    beginPending(editor, 'edit')
+    renderPending(editor, 'a*b*c + __init__')
+    acceptPending(editor)
+    expect(texts(editor)).toEqual(['return a*b*c + __init__'])
+
+    select(editor, 'a*b*c')
+    beginPending(editor, 'edit')
+    renderPending(editor, '```python\na**2\n```')
+    acceptPending(editor)
+    expect(texts(editor)).toEqual(['return a**2 + __init__'])
   })
 
   it('keep a heading or a to-do what it is after an inline edit', () => {

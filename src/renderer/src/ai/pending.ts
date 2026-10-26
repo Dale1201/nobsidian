@@ -1,6 +1,6 @@
 import { blockToNode, createExtension, type BlockNoteEditor } from '@blocknote/core'
 import { Fragment, type Node, type ResolvedPos } from 'prosemirror-model'
-import { Plugin, PluginKey, type EditorState } from 'prosemirror-state'
+import { Plugin, PluginKey, type EditorState, type Transaction } from 'prosemirror-state'
 import { Decoration, DecorationSet } from 'prosemirror-view'
 import { markdownToBlocks } from '@shared/core/parse'
 import type { Block } from '@shared/core/blocks'
@@ -17,13 +17,15 @@ interface Range {
 
 /**
  * A change the Writer has shown but not applied. The page itself is untouched apart from the
- * added content, which sits after anything it replaces, so these positions never move.
+ * added content, which sits after anything it replaces; edits made by others are mapped.
  */
 export interface Pending {
   /** Text inside one block that a single paragraph replaces in place. */
   inline: Range | null
   /** Blocks replaced when the result is not inline; null when the result is only inserted. */
   blocks: Range | null
+  /** The last replaced block's children when the selection leaves them out: they stay. */
+  keep: Range | null
   /** Where block results go: after `blocks`, or after the cursor's block. */
   insertAt: number
   /** Whether anything has been shown, whether it is inline, and its size in the document. */
@@ -55,6 +57,14 @@ function touchedBlocks($from: ResolvedPos, $to: ResolvedPos): Range {
   return { from: $from.before(d), to: $from.after(d) }
 }
 
+/** The child group of the last block in `blocks`, when the selection ends before it. */
+function keptChildren(doc: Node, blocks: Range, to: number): Range | null {
+  const last = doc.resolve(blocks.to).nodeBefore
+  if (!last || last.childCount < 2) return null
+  const from = blocks.to - last.nodeSize + 1 + last.firstChild!.nodeSize
+  return to <= from ? { from, to: blocks.to - 1 } : null
+}
+
 function blockRange(doc: Node, ids: string[]): Range | null {
   let from = -1
   let to = -1
@@ -79,14 +89,16 @@ export function placementRanges(
 ): Omit<Pending, 'rendered' | 'isInline' | 'addedSize'> {
   if (placement === 'editPage') {
     const end = 1 + doc.firstChild!.content.size
-    return { inline: null, blocks: { from: 1, to: end }, insertAt: end }
+    return { inline: null, blocks: { from: 1, to: end }, keep: null, insertAt: end }
   }
   const $from = doc.resolve(selection.from)
   const $to = doc.resolve(selection.to)
   const empty = selection.from === selection.to
   const picked = selectedBlocks.length ? blockRange(doc, selectedBlocks) : null
   const touched = picked ?? touchedBlocks($from, $to)
-  if (placement === 'insertBelow') return { inline: null, blocks: null, insertAt: touched.to }
+  if (placement === 'insertBelow') {
+    return { inline: null, blocks: null, keep: null, insertAt: touched.to }
+  }
   if (placement === 'insertAtCursor') {
     const d = containerDepth($from)
     const container = $from.node(d)
@@ -94,13 +106,19 @@ export function placementRanges(
     const content = container.firstChild!
     const blank =
       container.childCount === 1 && content.type.name === 'paragraph' && content.content.size === 0
-    return { inline: null, blocks: blank ? cursorBlock : null, insertAt: cursorBlock.to }
+    return {
+      inline: null,
+      blocks: blank ? cursorBlock : null,
+      keep: null,
+      insertAt: cursorBlock.to
+    }
   }
   const inline =
     !picked && !empty && $from.parent === $to.parent && $from.parent.isTextblock
       ? { from: $from.pos, to: $to.pos }
       : null
-  return { inline, blocks: touched, insertAt: touched.to }
+  const keep = picked ? null : keptChildren(doc, touched, selection.to)
+  return { inline, blocks: touched, keep, insertAt: touched.to }
 }
 
 /**
@@ -142,7 +160,8 @@ function blockFragment(editor: AnyEditor, blocks: Block[]): Fragment {
 }
 
 const MEDIA = new Set(['image', 'video', 'audio', 'file', 'drawing'])
-const WRAPPING_FENCE = /^```(?:markdown|md)?\n([\s\S]*?)\n?```\s*$/
+const WRAPPING_FENCE = /^```(?:markdown|md)\n([\s\S]*?)\n?```\s*$/
+const CODE_FENCE = /^```[^\n]*\n([\s\S]*?)\n?```\s*$/
 
 /**
  * Claude's Markdown as blocks for the page. A fence around the whole answer is taken off, and
@@ -157,6 +176,12 @@ export function resultBlocks(markdown: string): Block[] {
   return strip(markdownToBlocks(fenced ? fenced[1] : markdown))
 }
 
+/** Claude's answer for a selection inside a code block: plain text, without a wrapping fence. */
+function codeFragment(editor: AnyEditor, markdown: string): Fragment {
+  const text = CODE_FENCE.exec(markdown.trim())?.[1] ?? markdown
+  return text ? Fragment.from(editor.pmSchema.text(text)) : Fragment.empty
+}
+
 function fitsInline(blocks: Block[]): boolean {
   if (blocks.length === 0) return true
   return blocks.length === 1 && blocks[0].type === 'paragraph' && blocks[0].children.length === 0
@@ -164,11 +189,18 @@ function fitsInline(blocks: Block[]): boolean {
 
 /** Shows `markdown` as the pending result, in place of the previous one. */
 export function renderPending(editor: AnyEditor, markdown: string): void {
-  const pending = pendingOf(editor.prosemirrorState)
+  const state = editor.prosemirrorState
+  const pending = pendingOf(state)
   if (!pending) return
-  const blocks = resultBlocks(markdown)
-  const isInline = pending.inline !== null && fitsInline(blocks)
-  const fragment = isInline ? inlineFragment(editor, blocks) : blockFragment(editor, blocks)
+  const code =
+    pending.inline !== null && state.doc.resolve(pending.inline.from).parent.type.spec.code
+  const blocks = code ? [] : resultBlocks(markdown)
+  const isInline = pending.inline !== null && (code || fitsInline(blocks))
+  const fragment = code
+    ? codeFragment(editor, markdown)
+    : isInline
+      ? inlineFragment(editor, blocks)
+      : blockFragment(editor, blocks)
   const at = isInline ? pending.inline!.to : pending.insertAt
   const { added } = pendingRanges(pending)
   // Small steps rather than a whole-document swap, so the undo history before the Writer survives.
@@ -217,14 +249,30 @@ export function acceptPending(editor: AnyEditor): void {
   const content = editor.prosemirrorState.doc.slice(added.from, added.to).content
   restore(editor, pending)
   editor.transact((tr) => {
+    let fill = content
+    if (removed && !pending.isInline && pending.keep) {
+      fill = withChildren(fill, tr.doc.nodeAt(pending.keep.from)!)
+    }
     // A replaced page body must keep at least one block.
-    const fill =
-      content.size === 0 && removed && !pending.isInline && removed.from === 1
-        ? Fragment.from(blockToNode({ type: 'paragraph' }, editor.pmSchema))
-        : content
+    const body = tr.doc.firstChild!
+    if (fill.size === 0 && removed?.from === 1 && removed.to === 1 + body.content.size) {
+      fill = Fragment.from(blockToNode({ type: 'paragraph' }, editor.pmSchema))
+    }
     if (removed) tr.replaceWith(removed.from, removed.to, fill)
     else if (fill.size) tr.insert(pending.insertAt, fill)
   })
+}
+
+/** `blocks` with `group`'s blocks added to the last one's children, or in its place if none. */
+function withChildren(blocks: Fragment, group: Node): Fragment {
+  const last = blocks.lastChild
+  if (!last) return group.content
+  const own = last.childCount > 1 ? last.lastChild! : null
+  const children = own ? own.copy(own.content.append(group.content)) : group
+  return blocks.replaceChild(
+    blocks.childCount - 1,
+    last.copy(Fragment.from([last.firstChild!, children]))
+  )
 }
 
 function decorations(state: EditorState): DecorationSet | null {
@@ -238,17 +286,40 @@ function decorations(state: EditorState): DecorationSet | null {
       out.push(Decoration.inline(range.from, range.to, { class: `nb-ai-${kind}` }))
       return
     }
+    // Whole blocks, or a block's own content when its children lie outside the range.
     state.doc.nodesBetween(range.from, range.to, (node, pos) => {
-      if (node.type.name !== 'blockContainer') return true
+      if (node.type.name === 'blockGroup') return true
       if (pos >= range.from && pos + node.nodeSize <= range.to) {
         out.push(Decoration.node(pos, pos + node.nodeSize, { class: `nb-ai-${kind}-block` }))
+        return false
       }
-      return false
+      return node.type.name === 'blockContainer'
     })
   }
-  if (removed) mark(removed, 'removed')
+  const kept = !pending.isInline && pending.keep
+  if (removed) mark(kept ? { from: removed.from, to: kept.from } : removed, 'removed')
   mark(added, 'added')
   return DecorationSet.create(state.doc, out)
+}
+
+/** Follows edits made by others; the added content stays right where it was rendered. */
+function mapPending(pending: Pending, mapping: Transaction['mapping']): Pending {
+  const range = (r: Range | null): Range | null => {
+    if (!r) return null
+    const from = mapping.map(r.from, 1)
+    return { from, to: Math.max(from, mapping.map(r.to, -1)) }
+  }
+  const at = pending.isInline ? pending.inline!.to : pending.insertAt
+  const addedFrom = mapping.map(at, -1)
+  const addedTo = mapping.map(at + pending.addedSize, -1)
+  return {
+    ...pending,
+    inline: range(pending.inline),
+    blocks: range(pending.blocks),
+    keep: range(pending.keep),
+    insertAt: mapping.map(pending.insertAt, -1),
+    addedSize: addedTo - addedFrom
+  }
 }
 
 interface WriterUi {
@@ -286,7 +357,8 @@ export const aiPending = createExtension({
         init: () => null,
         apply: (tr, value) => {
           const next = tr.getMeta(key) as Pending | null | undefined
-          return next === undefined ? value : next
+          if (next !== undefined) return next
+          return value && tr.docChanged ? mapPending(value, tr.mapping) : value
         }
       },
       props: {

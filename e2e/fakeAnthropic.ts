@@ -85,6 +85,11 @@ export class FakeAnthropic {
     for (const release of this.releases.splice(0)) release()
   }
 
+  /** How many streams are still open. */
+  get streaming(): number {
+    return this.open.size
+  }
+
   /** The bodies of the message requests so far. */
   messages(): Record<string, unknown>[] {
     return this.requests.filter((r) => r.path === '/v1/messages').map((r) => r.body!)

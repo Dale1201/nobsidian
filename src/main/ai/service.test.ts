@@ -225,6 +225,59 @@ describe('requests', () => {
     })
   })
 
+  it('start afresh after a refusal that said nothing', async () => {
+    fake.reply({ text: '', stopReason: 'refusal' }, { text: 'We argued.' })
+    await service.start(request(), send)
+    await service.start(
+      request({ skill: undefined, instruction: 'try again', followUp: true }),
+      send
+    )
+    const second = fake.messages()[1].messages as { role: string }[]
+    expect(second.map((m) => m.role)).toEqual(['user'])
+    expect(last().name).toBe('ai:done')
+  })
+
+  it('report a failure before the stream starts, without throwing', async () => {
+    const broken = new AiService({
+      keys,
+      usage: new UsageLedger(join(dir, 'usage.json')),
+      model: () => model,
+      client: () => {
+        throw new Error('no client')
+      }
+    })
+    const r = request()
+    await expect(broken.start(r, send)).resolves.toBeUndefined()
+    expect(events).toEqual([
+      {
+        name: 'ai:error',
+        data: expect.objectContaining({ requestId: r.requestId, kind: 'network' })
+      }
+    ])
+  })
+
+  it('stop the running request when the Writer ends', async () => {
+    fake.reply({ text: 'We argued for an hour.', hold: true })
+    const r = request()
+    const running = service.start(r, send)
+    await expect.poll(() => deltas().length).toBe(1)
+    service.end('s1')
+    await running
+    expect(last()).toEqual({ name: 'ai:done', data: { requestId: r.requestId } })
+    await expect.poll(() => fake.streaming).toBe(0)
+  })
+
+  it('bill a stopped stream for at least the text that arrived', async () => {
+    fake.reply({ text: 'x'.repeat(300), chunks: 2, hold: true })
+    const r = request()
+    const running = service.start(r, send)
+    await expect.poll(() => deltas().length).toBe(1)
+    service.cancel(r.requestId)
+    await running
+    const month = await new UsageLedger(join(dir, 'usage.json')).month()
+    expect(month.outputTokens).toBeGreaterThanOrEqual(50)
+  })
+
   it('price the model that answered, which a fallback can change', async () => {
     fake.reply({
       text: 'x',

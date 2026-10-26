@@ -413,3 +413,23 @@ test('after a reply and a failed follow-up, typing retries and skills are not of
   await expect(writer.getByRole('alert')).toContainText('Claude is busy right now.')
   await expect(writer.getByRole('option')).toHaveCount(0)
 })
+
+test('an edit that comes back empty deletes the selection', async ({ nb, anthropic }) => {
+  const page = await setUp(nb)
+  await waitForFile(join(nb.workspace, 'Notes.md'), /^---\nid: /)
+  const writer = page.getByRole('dialog', { name: 'AI' })
+  const box = writer.getByRole('textbox', { name: 'Ask AI' })
+
+  await selectParagraph(page, 'Outro.')
+  await page.keyboard.press('Meta+j')
+  anthropic.reply({ tool: { name: 'edit', markdown: '' } })
+  await box.fill('delete this')
+  await box.press('Enter')
+  await expect(page.locator('.nb-ai-removed')).toHaveText('Outro.')
+  await expect(page.locator('.nb-ai-added, .nb-ai-added-block')).toHaveCount(0)
+  await writer.getByRole('button', { name: 'Accept' }).click()
+  await expect(writer).toBeHidden()
+  await expect(page.locator(editor)).not.toContainText('Outro.')
+  await expect.poll(async () => (await file(nb)).includes('Outro.')).toBe(false)
+  expect(await file(nb)).toContain('We spent the hour arguing about launch.')
+})
