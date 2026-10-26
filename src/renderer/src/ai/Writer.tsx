@@ -44,6 +44,12 @@ interface Session {
   markdown: string
 }
 
+/** A result as it was rendered. */
+interface Shown {
+  text: string
+  partial: boolean
+}
+
 interface Turn {
   id: string
   mode: AiMode | null
@@ -51,6 +57,8 @@ interface Turn {
   stopped: boolean
   /** The page could not take the result where it goes. */
   misfit: boolean
+  /** The change under review when the turn began. */
+  before: Shown | null
 }
 
 const MISFIT: AiError = { kind: 'request', message: 'The answer could not be placed here.' }
@@ -131,6 +139,7 @@ export function WriterHost({
   const [answered, setAnswered] = useState(false)
   const session = useRef<Session | null>(null)
   const request = useRef<Turn | null>(null)
+  const lastShown = useRef<Shown | null>(null)
   const frame = useRef(0)
   const popup = useRef<HTMLDivElement>(null)
   const input = useRef<HTMLInputElement>(null)
@@ -144,19 +153,27 @@ export function WriterHost({
   // Skills start a request; once Claude has answered, typing revises it.
   const shown = phase === 'prompt' && !answered ? matchingSkills(skills, query) : []
 
-  const render = useCallback((): void => {
-    cancelAnimationFrame(frame.current)
-    frame.current = 0
-    const current = request.current
-    // A turn that brought nothing leaves the result under review as it is.
-    if (!current?.text || current.mode === 'reply' || current.misfit || !hasPending(editor)) return
-    try {
-      renderPending(editor, current.text)
-    } catch {
-      current.misfit = true
-      void api.invoke('ai:cancel', { requestId: current.id })
-    }
-  }, [editor])
+  /** Renders the turn's text; false when the page cannot take it where it goes. */
+  const show = useCallback(
+    (partial: boolean): boolean => {
+      cancelAnimationFrame(frame.current)
+      frame.current = 0
+      const current = request.current
+      // A turn that brought nothing leaves the result under review as it is.
+      if (!current?.text || current.mode === 'reply' || !hasPending(editor)) return true
+      try {
+        if (renderPending(editor, current.text, partial))
+          lastShown.current = { text: current.text, partial }
+        return true
+      } catch {
+        return false
+      }
+    },
+    [editor]
+  )
+
+  // While the answer streams, a frame the page cannot take is skipped; the last good one stays.
+  const render = useCallback((): void => void show(true), [show])
 
   // Written to the element directly: it follows every keystroke of the stream.
   const place = useCallback((): void => {
@@ -197,11 +214,10 @@ export function WriterHost({
   )
 
   const accept = useCallback((): void => {
-    render()
     request.current = null
     acceptPending(editor)
     close()
-  }, [editor, render, close])
+  }, [editor, close])
 
   const openWriter = useCallback((): void => {
     if (session.current || !editor.isEditable) return
@@ -240,6 +256,7 @@ export function WriterHost({
     const s = session.current
     if (!s) return
     const followUp = answered
+    const before = hasPending(editor) ? lastShown.current : null
     if (!hasPending(editor)) {
       const skill = ask.skill ? skills.find((k) => k.id === ask.skill) : null
       const placement = skill ? placementOf(skill.kind) : placementForText(s.selection)
@@ -247,7 +264,7 @@ export function WriterHost({
     }
     if (s.selectedBlocks.length) selectBlocks(editor, s.selectedBlocks)
     const id = crypto.randomUUID()
-    request.current = { id, mode: null, text: '', stopped: false, misfit: false }
+    request.current = { id, mode: null, text: '', stopped: false, misfit: false, before }
     setError(null)
     setReply('')
     setQuery('')
@@ -269,7 +286,14 @@ export function WriterHost({
     const finish = (error: AiError | null): void => {
       const current = request.current
       if (!current) return
-      render()
+      // Only the whole answer, or as far as it got, decides whether it fits.
+      current.misfit = !show(current.stopped || error !== null)
+      if (current.misfit) {
+        if (current.before) {
+          renderPending(editor, current.before.text, current.before.partial)
+          lastShown.current = current.before
+        } else if (hasPending(editor)) undoPending(editor)
+      }
       const failed = current.misfit ? MISFIT : error
       // An edit that finished with nothing deletes the selection.
       const deleted =
@@ -278,7 +302,10 @@ export function WriterHost({
         current.mode === 'edit' &&
         !current.text &&
         hasPending(editor)
-      if (deleted) renderPending(editor, '')
+      if (deleted) {
+        renderPending(editor, '')
+        lastShown.current = { text: '', partial: false }
+      }
       const rendered = pendingOf(editor.prosemirrorState)?.rendered ?? false
       if (rendered || (current.text && !current.misfit)) setAnswered(true)
       if (!rendered && hasPending(editor)) undoPending(editor)
@@ -307,7 +334,7 @@ export function WriterHost({
       })
     ]
     return () => offs.forEach((off) => off())
-  }, [editor, render])
+  }, [editor, render, show])
 
   // A hidden tab or a closed page takes its Writer with it.
   useEffect(() => {
@@ -406,7 +433,14 @@ export function WriterHost({
     if (!s) return
     if (s.selection) beginPending(editor, 'insertBelow', s.selectedBlocks)
     else beginPending(editor, 'insertAtCursor')
-    renderPending(editor, reply)
+    try {
+      renderPending(editor, reply)
+    } catch {
+      undoPending(editor)
+      setError(MISFIT)
+      input.current?.focus()
+      return
+    }
     acceptPending(editor)
     close()
   }

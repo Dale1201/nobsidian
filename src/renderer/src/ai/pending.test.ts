@@ -450,6 +450,9 @@ describe("Claude's answers", () => {
   })
 })
 
+const NESTED =
+  '<div data-columns>\n\n<div data-column>\n\nA\n\n</div>\n\n<div data-column>\n\nB\n\n</div>\n\n</div>'
+
 describe('blocks in columns', () => {
   function columns(): Editor {
     const editor = BlockNoteEditor.create({
@@ -493,15 +496,41 @@ describe('blocks in columns', () => {
     expect(shape(editor)).toEqual(['', 'Right.'])
   })
 
+  it('stream as columns, never as raw Markdown, where the page can take them', () => {
+    const editor = BlockNoteEditor.create({
+      schema: withMultiColumn(BlockNoteSchema.create()),
+      initialContent: page(),
+      extensions: [aiPending]
+    }) as unknown as Editor
+    editor.mount(document.createElement('div'))
+    select(editor, 'Outro.')
+    beginPending(editor, 'edit')
+    for (let n = 1; n <= NESTED.length; n++) {
+      renderPending(editor, NESTED.slice(0, n), true)
+      expect(editor.document.map((b) => b.type)).not.toContain('raw')
+    }
+    renderPending(editor, NESTED)
+    acceptPending(editor)
+    expect(editor.document.map((b) => b.type)).toEqual(['paragraph', 'paragraph', 'columnList'])
+    expect(editor.document[2].children.map((c) => tree(c.children))).toEqual([['A'], ['B']])
+  })
+
+  it('show nothing of an answer until some of it is whole', () => {
+    const editor = columns()
+    select(editor, 'Left.')
+    beginPending(editor, 'edit')
+    expect(renderPending(editor, '<div data-col', true)).toBe(false)
+    expect(pendingOf(editor.prosemirrorState)?.rendered).toBe(false)
+  })
+
   it('are refused, changing nothing, where the page cannot take them', () => {
     const editor = columns()
     select(editor, 'Left.')
     beginPending(editor, 'edit')
     renderPending(editor, 'Left, then.\n\nMore.')
     const before = editor.prosemirrorState.doc
-    const nested =
-      '<div data-columns>\n\n<div data-column>\n\nA\n\n</div>\n\n<div data-column>\n\nB\n\n</div>\n\n</div>'
-    expect(() => renderPending(editor, nested)).toThrow(RangeError)
+    expect(() => renderPending(editor, NESTED)).toThrow(RangeError)
+    expect(() => renderPending(editor, NESTED.slice(0, 50), true)).toThrow(RangeError)
     expect(editor.prosemirrorState.doc.eq(before)).toBe(true)
     expect(marked(editor, 'nb-ai-added-block')).toEqual(['Left, then.', 'More.'])
   })

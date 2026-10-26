@@ -2,7 +2,7 @@ import { blockToNode, createExtension, type BlockNoteEditor } from '@blocknote/c
 import { Fragment, type Node, type ResolvedPos } from 'prosemirror-model'
 import { Plugin, PluginKey, type EditorState, type Transaction } from 'prosemirror-state'
 import { Decoration, DecorationSet } from 'prosemirror-view'
-import { markdownToBlocks } from '@shared/core/parse'
+import { closeContainers, markdownToBlocks } from '@shared/core/parse'
 import type { Block } from '@shared/core/blocks'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -186,19 +186,30 @@ function codeFragment(editor: AnyEditor, markdown: string): Fragment {
   return text ? Fragment.from(editor.pmSchema.text(text)) : Fragment.empty
 }
 
+/** An answer still arriving, as far as it can be shown: a line of HTML waits until it is whole. */
+function settled(markdown: string): string {
+  return closeContainers(markdown.replace(/(^|\n)<[^\n]*$/, '$1'))
+}
+
 function fitsInline(blocks: Block[]): boolean {
   if (blocks.length === 0) return true
   return blocks.length === 1 && blocks[0].type === 'paragraph' && blocks[0].children.length === 0
 }
 
-/** Shows `markdown` as the pending result, in place of the previous one, or throws a RangeError. */
-export function renderPending(editor: AnyEditor, markdown: string): void {
+/**
+ * Shows `markdown` as the pending result, in place of the previous one, or throws a RangeError.
+ * A `partial` answer, one still arriving or cut off, shows only what is whole so far, and nothing
+ * when that is empty. Returns whether it was shown.
+ */
+export function renderPending(editor: AnyEditor, markdown: string, partial = false): boolean {
   const state = editor.prosemirrorState
   const pending = pendingOf(state)
-  if (!pending) return
+  if (!pending) return false
   const code =
     pending.inline !== null && state.doc.resolve(pending.inline.from).parent.type.spec.code
-  const blocks = code ? [] : resultBlocks(markdown)
+  const text = partial && !code ? settled(markdown) : markdown
+  if (partial && !text.trim()) return false
+  const blocks = code ? [] : resultBlocks(text)
   const isInline = pending.inline !== null && (code || fitsInline(blocks))
   const fragment = code
     ? codeFragment(editor, markdown)
@@ -219,6 +230,7 @@ export function renderPending(editor: AnyEditor, markdown: string): void {
     if (fragment.size) tr.insert(at, fragment)
     tr.setMeta(key, { ...pending, rendered: true, isInline, addedSize: fragment.size })
   })
+  return true
 }
 
 /** The ranges the current render shows as removed and as added. */

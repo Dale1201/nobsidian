@@ -203,7 +203,11 @@ describe('requests', () => {
       { text: 'We argued for an hour.', drop: true },
       { status: 400, errorMessage: 'Your credit balance is too low.' }
     )
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
     for (let i = 0; i < 4; i++) await service.start(request(), send)
+    // Only the dropped connection, which the SDK does not class as an API error.
+    expect(logged).toHaveBeenCalledTimes(1)
+    logged.mockRestore()
     const errors = events.flatMap((e) => (e.name === 'ai:error' ? [e.data.message] : []))
     expect(errors).toEqual([
       'Too many requests right now. Try again in 7 seconds.',
@@ -257,6 +261,23 @@ describe('requests', () => {
         data: expect.objectContaining({ requestId: r.requestId, kind: 'network' })
       }
     ])
+  })
+
+  it('log a failure of its own while streaming, and report it', async () => {
+    fake.reply({ text: 'We argued for an hour.' })
+    const r = request()
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const failing: typeof send = (name, data) => {
+      if (name === 'ai:delta') throw new Error('listener bug')
+      send(name, data)
+    }
+    await expect(service.start(r, failing)).resolves.toBeUndefined()
+    expect(logged).toHaveBeenCalledWith(
+      'AI request failed:',
+      expect.objectContaining({ message: 'listener bug' })
+    )
+    logged.mockRestore()
+    expect(last()).toMatchObject({ name: 'ai:error', data: { requestId: r.requestId } })
   })
 
   it('never reach Anthropic when cancelled or ended while the key is still being read', async () => {

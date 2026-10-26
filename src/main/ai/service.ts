@@ -207,6 +207,7 @@ export class AiService {
           .catch(() => {})
       }
       if (controller.signal.aborted && !timedOut) return send('ai:done', { requestId })
+      if (!(err instanceof Anthropic.APIError)) console.error('AI request failed:', err)
       fail(timedOut ? { kind: 'network', message: aiError(null).message } : aiError(err))
     } finally {
       clearTimeout(idle)

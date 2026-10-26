@@ -330,9 +330,109 @@ test('an answer the page cannot take ends with an error and keeps the change und
   await box.press('Enter')
   await expect(writer.getByRole('alert')).toHaveText('The answer could not be placed here.')
   await expect(page.locator('.nb-ai-added-block')).toHaveText(['Goodbye.', 'For now.'])
+
+  // What fitted while it streamed goes once the whole answer does not.
+  anthropic.reply({ text: `Left, then.\n\n${columnsOf('A', 'B')}`, chunks: 10, delayMs: 100 })
+  await box.fill('then columns')
+  await box.press('Enter')
+  await expect(page.locator('.nb-ai-added')).toHaveText('Left, then.')
+  await expect(writer.getByRole('alert')).toHaveText('The answer could not be placed here.')
+  await expect(page.locator('.nb-ai-added-block')).toHaveText(['Goodbye.', 'For now.'])
   await writer.getByRole('button', { name: 'Accept' }).click()
   await expect(writer).toBeHidden()
   await expect.poll(() => blockText(page, 0)).toBe('Goodbye.')
   await expect.poll(() => blockText(page, 2)).toBe('Right.')
   await waitForFile(join(nb.workspace, 'Notes.md'), 'For now.')
+})
+
+/** Whether Markdown the page cannot show as blocks, a raw block, has appeared in the editor. */
+async function watchForRaw(page: Page): Promise<() => Promise<boolean>> {
+  await page.evaluate((selector) => {
+    const w = window as unknown as { rawSeen: boolean }
+    w.rawSeen = false
+    const root = document.querySelector(selector)!
+    new MutationObserver(() => {
+      if (root.querySelector('.nb-raw')) w.rawSeen = true
+    }).observe(root, { subtree: true, childList: true, characterData: true })
+  }, editor)
+  return () => page.evaluate(() => (window as unknown as { rawSeen: boolean }).rawSeen)
+}
+
+test('a page with columns streams its translation as columns, and Accept saves them', async ({
+  nb,
+  anthropic
+}) => {
+  const page = await setUp(nb, `${columnsOf('Left.', 'Right.')}Outro.\n`)
+  const writer = page.getByRole('dialog', { name: 'AI' })
+  const box = writer.getByRole('textbox', { name: 'Ask AI' })
+  const rawSeen = await watchForRaw(page)
+  await page.locator(editor).getByText('Outro.').click()
+  await page.keyboard.press('Meta+j')
+  await box.fill('Translate page')
+  await writer.getByRole('option', { name: 'Translate page to…' }).click()
+  await expect(box).toHaveValue('Translate page to ')
+  anthropic.reply({ text: `${columnsOf('Gauche.', 'Droite.')}Fin.\n`, chunks: 12, delayMs: 60 })
+  await box.pressSequentially('French')
+  await box.press('Enter')
+
+  await expect(writer.getByRole('button', { name: 'Accept' })).toBeVisible()
+  await expect(writer.getByRole('alert')).toHaveCount(0)
+  await expect(page.locator('.nb-ai-removed-block')).toHaveText(['Left.Right.', 'Outro.'])
+  await expect(page.locator('.nb-ai-added-block')).toHaveText(['Gauche.Droite.', 'Fin.'])
+  expect(await rawSeen()).toBe(false)
+  await writer.getByRole('button', { name: 'Accept' }).click()
+  await expect(writer).toBeHidden()
+  const saved = await waitForFile(join(nb.workspace, 'Notes.md'), 'Fin.')
+  expect(saved).toContain(`${columnsOf('Gauche.', 'Droite.')}Fin.\n`)
+  expect(saved).not.toContain('Left.')
+})
+
+test('a follow-up streaming columns never shows them as raw Markdown', async ({
+  nb,
+  anthropic
+}) => {
+  const page = await setUp(nb)
+  const writer = page.getByRole('dialog', { name: 'AI' })
+  const box = writer.getByRole('textbox', { name: 'Ask AI' })
+  anthropic.reply(
+    { text: 'Goodbye.' },
+    { text: columnsOf('Good.', 'Bye.'), chunks: 12, delayMs: 60 }
+  )
+  await askAbout(page, 'Outro.')
+  await writer.getByRole('option', { name: 'Improve writing' }).click()
+  await expect(page.locator('.nb-ai-added')).toHaveText('Goodbye.')
+  const rawSeen = await watchForRaw(page)
+  await box.fill('as columns')
+  await box.press('Enter')
+
+  await expect(writer.getByRole('button', { name: 'Accept' })).toBeVisible()
+  await expect(writer.getByRole('alert')).toHaveCount(0)
+  await expect(page.locator('.nb-ai-added-block')).toHaveText(['Good.Bye.'])
+  expect(await rawSeen()).toBe(false)
+  await writer.getByRole('button', { name: 'Accept' }).click()
+  await expect(writer).toBeHidden()
+  const saved = await waitForFile(join(nb.workspace, 'Notes.md'), 'Good.')
+  expect(saved).toContain(columnsOf('Good.', 'Bye.').trim())
+  expect(saved).not.toContain('Outro.')
+})
+
+test('a reply the page cannot take where it would go is not inserted', async ({
+  nb,
+  anthropic
+}) => {
+  const page = await setUp(nb, `${columnsOf('Left.', 'Right.')}Outro.\n`)
+  const writer = page.getByRole('dialog', { name: 'AI' })
+  anthropic.reply({ text: columnsOf('A', 'B') })
+  await askAbout(page, 'Left.')
+  await writer.getByRole('option', { name: 'Explain' }).click()
+  await writer.getByRole('button', { name: 'Insert below' }).click()
+  await expect(writer.getByRole('alert')).toHaveText('The answer could not be placed here.')
+  await expect(page.locator(MARKS)).toHaveCount(0)
+  await page.keyboard.press('Escape')
+  await expect(writer).toBeHidden()
+  await expect(page.locator(editor)).toHaveAttribute('contenteditable', 'true')
+  await page.locator(editor).getByText('Outro.').click()
+  await page.keyboard.press('End')
+  await page.keyboard.type(' Typed.')
+  await waitForFile(join(nb.workspace, 'Notes.md'), 'Outro. Typed.')
 })
