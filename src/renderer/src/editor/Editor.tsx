@@ -86,6 +86,8 @@ export type EditorProps = {
   editable?: boolean
   /** False while the page's tab is hidden, so files dropped on the window go elsewhere. */
   acceptsFiles?: boolean
+  /** False while the page's tab is hidden, which closes its AI Writer. */
+  active?: boolean
   /** The page's title, which the AI Writer sends along with the page. */
   title?: string
   /** Applied by Cmd+Shift+H. */
@@ -383,6 +385,7 @@ export function Editor(props: EditorProps): React.JSX.Element {
             editor={editor}
             theme={props.theme}
             editable={props.editable !== false}
+            className={props.editable !== false ? 'nb-writer-host' : undefined}
             slashMenu={false}
             formattingToolbar={false}
             linkToolbar={false}
@@ -430,7 +433,7 @@ export function Editor(props: EditorProps): React.JSX.Element {
               {props.editable !== false && (
                 <>
                   <WriterKeys />
-                  <WriterHost title={props.title ?? ''} active={props.acceptsFiles !== false} />
+                  <WriterHost title={props.title ?? ''} active={props.active !== false} />
                 </>
               )}
             </BlockMenuHost>

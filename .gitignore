@@ -8,5 +8,5 @@ test-results
 playwright-report
 *.tsbuildinfo
 
-# Brainstorming companion mockups
+# Superpowers working files
 .superpowers/

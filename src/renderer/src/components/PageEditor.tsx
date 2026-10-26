@@ -255,6 +255,7 @@ export function PageEditor({
       drawingSlot={{ tabId, pageId: doc.id }}
       theme={theme}
       acceptsFiles={active}
+      active={active}
       onChange={onChange}
       uploadFile={async (file) =>
         api.invoke('attachment:save', {

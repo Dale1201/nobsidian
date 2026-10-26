@@ -640,7 +640,7 @@
 
 /* ---------- AI Writer ---------- */
 /* The Writer is placed inside the editor's container, so it scrolls with the page. */
-.bn-container {
+.bn-container.nb-writer-host {
   position: relative;
 }
 .ProseMirror.nb-ai-available

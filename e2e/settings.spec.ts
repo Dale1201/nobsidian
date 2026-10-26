@@ -6,9 +6,13 @@ import { expect, test } from './fixtures'
 import { clickMenuItem, editor, newPage } from './helpers'
 
 // The menu command is ignored until the workspace has loaded, which the sidebar shows.
-async function openSettings(page: Page, app: ElectronApplication): Promise<void> {
+async function openAiSettings(page: Page, app: ElectronApplication): Promise<void> {
   await expect(page.getByRole('button', { name: 'Settings' })).toBeVisible()
   await clickMenuItem(app, 'Settings…')
+  const dialog = page.getByRole('dialog', { name: 'Settings' })
+  await expect(dialog.getByRole('heading', { name: 'Preferences' })).toBeVisible()
+  await dialog.getByRole('button', { name: 'AI', exact: true }).click()
+  await expect(dialog.getByRole('heading', { name: 'AI', exact: true })).toBeVisible()
 }
 
 const settingsFile = async (userData: string): Promise<Record<string, unknown>> =>
@@ -34,7 +38,7 @@ test('Settings opens from the sidebar and the app menu, and changes the theme', 
   })
   expect(accelerator).toBe('CmdOrCtrl+,')
   await clickMenuItem(app, 'Settings…')
-  await expect(dialog.getByRole('heading', { name: 'AI', exact: true })).toBeVisible()
+  await expect(dialog.getByRole('heading', { name: 'Preferences' })).toBeVisible()
   await dialog.getByRole('button', { name: 'Close' }).click()
   await expect(dialog).toBeHidden()
 })
@@ -44,7 +48,7 @@ test('the AI section checks the key, picks the model and counts what was spent',
   anthropic
 }) => {
   const { page, app } = nb
-  await openSettings(page, app)
+  await openAiSettings(page, app)
   const dialog = page.getByRole('dialog', { name: 'Settings' })
   await expect(dialog).toContainText('Images, files, drawings and other pages are never sent.')
   await expect(dialog).toContainText('$0.00')
@@ -95,7 +99,7 @@ test('the AI section checks the key, picks the model and counts what was spent',
   )
   expect(anthropic.messages()[0].model).toBe('claude-sonnet-5-5')
   await page.keyboard.press('Escape')
-  await clickMenuItem(app, 'Settings…')
+  await openAiSettings(page, app)
   await expect(dialog).toContainText('$0.01')
   await expect(dialog).toContainText('1 request')
 
@@ -111,7 +115,7 @@ test('Settings takes the keyboard from the page, and gives focus back to a selec
   await page.keyboard.type('abc')
   await expect(page.locator(editor)).toContainText('abc')
 
-  await openSettings(page, app)
+  await openAiSettings(page, app)
   const dialog = page.getByRole('dialog', { name: 'Settings' })
   await expect(dialog).toBeVisible()
   await expect(dialog.locator(':focus')).toHaveCount(1)
@@ -128,7 +132,7 @@ test('Settings takes the keyboard from the page, and gives focus back to a selec
 
 test('the key field reports a failed save or remove instead of sticking', async ({ nb }) => {
   const { page, app } = nb
-  await openSettings(page, app)
+  await openAiSettings(page, app)
   const dialog = page.getByRole('dialog', { name: 'Settings' })
   const field = dialog.getByLabel('Anthropic API key')
   await expect(field).toBeVisible()
@@ -142,7 +146,7 @@ test('the key field reports a failed save or remove instead of sticking', async 
 
 test('a failed remove says so and keeps the key', async ({ nb }) => {
   const { page, app } = nb
-  await openSettings(page, app)
+  await openAiSettings(page, app)
   const dialog = page.getByRole('dialog', { name: 'Settings' })
   const field = dialog.getByLabel('Anthropic API key')
   await field.fill(GOOD_KEY)
