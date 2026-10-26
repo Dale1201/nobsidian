@@ -189,22 +189,7 @@ export function PageView({
           message="This page's frontmatter couldn't be read, so it's shown as text."
         />
       )}
-      <div
-        className="page-scroll"
-        data-testid="page-scroll"
-        ref={scrollRef}
-        onMouseDown={(e) => {
-          // Like Notion, the empty space below the last block is a place to start typing.
-          const scroller = e.currentTarget
-          if (e.button !== 0 || e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return
-          if (e.target !== scroller && e.target !== bodyRef.current) return
-          const end = bodyRef.current?.querySelector('.bn-editor')?.getBoundingClientRect().bottom
-          const scrollbar = scroller.getBoundingClientRect().left + scroller.clientWidth
-          if (end === undefined || e.clientY <= end || e.clientX >= scrollbar) return
-          e.preventDefault()
-          editorRef.current?.focusEnd()
-        }}
-      >
+      <div className="page-scroll editable" data-testid="page-scroll" ref={scrollRef}>
         {ready && (
           <>
             <PageCover meta={doc.meta} onChange={updateMeta} />
@@ -237,6 +222,15 @@ export function PageView({
                 />
               </EditorErrorBoundary>
             </div>
+            {/* Like Notion, the space below the last block is a place to start typing. */}
+            <div
+              className="page-end"
+              onMouseDown={(e) => {
+                if (e.button !== 0 || e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return
+                e.preventDefault()
+                editorRef.current?.focusEnd()
+              }}
+            />
           </>
         )}
       </div>

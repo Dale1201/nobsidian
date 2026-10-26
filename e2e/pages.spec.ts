@@ -1,7 +1,9 @@
-import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Page } from '@playwright/test'
 import { expect, test } from './fixtures'
+import { launchElectron } from './launch'
 import { editor, newPage, rowAction, waitForFile } from './helpers'
 
 test('duplicate copies a page and its sub-pages below the original', async ({ nb }) => {
@@ -210,4 +212,31 @@ test('clicking below the last block adds a line to type on, like Notion', async 
   await page.keyboard.type('fourth')
   await waitForFile(file, 'third\n\nfourth\n')
   await expect(body.locator('.bn-block-outer')).toHaveCount(4)
+})
+
+test('dragging an overlay scrollbar below the last block only scrolls', async () => {
+  const userData = await mkdtemp(join(tmpdir(), 'nobsidian-e2e-user-'))
+  const workspace = await mkdtemp(join(tmpdir(), 'nobsidian-e2e-ws-'))
+  await writeFile(join(userData, 'settings.json'), JSON.stringify({ lastWorkspace: workspace }))
+  const lines = Array.from({ length: 60 }, (_, i) => `Line ${i}`)
+  await writeFile(join(workspace, 'Long.md'), lines.join('\n\n') + '\n')
+  // macOS's trackpad default: scrollbars float over the content instead of taking a gutter.
+  const app = await launchElectron({
+    args: ['out/main/index.js', '-AppleShowScrollBars', 'WhenScrolling'],
+    env: { NOBSIDIAN_USER_DATA: userData, NODE_ENV: 'test' }
+  })
+  const page = await app.firstWindow()
+  await page.getByTestId('sidebar-row-Long').click()
+  const scroll = page.getByTestId('page-scroll')
+  await expect(scroll.locator(editor)).toBeVisible()
+  expect(await scroll.evaluate((el: HTMLElement) => el.offsetWidth - el.clientWidth)).toBe(0)
+  await scroll.evaluate((el) => (el.scrollTop = el.scrollHeight))
+  const box = (await scroll.boundingBox())!
+  await page.mouse.move(box.x + box.width - 4, box.y + box.height - 30)
+  await page.mouse.down()
+  await page.mouse.move(box.x + box.width - 4, box.y + box.height / 2, { steps: 5 })
+  await page.mouse.up()
+  await expect(scroll.locator('.bn-block-outer')).toHaveCount(60)
+  expect(await page.evaluate(() => !!document.activeElement?.closest('.bn-editor'))).toBe(false)
+  await app.close()
 })
