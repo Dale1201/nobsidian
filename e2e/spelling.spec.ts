@@ -1,5 +1,5 @@
 import { join } from 'node:path'
-import type { ElectronApplication, Locator } from '@playwright/test'
+import type { ElectronApplication, Locator, Page } from '@playwright/test'
 import { expect, test } from './fixtures'
 import { editor, newPage, waitForFile } from './helpers'
 
@@ -13,16 +13,37 @@ async function captureMenus(app: ElectronApplication): Promise<void> {
   })
 }
 
-async function wordCenter(block: Locator, word: string): Promise<{ x: number; y: number }> {
+async function wordBox(
+  block: Locator,
+  word: string
+): Promise<{ x: number; y: number; width: number; height: number }> {
   return block.evaluate((el, word) => {
     const node = document.createTreeWalker(el, NodeFilter.SHOW_TEXT).nextNode()!
     const start = node.textContent!.indexOf(word)
     const range = document.createRange()
     range.setStart(node, start)
     range.setEnd(node, start + word.length)
-    const rect = range.getBoundingClientRect()
-    return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 }
+    const { x, y, width, height } = range.getBoundingClientRect()
+    return { x, y, width, height }
   }, word)
+}
+
+/** Whether the word is drawn with the red spelling underline, as a user would see it. */
+async function underlined(page: Page, block: Locator, word: string): Promise<boolean> {
+  const box = await wordBox(block, word)
+  const png = await page.screenshot({
+    clip: { x: box.x, y: box.y + box.height / 2, width: box.width, height: box.height / 2 + 4 }
+  })
+  return page.evaluate(async (base64) => {
+    const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0))
+    const image = await createImageBitmap(new Blob([bytes]))
+    const context = new OffscreenCanvas(image.width, image.height).getContext('2d')!
+    context.drawImage(image, 0, 0)
+    const { data } = context.getImageData(0, 0, image.width, image.height)
+    for (let i = 0; i < data.length; i += 4)
+      if (data[i] > 180 && data[i + 1] < 140 && data[i + 2] < 140) return true
+    return false
+  }, png.toString('base64'))
 }
 
 const menuLabels = (app: ElectronApplication): Promise<string[]> =>
@@ -40,21 +61,17 @@ test('right-clicking a misspelled word offers fixes that replace it', async ({ n
   const block = page.locator(`${editor} .bn-inline-content`).first()
   await expect(block).toHaveText('Fix this mispeled word')
 
-  const word = await wordCenter(block, 'mispeled')
-  // Under load Chromium can skip checking a typed word; retyping the space after it asks again.
+  // Right-clicking selects the word, which cancels a spell check that hasn't finished yet.
   await expect
-    .poll(
-      async () => {
-        await page.mouse.click(word.x, word.y, { button: 'right' })
-        if ((await menuLabels(app))[0] === 'misspelled') return true
-        await page.keyboard.press('Meta+ArrowRight')
-        await page.keyboard.press('Backspace')
-        await page.keyboard.type(' ')
-        return false
-      },
-      { message: 'the right-click menu offers "misspelled"', timeout: 15_000 }
-    )
+    .poll(() => underlined(page, block, 'mispeled'), {
+      message: 'mispeled gets the red underline',
+      timeout: 15_000
+    })
     .toBe(true)
+  expect(await underlined(page, block, 'this')).toBe(false)
+  const word = await wordBox(block, 'mispeled')
+  await page.mouse.click(word.x + word.width / 2, word.y + word.height / 2, { button: 'right' })
+  await expect.poll(async () => (await menuLabels(app))[0]).toBe('misspelled')
   expect(await menuLabels(app)).toEqual(
     expect.arrayContaining(['Learn Spelling', 'Cut', 'Copy', 'Paste'])
   )
