@@ -2,6 +2,7 @@ import type Anthropic from '@anthropic-ai/sdk'
 import {
   CURSOR,
   modeOf,
+  SELECTION_END,
   SELECTION_START,
   skill as skillById,
   type AiMode,
@@ -61,8 +62,22 @@ export const TOOLS: Record<AiMode, Tool> = {
 /** Keeps PAGE_LIMIT characters centred on the selection or cursor, marking each cut. */
 export function trimPage(markdown: string): string {
   if (markdown.length <= PAGE_LIMIT) return markdown
-  const marker = [SELECTION_START, CURSOR].map((m) => markdown.indexOf(m)).find((i) => i >= 0)
-  const center = marker ?? 0
+  const from = markdown.indexOf(SELECTION_START)
+  const close = markdown.indexOf(SELECTION_END)
+  const to = from >= 0 && close > from ? close + SELECTION_END.length : -1
+  // A selection longer than the window keeps its start, and is closed where it is cut.
+  if (to >= 0 && to - from > PAGE_LIMIT) {
+    return (
+      (from > 0 ? '[…]\n' : '') +
+      markdown.slice(from, from + PAGE_LIMIT) +
+      `\n[…]\n${SELECTION_END}` +
+      (to < markdown.length ? '\n[…]' : '')
+    )
+  }
+  const center =
+    to >= 0
+      ? Math.floor((from + to) / 2)
+      : ([SELECTION_START, CURSOR].map((m) => markdown.indexOf(m)).find((i) => i >= 0) ?? 0)
   const start = Math.max(0, Math.min(center - PAGE_LIMIT / 2, markdown.length - PAGE_LIMIT))
   const end = start + PAGE_LIMIT
   return (

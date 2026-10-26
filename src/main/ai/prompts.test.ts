@@ -118,6 +118,20 @@ describe('trimPage', () => {
     expect(trimmed.length).toBe(PAGE_LIMIT + 8)
   })
 
+  it('keeps both ends of a long selection', () => {
+    const selected = 'x'.repeat(PAGE_LIMIT * 0.8)
+    const trimmed = trimPage(`${'a'.repeat(PAGE_LIMIT)}⟦selection⟧${selected}⟦/selection⟧tail`)
+    expect(trimmed).toContain(`⟦selection⟧${selected}⟦/selection⟧`)
+    expect(trimmed.length).toBeLessThanOrEqual(PAGE_LIMIT + 8)
+  })
+
+  it('closes a selection longer than the limit where it is cut', () => {
+    const trimmed = trimPage(`intro ⟦selection⟧${'x'.repeat(PAGE_LIMIT * 2)}⟦/selection⟧ outro`)
+    expect(trimmed.indexOf('⟦selection⟧')).toBeLessThan(trimmed.indexOf('⟦/selection⟧'))
+    expect(trimmed).toContain('[…]\n⟦/selection⟧')
+    expect(trimmed.endsWith('\n[…]')).toBe(true)
+  })
+
   it('keeps the start of a huge page with no marker', () => {
     const trimmed = trimPage('c'.repeat(PAGE_LIMIT * 2))
     expect(trimmed.startsWith('ccc')).toBe(true)
