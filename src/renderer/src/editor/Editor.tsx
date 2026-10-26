@@ -95,6 +95,8 @@ const DEFAULT_COLOR: PickedColor = { kind: 'background', color: 'yellow' }
 
 export interface EditorContent {
   replace(blocks: AppPartialBlock[]): void
+  /** Puts the caret on an empty last line, adding one unless the page already ends in one. */
+  focusEnd(): void
 }
 
 const OpenLinkContext = createContext<(href: string, click?: LinkClick) => void>(() => {})
@@ -297,6 +299,14 @@ export function Editor(props: EditorProps): React.JSX.Element {
         } finally {
           replacing.current = false
         }
+      },
+      focusEnd: () => {
+        const last = editor.document[editor.document.length - 1]
+        const blank =
+          last.type === 'paragraph' && last.content.length === 0 && last.children.length === 0
+        const target = blank ? last : editor.insertBlocks([{ type: 'paragraph' }], last, 'after')[0]
+        editor.setTextCursorPosition(target, 'end')
+        editor.focus()
       }
     }),
     [editor]

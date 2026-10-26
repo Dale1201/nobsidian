@@ -437,7 +437,8 @@ button {
   height: 22px;
   flex: none;
 }
-.sidebar-row-toggle {
+/* Outranks .icon-button's display, which comes later. */
+.sidebar-row-lead .sidebar-row-toggle {
   position: absolute;
   inset: 0;
   display: none;

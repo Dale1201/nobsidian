@@ -190,3 +190,24 @@ test('the last picked color survives a restart', async ({ nb }) => {
   await relaunched.keyboard.press('Meta+Shift+h')
   await waitForFile(file, '<span data-color="red">gamma</span>')
 })
+
+test('clicking below the last block adds a line to type on, like Notion', async ({ nb }) => {
+  const file = join(nb.workspace, 'Bottom.md')
+  await writeFile(file, '- [ ] first\n- [ ] second\n')
+  const page = await nb.relaunch()
+  await page.getByTestId('sidebar-row-Bottom').click()
+  const body = page.locator(editor)
+  const last = (await body.locator('.bn-block-outer').last().boundingBox())!
+  const scroll = (await page.getByTestId('page-scroll').boundingBox())!
+  // Off to the side of the text column, well below the last line.
+  await page.mouse.click(scroll.x + 20, last.y + last.height + 120)
+  await page.keyboard.type('third')
+  await waitForFile(file, '- [ ] second\n\nthird\n')
+
+  // A second click reuses the empty line it leaves rather than stacking more.
+  await page.keyboard.press('Enter')
+  await page.mouse.click(scroll.x + scroll.width / 2, scroll.y + scroll.height - 40)
+  await page.keyboard.type('fourth')
+  await waitForFile(file, 'third\n\nfourth\n')
+  await expect(body.locator('.bn-block-outer')).toHaveCount(4)
+})
