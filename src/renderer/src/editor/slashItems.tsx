@@ -1,7 +1,7 @@
 import { filterSuggestionItems, insertOrUpdateBlockForSlashMenu } from '@blocknote/core'
 import { getDefaultReactSlashMenuItems, type DefaultReactSuggestionItem } from '@blocknote/react'
 import { getMultiColumnSlashMenuItems } from '@blocknote/xl-multi-column'
-import { CalloutIcon, DrawingIcon, PageIcon, TocIcon } from '../components/icons'
+import { CalloutIcon, DrawingIcon, PageIcon, SparkleIcon, TocIcon } from '../components/icons'
 import { openDrawing } from '../drawing/session'
 import type { AppEditor, AppPartialBlock } from './schema'
 
@@ -10,6 +10,10 @@ type KeyedItem = DefaultReactSuggestionItem & { key?: string }
 
 export type SlashItemOptions = {
   createSubPage: () => Promise<string>
+  /** Opens the AI Writer; absent while AI is hidden. */
+  askAi?: () => void
+  /** Greys the AI item out while offline. */
+  askAiOffline?: boolean
 }
 
 // The suggestion menu removes the "/" query before onItemClick runs, so the
@@ -30,7 +34,12 @@ async function insertPageLink(
   }
 }
 
-export type SlashItem = DefaultReactSuggestionItem & { key: string; hint?: string }
+export type SlashItem = DefaultReactSuggestionItem & {
+  key: string
+  hint?: string
+  disabled?: boolean
+  tooltip?: string
+}
 
 const LABELS: Record<string, { title: string; hint?: string; aliases?: string[] }> = {
   paragraph: { title: 'Text', aliases: ['text', 'plain'] },
@@ -88,11 +97,25 @@ const ORDER: { group: string; keys: string[] }[] = [
       'two_columns',
       'three_columns'
     ]
-  }
+  },
+  { group: 'AI', keys: ['ask_ai'] }
 ]
 
 function customItems(editor: AppEditor, opts: SlashItemOptions): SlashItem[] {
+  const askAi = opts.askAi
   return [
+    ...(askAi
+      ? [
+          {
+            key: 'ask_ai',
+            title: 'Ask AI',
+            aliases: ['ai', 'ask', 'write', 'claude'],
+            icon: <SparkleIcon size={18} />,
+            ...(opts.askAiOffline ? { disabled: true, tooltip: 'AI is unavailable offline' } : {}),
+            onItemClick: askAi
+          }
+        ]
+      : []),
     {
       key: 'page',
       title: 'Page',

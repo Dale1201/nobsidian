@@ -1,6 +1,6 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { Page } from '@playwright/test'
+import type { ElectronApplication, Locator, Page } from '@playwright/test'
 import { expect } from './fixtures'
 
 export const editor = '.bn-editor'
@@ -50,4 +50,54 @@ export async function openFile(
   await page.getByTestId(`sidebar-row-${name}`).click()
   await expect(page.locator(editor)).toBeVisible()
   return page
+}
+
+/** Clicks a native menu item; Playwright's key presses never reach the menu. */
+export async function clickMenuItem(app: ElectronApplication, label: string): Promise<void> {
+  await app.evaluate(({ Menu }, label) => {
+    Menu.getApplicationMenu()
+      ?.items.flatMap((i) => i.submenu?.items ?? [])
+      .find((i) => i.label === label)
+      ?.click()
+  }, label)
+}
+
+/**
+ * ProseMirror reads a caret moved by a click or a key on the next `selectionchange`, so a key
+ * pressed at once would act on the old caret. Waits until the editor's selection is the DOM's.
+ */
+async function settleCaret(page: Page): Promise<void> {
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        type Editor = {
+          state: { selection: { anchor: number; head: number } }
+          view: { posAtDOM: (node: Node, offset: number) => number }
+        }
+        const editor = (document.activeElement?.closest('.ProseMirror') as { editor?: Editor })
+          ?.editor
+        const dom = getSelection()
+        if (!editor || !dom?.anchorNode || !dom.focusNode) return false
+        const { anchor, head } = editor.state.selection
+        return (
+          editor.view.posAtDOM(dom.anchorNode, dom.anchorOffset) === anchor &&
+          editor.view.posAtDOM(dom.focusNode, dom.focusOffset) === head
+        )
+      })
+    )
+    .toBe(true)
+}
+
+export async function placeCaret(target: Locator, clickCount = 1): Promise<void> {
+  await target.click({ clickCount })
+  await settleCaret(target.page())
+}
+
+export async function clickInEditor(page: Page, text: string, clickCount = 1): Promise<void> {
+  await placeCaret(page.locator(editor).getByText(text), clickCount)
+}
+
+export async function pressInEditor(page: Page, key: string): Promise<void> {
+  await page.keyboard.press(key)
+  await settleCaret(page)
 }

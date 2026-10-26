@@ -25,6 +25,15 @@
   --danger: #eb5757;
   --danger-hover: #d84b4b;
   --input-bg: rgba(242, 241, 238, 0.6);
+  --bg-elevated: #ffffff;
+  --border-translucent: rgba(28, 19, 1, 0.11);
+  --toggle-off: rgba(135, 131, 120, 0.3);
+  --ai-added: rgba(35, 131, 226, 0.1);
+  --ai-removed: rgba(224, 62, 62, 0.08);
+  --popup-shadow: var(--menu-shadow);
+  --modal-shadow:
+    0 24px 48px rgba(25, 25, 25, 0.24), 0 4px 12px rgba(25, 25, 25, 0.14),
+    0 0 0 1px rgba(42, 28, 0, 0.07);
 
   --color-gray: #787774;
   --color-brown: #9f6b53;
@@ -69,6 +78,16 @@
   --danger: #c4554d;
   --danger-hover: #b04a43;
   --input-bg: rgba(255, 255, 255, 0.055);
+  --bg-elevated: #202020;
+  --border-translucent: rgba(255, 255, 255, 0.094);
+  --toggle-off: rgba(120, 129, 135, 0.3);
+  --ai-added: rgba(35, 131, 226, 0.18);
+  --ai-removed: rgba(224, 62, 62, 0.14);
+  /* Notion rings raised surfaces in dark mode, where a shadow barely shows. */
+  --popup-shadow:
+    0 0 0 1px #383836, 0 4px 12px rgba(25, 25, 25, 0.56), 0 12px 24px rgba(25, 25, 25, 0.4);
+  --modal-shadow:
+    0 0 0 1px #383836, 0 24px 48px rgba(25, 25, 25, 0.64), 0 4px 12px rgba(25, 25, 25, 0.56);
   --tab-hover: hsl(from var(--bg-sidebar) h s calc(l + 5));
   --menu-shadow:
     rgba(15, 15, 15, 0.1) 0 0 0 1px, rgba(15, 15, 15, 0.2) 0 3px 6px,

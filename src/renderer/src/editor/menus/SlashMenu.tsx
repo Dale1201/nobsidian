@@ -38,10 +38,12 @@ export function SlashMenu({
               aria-label={item.title}
               id={`bn-suggestion-menu-item-${i}`}
               aria-selected={i === active}
-              className={`menu-item ${i === active ? 'active' : ''}`}
+              aria-disabled={item.disabled || undefined}
+              title={item.tooltip}
+              className={`menu-item ${i === active ? 'active' : ''} ${item.disabled ? 'disabled' : ''}`}
               onMouseDown={(e) => e.preventDefault()}
-              onMouseEnter={() => setActive(i)}
-              onClick={() => onItemClick?.(item)}
+              onMouseEnter={() => !item.disabled && setActive(i)}
+              onClick={() => !item.disabled && onItemClick?.(item)}
             >
               <span className="menu-item-icon">{item.icon}</span>
               <span className="menu-item-label">{item.title}</span>

@@ -1,3 +1,4 @@
+import type { AiError, AiKeyResult, AiMode, AiModel, AiStart, AiStatus } from './ai'
 import type { Block } from './core/blocks'
 import type {
   HistoryVersion,
@@ -31,6 +32,8 @@ export interface Settings {
   recent: Record<string, string[]>
   /** The color Cmd+Shift+H applies: the last one picked in the formatting toolbar. */
   lastColor: { kind: 'text' | 'background'; color: string }
+  /** The API key is not here: it is kept encrypted by the main process. */
+  ai: { enabled: boolean; model: AiModel }
 }
 
 /** A workspace's tabs: each tab's page history and position in it, and which tab is active. */
@@ -51,6 +54,7 @@ export type MenuCommand =
   | 'open-folder'
   | 'import-notion'
   | 'search'
+  | 'settings'
   | 'toggle-sidebar'
   | 'toggle-theme'
   | 'back'
@@ -114,6 +118,15 @@ export interface IpcContract {
   'app:flushed': [payload: { saved: boolean }, result: void]
   /** Closes the window, saving pending edits first, as the close button does. */
   'window:close': [payload: void, result: void]
+  'ai:status': [payload: void, result: AiStatus]
+  /** Checks the key with Anthropic, then stores it encrypted. */
+  'ai:setKey': [payload: { key: string }, result: AiKeyResult]
+  'ai:clearKey': [payload: void, result: void]
+  /** Starts streaming; the result arrives as ai:delta events, then ai:done or ai:error. */
+  'ai:start': [payload: AiStart, result: void]
+  'ai:cancel': [payload: { requestId: string }, result: void]
+  /** Forgets a Writer's conversation. */
+  'ai:end': [payload: { sessionId: string }, result: void]
 }
 
 export type IpcChannel = keyof IpcContract
@@ -128,6 +141,10 @@ export interface IpcEvents {
   'app:flush': void
   'import:status': ImportStatus
   'window:fullscreen': boolean
+  /** The whole result so far, not just the new part. */
+  'ai:delta': { requestId: string; mode: AiMode; text: string }
+  'ai:done': { requestId: string }
+  'ai:error': { requestId: string } & AiError
 }
 
 export interface Api {

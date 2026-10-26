@@ -217,3 +217,15 @@ test('searching for the page you are on reveals it again', async ({ nb }) => {
   await search(page, 'Deep')
   await expect(page.getByTestId('sidebar-row-Deep')).toHaveClass(/active/)
 })
+
+test('the expand arrow replaces the page icon only while the row is hovered', async ({ nb }) => {
+  const page = await nestedWorkspace(nb)
+  const row = page.getByTestId('sidebar-row-Top')
+  const arrow = row.getByRole('button', { name: 'Expand' })
+  await page.mouse.move(800, 600)
+  await expect(arrow).toBeHidden()
+  await expect(row.locator('.page-icon')).toBeVisible()
+  await row.hover()
+  await expect(arrow).toBeVisible()
+  await expect(row.locator('.page-icon')).toBeHidden()
+})

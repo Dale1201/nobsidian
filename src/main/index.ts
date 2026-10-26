@@ -15,12 +15,19 @@ import { join, normalize, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { is } from '@electron-toolkit/utils'
 import { ASSET_SCHEME, EXCALIDRAW_HOST } from '../shared/ipc'
+import { contextMenuTemplate } from './contextMenu'
 import { openWorkspace, registerHandlers, updateMenu, type AppContext } from './handlers'
 import { ImportService } from './import/service'
 import { startImportWorker } from './import/start-worker'
 import { send } from './ipc'
 import { buildMenu } from './menu'
 import { SettingsStore } from './settings'
+import { safeStorageCodec, testCodec } from './ai/codecs'
+import { registerAiHandlers } from './ai/handlers'
+import { KeyStore } from './ai/keyStore'
+import { AiService } from './ai/service'
+import { UsageLedger } from './ai/usage'
+import { DEFAULT_AI_MODEL, isAiModel } from '../shared/ai'
 import { windowControls } from '../shared/window'
 
 if (process.env.NOBSIDIAN_USER_DATA) app.setPath('userData', process.env.NOBSIDIAN_USER_DATA)
@@ -70,6 +77,18 @@ const ctx: AppContext = {
   window: () => mainWindow
 }
 
+const ai = new AiService({
+  keys: new KeyStore(
+    join(app.getPath('userData'), 'anthropic-key.bin'),
+    process.env.NOBSIDIAN_E2E === '1' ? testCodec : safeStorageCodec
+  ),
+  usage: new UsageLedger(join(app.getPath('userData'), 'ai-usage.json')),
+  model: () => {
+    const model = ctx.settings.get().ai?.model
+    return isAiModel(model) ? model : DEFAULT_AI_MODEL
+  }
+})
+
 /** Saved bounds, unless the display they were on is gone. */
 function restoredBounds(): Partial<Rectangle> {
   const saved = ctx.settings.get().windowBounds
@@ -108,6 +127,13 @@ function createWindow(): void {
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (/^(https?|mailto):/i.test(url)) void shell.openExternal(url)
     return { action: 'deny' }
+  })
+  win.webContents.on('context-menu', (_event, params) => {
+    const template = contextMenuTemplate(params, {
+      replace: (suggestion) => win.webContents.replaceMisspelling(suggestion),
+      learn: (word) => win.webContents.session.addWordToSpellCheckerDictionary(word)
+    })
+    if (template.length > 0) Menu.buildFromTemplate(template).popup({ window: win })
   })
   win.webContents.on('will-navigate', (event, url) => {
     if (!(
@@ -230,6 +256,7 @@ app.whenReady().then(async () => {
   })
 
   registerHandlers(ctx)
+  registerAiHandlers(ai)
   Menu.setApplicationMenu(buildMenu(() => mainWindow))
   updateMenu(ctx)
   createWindow()

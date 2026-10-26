@@ -22,6 +22,19 @@ export function markdownToBlocks(markdown: string): Block[] {
   return parseFlow(parseMarkdown(source).children)
 }
 
+/** Markdown cut off part way, with the columns and toggles it has opened closed again. */
+export function closeContainers(markdown: string): string {
+  if (!/^<(div|details)\b/m.test(markdown)) return markdown
+  const closes: string[] = []
+  for (const node of parseMarkdown(markdown).children) {
+    if (node.type !== 'html') continue
+    if (/^<\/(div|details)>$/.test(node.value.trim())) closes.pop()
+    else if (/^<div\b/.test(node.value)) closes.push('</div>')
+    else if (/^<details\b/.test(node.value)) closes.push('</details>')
+  }
+  return closes.length ? `${markdown}\n\n${closes.reverse().join('\n\n')}\n` : markdown
+}
+
 const NBSP = ' '
 const DETAILS_OPEN = /^<details(?: data-heading="([1-6])")?>\n<summary>([\s\S]*)<\/summary>$/
 const DIV_OPEN = /^<div data-(columns|column|children)(?: data-width="([0-9.]+)")?>$/

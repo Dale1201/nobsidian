@@ -41,6 +41,8 @@ export interface PageEditorHandle {
   saveNow(): Promise<void>
   /** Holds back saves until the user picks a version, as after a conflicting outside edit. */
   markConflicted(): void
+  /** Puts the caret on an empty line at the end of the page. */
+  focusEnd(): void
 }
 
 export function PageEditor({
@@ -135,6 +137,7 @@ export function PageEditor({
       markConflicted: () => {
         conflicted.current = true
       },
+      focusEnd: () => content.current?.focusEnd(),
       keepMine: async () => {
         pending.current = latest.current ?? pending.current
         await save('force')
@@ -251,9 +254,11 @@ export function PageEditor({
     <Editor
       initialBlocks={initialBlocks}
       contentRef={content}
+      title={doc.title}
       drawingSlot={{ tabId, pageId: doc.id }}
       theme={theme}
       acceptsFiles={active}
+      active={active}
       onChange={onChange}
       uploadFile={async (file) =>
         api.invoke('attachment:save', {

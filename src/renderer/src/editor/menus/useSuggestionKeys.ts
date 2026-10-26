@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
  * One highlight for a suggestion menu, moved by both the pointer and the arrow keys, as in Notion.
  * BlockNote's own index ignores the pointer, so its keys are taken first, in the capture phase.
  */
-export function useSuggestionKeys<T extends { key: string }>(
+export function useSuggestionKeys<T extends { key: string; disabled?: boolean }>(
   items: T[],
   onItemClick: ((item: T) => void) | undefined
 ): { active: number; setActive: (index: number) => void } {
@@ -22,10 +22,16 @@ export function useSuggestionKeys<T extends { key: string }>(
       if (items.length === 0 || e.isComposing || e.metaKey || e.ctrlKey || e.altKey) return
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         const step = e.key === 'ArrowDown' ? 1 : -1
-        setActive((i) => (i + step + items.length) % items.length)
+        setActive((from) => {
+          for (let n = 1; n <= items.length; n++) {
+            const i = (((from + step * n) % items.length) + items.length) % items.length
+            if (!items[i].disabled) return i
+          }
+          return from
+        })
       } else if (e.key === 'Enter') {
         const item = items[Math.min(active, items.length - 1)]
-        if (item !== undefined) onItemClick?.(item)
+        if (item !== undefined && !item.disabled) onItemClick?.(item)
       } else {
         return
       }
