@@ -67,10 +67,12 @@ export function trimPage(markdown: string): string {
   const to = from >= 0 && close > from ? close + SELECTION_END.length : -1
   // A selection longer than the window keeps its start, and is closed where it is cut.
   if (to >= 0 && to - from > PAGE_LIMIT) {
+    const cut = from + PAGE_LIMIT < close
     return (
       (from > 0 ? '[…]\n' : '') +
-      markdown.slice(from, from + PAGE_LIMIT) +
-      `\n[…]\n${SELECTION_END}` +
+      markdown.slice(from, cut ? from + PAGE_LIMIT : close) +
+      (cut ? '\n[…]\n' : '') +
+      SELECTION_END +
       (to < markdown.length ? '\n[…]' : '')
     )
   }

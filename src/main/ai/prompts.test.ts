@@ -132,6 +132,13 @@ describe('trimPage', () => {
     expect(trimmed.endsWith('\n[…]')).toBe(true)
   })
 
+  it('never cuts into the end marker of a selection just over the limit', () => {
+    const selected = 'x'.repeat(PAGE_LIMIT - '⟦selection⟧'.length - 5)
+    const trimmed = trimPage(`${'a'.repeat(PAGE_LIMIT)}⟦selection⟧${selected}⟦/selection⟧tail`)
+    expect(trimmed.match(/⟦/g)).toHaveLength(2)
+    expect(trimmed).toContain(`⟦selection⟧${selected}⟦/selection⟧`)
+  })
+
   it('keeps the start of a huge page with no marker', () => {
     const trimmed = trimPage('c'.repeat(PAGE_LIMIT * 2))
     expect(trimmed.startsWith('ccc')).toBe(true)
