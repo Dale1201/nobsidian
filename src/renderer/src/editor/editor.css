@@ -134,15 +134,33 @@
   background-color: var(--bn-colors-hovered-background);
 }
 
+.nb-page-link-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.nb-page-link-icon img {
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  object-fit: cover;
+}
+
 .nb-page-link-title {
   text-decoration: underline;
-  text-decoration-color: var(--bn-colors-border);
+  text-decoration-color: var(--nb-link-underline);
   text-underline-offset: 3px;
   font-weight: 500;
 }
 
-.nb-page-link[data-missing] .nb-page-link-title {
-  color: var(--bn-colors-highlights-gray-text);
+.nb-page-link[data-missing] {
+  color: var(--nb-muted);
 }
 
 .nb-raw {

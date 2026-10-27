@@ -35,6 +35,11 @@ const onMiddleDown = (e: React.MouseEvent): void => {
 
 export const PageLinkContext = createContext<PageLinkContextValue | null>(null)
 
+/** A link to a page that is gone shows the name its file had. */
+function missingTitle(href: string): string {
+  return decodeHref(href.split('/').pop() ?? href).replace(/\.md$/i, '') || href
+}
+
 export const createCallout = createReactBlockSpec(
   {
     type: 'callout',
@@ -105,6 +110,9 @@ export const createPageLink = createReactBlockSpec(
     render: function PageLinkBlock({ block }) {
       const ctx = useContext(PageLinkContext)
       const target = ctx?.resolve(block.props.href)
+      // A page deleted while this link shows keeps the title it had.
+      const [seen, setSeen] = useState(target?.title)
+      if (target && target.title !== seen) setSeen(target.title)
       return (
         <div
           className="nb-page-link"
@@ -113,8 +121,12 @@ export const createPageLink = createReactBlockSpec(
           onMouseDown={onMiddleDown}
           onAuxClick={(e) => e.button === 1 && ctx?.open(block.props.href, e)}
         >
-          <span className="nb-page-link-icon">{target?.icon ?? '📄'}</span>
-          <span className="nb-page-link-title">{target?.title ?? block.props.href}</span>
+          <span className="nb-page-link-icon">
+            <PageIconView icon={target?.icon} size={18} />
+          </span>
+          <span className="nb-page-link-title">
+            {target?.title ?? seen ?? missingTitle(block.props.href)}
+          </span>
         </div>
       )
     }

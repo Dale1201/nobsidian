@@ -338,3 +338,65 @@ describe('Workspace keeps existing notes intact', () => {
     }
   })
 })
+
+describe('Workspace links sub-pages from their parent', () => {
+  const pageLink = (id: string): Block => ({
+    type: 'pageLink',
+    props: { href: pageLinkHref(id) },
+    children: []
+  })
+
+  it('adds a link at the end of the parent when asked, and tells open editors', async () => {
+    const ws = await Workspace.open(root, { settleMs: 0 })
+    const parent = await ws.createPage(null, undefined, { title: 'Aztec', blocks: [text('Idea')] })
+    const events: unknown[] = []
+    ws.onEvent((e) => events.push(e))
+    const child = await ws.createPage(parent.id, undefined, undefined, { link: true })
+    await ws.renamePage(child.id, 'Subpage')
+    expect(await read('Aztec.md')).toMatch(/Idea\n\n\[Subpage\]\(Aztec\/Subpage\.md "page"\)\n$/)
+    expect(events).toContainEqual({ type: 'page', id: parent.id, revision: 1 })
+    expect((await ws.readPage(parent.id)).blocks).toEqual([text('Idea'), pageLink(child.id)])
+  })
+
+  it('leaves the parent alone without the link option', async () => {
+    const ws = await Workspace.open(root, { settleMs: 0 })
+    const parent = await ws.createPage(null, undefined, { title: 'Aztec', blocks: [text('Idea')] })
+    await ws.createPage(parent.id)
+    expect((await ws.readPage(parent.id)).blocks).toEqual([text('Idea')])
+  })
+
+  it('moves the link along with a page that changes parent', async () => {
+    const ws = await Workspace.open(root, { settleMs: 0 })
+    const from = await ws.createPage(null, undefined, { title: 'From', blocks: [] })
+    const to = await ws.createPage(null, undefined, { title: 'To', blocks: [text('Home')] })
+    const child = await ws.createPage(from.id, undefined, undefined, { link: true })
+    await ws.writePage(from.id, [text('Before'), pageLink(child.id), text('After')])
+    await ws.movePage(child.id, to.id, 0)
+    expect((await ws.readPage(from.id)).blocks).toEqual([text('Before'), text('After')])
+    expect((await ws.readPage(to.id)).blocks).toEqual([text('Home'), pageLink(child.id)])
+    await ws.movePage(child.id, null, 0)
+    expect((await ws.readPage(to.id)).blocks).toEqual([text('Home')])
+  })
+
+  it('does not touch the parent when a page is only reordered', async () => {
+    const ws = await Workspace.open(root, { settleMs: 0 })
+    const parent = await ws.createPage(null, undefined, { title: 'P', blocks: [text('x')] })
+    const a = await ws.createPage(parent.id)
+    await ws.createPage(parent.id)
+    await ws.movePage(a.id, parent.id, 1)
+    expect((await ws.readPage(parent.id)).blocks).toEqual([text('x')])
+  })
+
+  it('links a duplicate right after the original', async () => {
+    const ws = await Workspace.open(root, { settleMs: 0 })
+    const parent = await ws.createPage(null, undefined, { title: 'Plan', blocks: [] })
+    const step = await ws.createPage(parent.id, undefined, { title: 'Step', blocks: [] })
+    await ws.writePage(parent.id, [pageLink(step.id), text('Notes')])
+    const copy = await ws.duplicatePage(step.id)
+    expect((await ws.readPage(parent.id)).blocks).toEqual([
+      pageLink(step.id),
+      pageLink(copy.id),
+      text('Notes')
+    ])
+  })
+})
