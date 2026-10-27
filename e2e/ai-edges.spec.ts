@@ -8,6 +8,7 @@ import {
   clickInEditor,
   clickMenuItem,
   editor,
+  newTab,
   pressInEditor,
   waitForFile
 } from './helpers'
@@ -126,7 +127,7 @@ test('leaving the page while Claude writes removes the change', async ({ nb, ant
     .click()
   await expect(page.locator('.nb-ai-added')).toBeVisible()
 
-  await clickMenuItem(nb.app, 'New Tab')
+  await newTab(nb.app, page)
   await page.getByTestId('sidebar-row-Other').click()
   await page.getByTestId('tab-Notes').click()
   await expect(page.locator('.tab-pane.active .nb-ai-added')).toHaveCount(0)
@@ -143,7 +144,7 @@ test('leaving the page while Claude writes removes the change', async ({ nb, ant
 test('closing the tab while Claude writes removes the change', async ({ nb, anthropic }) => {
   const page = await setUp(nb)
   const before = await readFile(join(nb.workspace, 'Notes.md'), 'utf8')
-  await clickMenuItem(nb.app, 'New Tab')
+  await newTab(nb.app, page)
   await page.getByTestId('sidebar-row-Other').click()
   await page.getByTestId('tab-Notes').click()
   anthropic.reply({ text: 'A rewrite in progress.', chunks: 4, hold: true })

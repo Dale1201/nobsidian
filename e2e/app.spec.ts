@@ -5,7 +5,14 @@ import { tmpdir } from 'node:os'
 import { expect, test } from './fixtures'
 import { launchElectron } from './launch'
 
-import { editor, newPage, typeNewPageTitle, waitForFile } from './helpers'
+import {
+  caretToLineEnd,
+  editor,
+  newPage,
+  placeCaret,
+  typeNewPageTitle,
+  waitForFile
+} from './helpers'
 
 test('first run asks for a folder and creates the first page', async () => {
   const userData = await mkdtemp(join(tmpdir(), 'nobsidian-e2e-user-'))
@@ -107,8 +114,8 @@ test('slash menu inserts a callout and a sub-page', async ({ nb }) => {
   await page.keyboard.press('Enter')
   await page.keyboard.type('Remember this')
   await waitForFile(join(workspace, 'Parent.md'), '> [!callout] 💡\n> Remember this')
-  await page.locator(editor).click()
-  await page.keyboard.press('End')
+  await placeCaret(page.locator(editor))
+  await caretToLineEnd(page)
   await page.keyboard.press('Enter')
   await page.keyboard.press('Enter')
   await page.keyboard.type('/page')

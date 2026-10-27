@@ -1,7 +1,7 @@
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { expect, test } from './fixtures'
-import { editor, waitForFile } from './helpers'
+import { caretToLineEnd, editor, placeCaret, waitForFile } from './helpers'
 
 test('search shows recent pages, ranks title matches first and opens with the keyboard', async ({
   nb
@@ -59,8 +59,8 @@ test('closing search returns the cursor to the editor', async ({ nb }) => {
   await writeFile(join(nb.workspace, 'Note.md'), 'Some text.\n')
   const page = await nb.relaunch()
   await page.getByTestId('sidebar-row-Note').click()
-  await page.locator(editor).getByText('Some text.').click()
-  await page.keyboard.press('End')
+  await placeCaret(page.locator(editor).getByText('Some text.'))
+  await caretToLineEnd(page)
   await page.keyboard.press('Meta+k')
   const dialog = page.getByRole('dialog', { name: 'Search' })
   await expect(dialog).toBeVisible()

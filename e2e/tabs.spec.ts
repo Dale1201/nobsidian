@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { ElectronApplication, Locator, Page } from '@playwright/test'
 import { expect, test } from './fixtures'
-import { caretToLineEnd, editor, placeCaret, rowAction, waitForFile } from './helpers'
+import { caretToLineEnd, editor, newTab, placeCaret, rowAction, waitForFile } from './helpers'
 
 /** Clicks an application menu item by label, hidden ones included, as its accelerator would. */
 async function menu(app: ElectronApplication, label: string): Promise<void> {
@@ -46,7 +46,7 @@ async function open(page: Page, title: string): Promise<void> {
 
 /** Opens a page in a new tab without modifier clicks: a new tab, then the page in it. */
 async function tabOn(app: ElectronApplication, page: Page, title: string): Promise<void> {
-  await menu(app, 'New Tab')
+  await newTab(app, page)
   await open(page, title)
 }
 
@@ -60,7 +60,7 @@ async function header(file: string): Promise<string> {
 test('Cmd+T and + open the current page in a new tab right after it', async ({ nb }) => {
   const page = await pages(nb, { Alpha: 'A.\n', Beta: 'B.\n' })
   await open(page, 'Alpha')
-  await menu(nb.app, 'New Tab')
+  await newTab(nb.app, page)
   await expect.poll(() => tabTitles(page)).toEqual(['Alpha', 'Alpha'])
   await expect(page.locator('.tab').nth(1)).toHaveClass(/active/)
   await open(page, 'Beta')
@@ -147,7 +147,7 @@ test('each tab keeps its own back and forward, with scroll positions', async ({ 
     )
     .toBe(700)
   await expect(page.getByRole('button', { name: 'Forward' })).toBeEnabled()
-  await menu(nb.app, 'New Tab')
+  await newTab(nb.app, page)
   await expect(pane(page).getByTestId('page-title')).toHaveText('Long')
   await expect(page.getByRole('button', { name: 'Back' })).toBeDisabled()
   await expect(page.getByRole('button', { name: 'Forward' })).toBeDisabled()
@@ -214,7 +214,7 @@ test('a deleted page shows the Trash banner in its tabs and comes back when rest
 }) => {
   const page = await pages(nb, { Doomed: 'Keep me.\n', Other: 'Other.\n' })
   await open(page, 'Doomed')
-  await menu(nb.app, 'New Tab')
+  await newTab(nb.app, page)
   await rowAction(page, 'Doomed', 'Delete')
   await expect(pane(page).getByRole('status')).toContainText('This page is in Trash.')
   await expect.poll(() => tabTitles(page)).toEqual(['Doomed', 'Doomed'])
@@ -334,7 +334,7 @@ test('a file dropped on a page is attached to the visible tab only', async ({ nb
 test('the active tab stays in view when the tabs do not fit', async ({ nb }) => {
   const page = await pages(nb, { Alpha: 'A.\n' })
   await open(page, 'Alpha')
-  for (let i = 0; i < 30; i++) await menu(nb.app, 'New Tab')
+  for (let i = 0; i < 30; i++) await newTab(nb.app, page)
   await expect(page.locator('.tab')).toHaveCount(31)
   const inView = async (): Promise<boolean> => {
     const list = (await page.locator('.tab-list').boundingBox())!
@@ -468,7 +468,7 @@ test('a hidden tab whose page is in conflict shows a dot until it is looked at',
 test('typing in one tab updates the same page in another', async ({ nb }) => {
   const page = await pages(nb, { Shared: 'Start.\n' })
   await open(page, 'Shared')
-  await menu(nb.app, 'New Tab')
+  await newTab(nb.app, page)
   await placeCaret(pane(page).locator(editor).getByText('Start.'))
   await caretToLineEnd(page)
   await page.keyboard.type(' More.')
@@ -485,7 +485,7 @@ test('a page open in two tabs keeps one history version and the other tab in pla
 }) => {
   const page = await pages(nb, { Shared: 'Start.\n' })
   await open(page, 'Shared')
-  await menu(nb.app, 'New Tab')
+  await newTab(nb.app, page)
   await placeCaret(pane(page).locator(editor).getByText('Start.'))
   await caretToLineEnd(page)
   for (const word of [' one', ' two', ' three', ' four', ' five']) {
@@ -549,6 +549,7 @@ test('reopening a tab whose page was deleted since shows the Trash banner or ste
   await open(page, 'Keep')
   await tabOn(nb.app, page, 'Doomed')
   await menu(nb.app, 'Close Tab')
+  await expect(page.locator('.tab')).toHaveCount(1)
   await rowAction(page, 'Doomed', 'Delete')
   await expect(page.getByTestId('sidebar-row-Doomed')).toHaveCount(0)
   await menu(nb.app, 'Reopen Closed Tab')
@@ -559,6 +560,7 @@ test('reopening a tab whose page was deleted since shows the Trash banner or ste
   await page.getByTestId('tab-Keep').click()
   await tabOn(nb.app, page, 'Gone')
   await menu(nb.app, 'Close Tab')
+  await expect(page.locator('.tab')).toHaveCount(2)
   await unlink(join(nb.workspace, 'Gone.md'))
   await expect(page.getByTestId('sidebar-row-Gone')).toHaveCount(0)
   await menu(nb.app, 'Reopen Closed Tab')
@@ -569,7 +571,7 @@ test('reopening a tab whose page was deleted since shows the Trash banner or ste
 test('a tab squeezed to 36px shows only its icon, centred', async ({ nb }) => {
   const page = await pages(nb, { Alpha: '---\nicon: 🚀\n---\n\nA.\n' })
   await open(page, 'Alpha')
-  for (let i = 0; i < 30; i++) await menu(nb.app, 'New Tab')
+  for (let i = 0; i < 30; i++) await newTab(nb.app, page)
   const tab = (await page.locator('.tab').first().boundingBox())!
   const icon = (await page.locator('.tab').first().locator('.tab-icon').boundingBox())!
   expect(tab.width).toBe(36)
@@ -633,7 +635,7 @@ test('a new tab opened while the page is still saving shows the saved text, and 
   await placeCaret(pane(page).locator(editor).getByText('Start.'))
   await caretToLineEnd(page)
   await page.keyboard.type(' Fresh words.')
-  await menu(nb.app, 'New Tab')
+  await newTab(nb.app, page)
   // Checked only once the late read has answered, since that answer is what could undo the save.
   await expect
     .poll(() => nb.app.evaluate(() => (globalThis as { lateReadDone?: boolean }).lateReadDone))
@@ -648,7 +650,7 @@ test('a new tab opened while the page is still saving shows the saved text, and 
 test('a width change that cannot be saved is undone in every tab of the page', async ({ nb }) => {
   const page = await pages(nb, { Wide: 'Text.\n' })
   await open(page, 'Wide')
-  await menu(nb.app, 'New Tab')
+  await newTab(nb.app, page)
   try {
     await chmod(nb.workspace, 0o555)
     await pane(page).getByRole('button', { name: 'Page menu' }).click()

@@ -62,6 +62,14 @@ export async function clickMenuItem(app: ElectronApplication, label: string): Pr
   }, label)
 }
 
+/** A menu click reaches the window later, so this waits for the new tab before anything acts on it. */
+export async function newTab(app: ElectronApplication, page: Page): Promise<void> {
+  const tabs = page.locator('.tab')
+  const count = await tabs.count()
+  await clickMenuItem(app, 'New Tab')
+  await expect(tabs).toHaveCount(count + 1)
+}
+
 /**
  * ProseMirror reads a caret moved by a click or a key on the next `selectionchange`, so a key
  * pressed at once would act on the old caret. Waits until the editor's selection is the DOM's.
