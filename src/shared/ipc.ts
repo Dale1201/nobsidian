@@ -80,7 +80,14 @@ export interface IpcContract {
   ]
   'page:meta': [payload: { id: string; patch: PageMetaPatch }, result: void]
   'page:create': [
-    payload: { parentId: string | null; index?: number; title?: string; blocks?: Block[] },
+    payload: {
+      parentId: string | null
+      index?: number
+      title?: string
+      blocks?: Block[]
+      /** Adds a link to the new page at the end of its parent. */
+      link?: boolean
+    },
     result: PageNode
   ]
   'page:rename': [payload: { id: string; title: string }, result: void]
