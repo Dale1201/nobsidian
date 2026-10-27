@@ -80,7 +80,7 @@ test('the main process streams Claude to the renderer and keeps the key to itsel
   const stored = await filesUnder(nb.userData)
   expect(stored.some((path) => path.includes('Local Storage'))).toBe(true)
   for (const path of stored) {
-    if (path === join(nb.userData, 'anthropic-key.bin')) continue
+    if (path === join(nb.userData, 'anthropic-key.json')) continue
     expect(await holdsKey(path), path).toBe(false)
   }
   for (const path of await filesUnder(nb.workspace)) {

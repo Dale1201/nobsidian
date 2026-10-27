@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import type { MenuCommand } from '@shared/ipc'
 import { useAi } from './ai/aiStore'
 import { DrawingHost } from './drawing/DrawingHost'
 import { HistoryModal } from './components/HistoryModal'
@@ -65,35 +66,45 @@ export function App(): React.JSX.Element | null {
     }
   }, [])
 
-  useEffect(
-    () =>
-      api.on('menu:command', (cmd) => {
-        const app = useApp.getState()
-        // The drawing editor covers the window; only the theme may change under it.
-        if (app.overlay?.kind === 'drawing' && cmd !== 'toggle-theme') return
-        if (cmd === 'new-page') void app.createPage(null)
-        if (cmd === 'open-folder') void app.chooseWorkspace()
-        if (cmd === 'import-notion') void app.startImport()
-        if (cmd === 'search' && canSearch()) app.setOverlay({ kind: 'search' })
-        if (cmd === 'settings' && canSearch())
-          app.setOverlay({ kind: 'settings', section: 'preferences' })
-        if (cmd === 'back') app.back()
-        if (cmd === 'forward') app.forward()
-        if (cmd === 'new-tab') app.newTab()
-        if (cmd === 'close-tab') {
-          if (app.tabs) app.closeTab(app.tabs.activeId)
-          else void api.invoke('window:close', undefined)
-        }
-        if (cmd === 'reopen-tab') app.reopenClosedTab()
-        if (cmd === 'next-tab') app.stepTab(1)
-        if (cmd === 'previous-tab') app.stepTab(-1)
-        if (cmd.startsWith('select-tab-')) app.selectTab(Number(cmd.slice('select-tab-'.length)))
-        if (cmd === 'toggle-sidebar')
-          void app.updateSettings({ sidebarCollapsed: !app.settings?.sidebarCollapsed })
-        if (cmd === 'toggle-theme') void app.updateSettings({ theme: toggledPreference(theme) })
-      }),
-    [theme]
-  )
+  useEffect(() => {
+    const run = (cmd: MenuCommand): void => {
+      const app = useApp.getState()
+      // The drawing editor covers the window; only the theme may change under it.
+      if (app.overlay?.kind === 'drawing' && cmd !== 'toggle-theme') return
+      if (cmd === 'new-page') void app.createPage(null)
+      if (cmd === 'open-folder') void app.chooseWorkspace()
+      if (cmd === 'import-notion') void app.startImport()
+      if (cmd === 'search' && canSearch()) app.setOverlay({ kind: 'search' })
+      if (cmd === 'settings' && canSearch())
+        app.setOverlay({ kind: 'settings', section: 'preferences' })
+      if (cmd === 'back') app.back()
+      if (cmd === 'forward') app.forward()
+      if (cmd === 'new-tab') app.newTab()
+      if (cmd === 'close-tab') {
+        if (app.tabs) app.closeTab(app.tabs.activeId)
+        else void api.invoke('window:close', undefined)
+      }
+      if (cmd === 'reopen-tab') app.reopenClosedTab()
+      if (cmd === 'next-tab') app.stepTab(1)
+      if (cmd === 'previous-tab') app.stepTab(-1)
+      if (cmd.startsWith('select-tab-')) app.selectTab(Number(cmd.slice('select-tab-'.length)))
+      if (cmd === 'toggle-sidebar')
+        void app.updateSettings({ sidebarCollapsed: !app.settings?.sidebarCollapsed })
+      if (cmd === 'toggle-theme') void app.updateSettings({ theme: toggledPreference(theme) })
+    }
+    const offMenu = api.on('menu:command', run)
+    // A mouse's side buttons arrive as buttons 3 and 4.
+    const onMouseUp = (e: MouseEvent): void => {
+      if (e.button !== 3 && e.button !== 4) return
+      e.preventDefault()
+      run(e.button === 3 ? 'back' : 'forward')
+    }
+    window.addEventListener('mouseup', onMouseUp)
+    return () => {
+      offMenu()
+      window.removeEventListener('mouseup', onMouseUp)
+    }
+  }, [theme])
 
   if (!ready) return null
   return (

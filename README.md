@@ -10,6 +10,7 @@ Your notes are plain Markdown files in a folder you choose, so they stay yours.
 - Notion-style block editor: `/` commands, drag handles, toggles, callouts, columns, tables, code, math.
 - Drawings: type `/drawing` to sketch with [Excalidraw](https://excalidraw.com) in a full-window editor; the page shows the drawing as a picture.
 - Nested pages in a sidebar, with emoji or image icons and page covers.
+  Like Notion, a page added, moved or duplicated inside another shows as a link in its parent.
 - Notion's look, in light and dark mode.
 - Quick search (Cmd+K or Cmd+P) across titles and text, with recent pages.
 - Tabs like Notion's desktop app: Cmd+T, Cmd-click or middle-click to open, drag to reorder, Cmd+Shift+T to reopen, and each notes folder's tabs come back after a restart.

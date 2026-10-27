@@ -433,7 +433,9 @@ export const useApp = create<AppState>((set, get) => {
     },
 
     createPage: async (parentId, index, options) => {
-      const node = await api.invoke('page:create', { parentId, index })
+      // The parent gets a link to the new page; open editors save first, so they can reload it.
+      if (parentId) await flushAll()
+      const node = await api.invoke('page:create', { parentId, index, link: true })
       if (parentId) await get().setExpanded(options?.expandKey ?? parentId, true)
       get().openPage(node.id, { scroll: options?.scroll })
       return node.id
@@ -444,6 +446,7 @@ export const useApp = create<AppState>((set, get) => {
     },
 
     movePage: async (id, parentId, index) => {
+      await flushAll()
       try {
         await api.invoke('page:move', { id, parentId, index })
         if (parentId) await get().setExpanded(parentId, true)

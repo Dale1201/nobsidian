@@ -1686,11 +1686,6 @@ button.breadcrumb:hover {
   font-size: 13px;
   color: var(--color-red);
 }
-.settings-key-note {
-  max-width: 260px;
-  font-size: 13px;
-  color: var(--text-secondary);
-}
 .settings-usage {
   display: flex;
   align-items: baseline;

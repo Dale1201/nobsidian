@@ -129,8 +129,8 @@ export function registerHandlers(ctx: AppContext): void {
   )
   handle(
     'page:create',
-    mutate((w, { parentId, index, title = '', blocks = [] }) =>
-      w.createPage(parentId, index, { title, blocks })
+    mutate((w, { parentId, index, title = '', blocks = [], link }) =>
+      w.createPage(parentId, index, { title, blocks }, { link })
     )
   )
   handle(

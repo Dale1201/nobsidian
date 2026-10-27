@@ -79,7 +79,7 @@ const ctx: AppContext = {
 
 const ai = new AiService({
   keys: new KeyStore(
-    join(app.getPath('userData'), 'anthropic-key.bin'),
+    join(app.getPath('userData'), 'anthropic-key.json'),
     process.env.NOBSIDIAN_E2E === '1' ? testCodec : safeStorageCodec
   ),
   usage: new UsageLedger(join(app.getPath('userData'), 'ai-usage.json')),

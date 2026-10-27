@@ -14,6 +14,11 @@ import {
   sanitizeTitle,
   stemOf
 } from '../../shared/core/paths'
+import {
+  appendSubPageLink,
+  insertSubPageLinkAfter,
+  removeSubPageLinks
+} from '../../shared/core/subpages'
 import { blocksText } from '../../shared/core/text'
 import type {
   FileChange,
@@ -242,11 +247,15 @@ export class Workspace {
 
   // ---------- structure changes ----------
 
-  /** New pages start with an empty title (shown as an "Untitled" placeholder), like Notion. */
+  /**
+   * New pages start with an empty title (shown as an "Untitled" placeholder), like Notion.
+   * `link` adds a link to the new page at the end of its parent.
+   */
   createPage(
     parentId: string | null,
     index?: number,
-    content: { title: string; blocks: Block[] } = { title: '', blocks: [] }
+    content: { title: string; blocks: Block[] } = { title: '', blocks: [] },
+    options: { link?: boolean } = {}
   ): Promise<PageNode> {
     return this.run(async () => {
       const core = this.core
@@ -266,6 +275,7 @@ export class Workspace {
       core.index.set(id, title, blocksText(fileBlocks))
       core.insertOrder(parentId, id, index)
       await core.persist()
+      if (parentId && options.link) await this.editBlocks(parentId, (b) => appendSubPageLink(b, id))
       return { id, title, path, children: [] }
     })
   }
@@ -327,6 +337,9 @@ export class Workspace {
       const siblings = core.childrenOf(source.parentId).filter((r) => r.id !== copies[0].id)
       core.insertOrder(source.parentId, copies[0].id, siblings.indexOf(source) + 1)
       await core.persist()
+      if (source.parentId) {
+        await this.editBlocks(source.parentId, (b) => insertSubPageLinkAfter(b, id, copies[0].id))
+      }
       return this.nodeOf(copies[0].id)
     })
   }
@@ -366,7 +379,8 @@ export class Workspace {
         throw new Error('A page cannot be moved inside itself')
       }
       core.removeOrder(r.parentId, id)
-      if (newParentId !== r.parentId) {
+      const oldParentId = r.parentId
+      if (newParentId !== oldParentId) {
         const parent = newParentId ? core.record(newParentId) : null
         const dir = parent ? childDirOf(parent.path) : ''
         await mkdir(core.abs(dir), { recursive: true })
@@ -379,7 +393,25 @@ export class Workspace {
       }
       core.insertOrder(newParentId, id, index)
       await core.persist()
+      if (newParentId === oldParentId) return
+      if (oldParentId) await this.editBlocks(oldParentId, (b) => removeSubPageLinks(b, id))
+      if (newParentId) await this.editBlocks(newParentId, (b) => appendSubPageLink(b, id))
     })
+  }
+
+  /** Changes a page's blocks for the app; open editors reload it. `edit` returns null for no change. */
+  private async editBlocks(id: string, edit: (blocks: Block[]) => Block[] | null): Promise<void> {
+    const core = this.core
+    const r = core.record(id)
+    const disk = await core.readCurrent(r)
+    const blocks = edit(core.toDoc(r.path, disk).blocks)
+    if (!blocks) return
+    const fileBlocks = core.toFileBlocks(r.path, blocks)
+    await this.history.rewrite(r, disk, serializePage({ ...parsePage(disk).meta, id }, fileBlocks))
+    core.index.set(id, r.title, blocksText(fileBlocks))
+    const revision = core.revision(id) + 1
+    core.revisions.set(id, revision)
+    core.emit({ type: 'page', id, revision })
   }
 
   // ---------- trash ----------
