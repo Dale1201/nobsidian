@@ -74,6 +74,9 @@ describe('Edits made outside the app', () => {
       { kind: 'add', path: 'Mine.md' },
       { kind: 'addDir', path: '.nobsidian' },
       { kind: 'addDir', path: 'attachments' },
+      // Reported late, after the rename already moved the page away from here.
+      { kind: 'add', path: 'Untitled.md' },
+      change('Untitled.md'),
       { kind: 'unlink', path: 'Untitled.md' }
     ])
     expect(events).toEqual([])
