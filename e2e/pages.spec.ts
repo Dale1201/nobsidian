@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import type { Page } from '@playwright/test'
 import { expect, test } from './fixtures'
 import { launchElectron } from './launch'
-import { editor, newPage, rowAction, waitForFile } from './helpers'
+import { caretToLineEnd, editor, newPage, placeCaret, rowAction, waitForFile } from './helpers'
 
 test('duplicate copies a page and its sub-pages below the original', async ({ nb }) => {
   await writeFile(join(nb.workspace, 'Plan.md'), 'Body\n')
@@ -145,8 +145,8 @@ test('Cmd+Shift+H applies the last color picked in the toolbar', async ({ nb }) 
   await page.locator('[data-test="text-color-red"]').click()
   await waitForFile(join(workspace, 'Colors.md'), '<span data-color="red">alpha</span>')
 
-  await page.locator(editor).getByText('beta').click()
-  await page.keyboard.press('End')
+  await placeCaret(page.locator(editor).getByText('beta'))
+  await caretToLineEnd(page)
   await page.keyboard.type(' gamma')
   await waitForFile(join(workspace, 'Colors.md'), 'gamma')
   await selectWordBeforeCursor(page)
@@ -183,8 +183,8 @@ test('the last picked color survives a restart', async ({ nb }) => {
   await waitForFile(join(userData, 'settings.json'), '"red"')
 
   const relaunched = await nb.relaunch()
-  await relaunched.locator(editor).getByText('beta').click()
-  await relaunched.keyboard.press('End')
+  await placeCaret(relaunched.locator(editor).getByText('beta'))
+  await caretToLineEnd(relaunched)
   await relaunched.keyboard.type(' gamma')
   await waitForFile(file, 'gamma')
   await selectWordBeforeCursor(relaunched)

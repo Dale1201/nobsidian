@@ -159,21 +159,25 @@ test('Cmd+Shift+Down moves selected blocks and keeps them selected', async ({ nb
   await expect(page.locator(`${editor} .nb-block-selected`)).toHaveText(['One'])
 })
 
-test('a click or Enter returns to typing; copy takes the selected blocks', async ({ nb }) => {
-  const page = await openFile(nb, 'Back', 'Alpha\n\nBeta\n')
-  await page.locator(`${editor} .bn-inline-content`, { hasText: 'Alpha' }).click()
-  await page.keyboard.press('Escape')
-  await page.keyboard.press('Meta+c')
-  const copied = await nb.app.evaluate(({ clipboard }) => clipboard.readText())
-  expect(copied).toContain('Alpha')
-  await page.keyboard.press('Enter')
-  await expect(page.locator(`${editor} .nb-block-selected`)).toHaveCount(0)
-  await page.keyboard.type('!')
-  await expect(page.locator(`${editor} .bn-block-content`).first()).toHaveText('Alpha!')
-  await page.keyboard.press('Escape')
-  await page.locator(`${editor} .bn-inline-content`, { hasText: 'Beta' }).click()
-  await expect(page.locator(`${editor} .nb-block-selected`)).toHaveCount(0)
-})
+test(
+  'a click or Enter returns to typing; copy takes the selected blocks',
+  { tag: '@clipboard' },
+  async ({ nb }) => {
+    const page = await openFile(nb, 'Back', 'Alpha\n\nBeta\n')
+    await page.locator(`${editor} .bn-inline-content`, { hasText: 'Alpha' }).click()
+    await page.keyboard.press('Escape')
+    await page.keyboard.press('Meta+c')
+    const copied = await nb.app.evaluate(({ clipboard }) => clipboard.readText())
+    expect(copied).toContain('Alpha')
+    await page.keyboard.press('Enter')
+    await expect(page.locator(`${editor} .nb-block-selected`)).toHaveCount(0)
+    await page.keyboard.type('!')
+    await expect(page.locator(`${editor} .bn-block-content`).first()).toHaveText('Alpha!')
+    await page.keyboard.press('Escape')
+    await page.locator(`${editor} .bn-inline-content`, { hasText: 'Beta' }).click()
+    await expect(page.locator(`${editor} .nb-block-selected`)).toHaveCount(0)
+  }
+)
 
 test('a selection holding a parent and its child deletes both, and nothing else', async ({
   nb

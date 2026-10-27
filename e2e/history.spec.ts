@@ -1,6 +1,6 @@
 import { join } from 'node:path'
 import { expect, test } from './fixtures'
-import { editor, newPage, waitForFile } from './helpers'
+import { caretToLineEnd, editor, newPage, placeCaret, waitForFile } from './helpers'
 
 test('page history previews an older version and restores it', async ({ nb }) => {
   const { page, workspace } = nb
@@ -17,8 +17,8 @@ test('page history previews an older version and restores it', async ({ nb }) =>
   await expect(dialog.locator('.history-item')).toHaveCount(1)
   await dialog.getByRole('button', { name: 'Close' }).click()
 
-  await page.locator(editor).click()
-  await page.keyboard.press('End')
+  await placeCaret(page.locator(editor))
+  await caretToLineEnd(page)
   await page.keyboard.type(', then rewritten')
   await waitForFile(join(workspace, 'Essay.md'), 'then rewritten')
   await openHistory()

@@ -1,7 +1,14 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { expect, test } from './fixtures'
-import { editor, rowAction, typeNewPageTitle, waitForFile } from './helpers'
+import {
+  caretToLineEnd,
+  editor,
+  placeCaret,
+  rowAction,
+  typeNewPageTitle,
+  waitForFile
+} from './helpers'
 
 test('a page added inside another from the sidebar shows as a link at the end of its parent', async ({
   nb
@@ -34,8 +41,8 @@ test('typing in the parent right before adding a page keeps both the text and th
   await writeFile(join(nb.workspace, 'Aztec.md'), 'First idea\n')
   const page = await nb.relaunch()
   await page.getByTestId('sidebar-row-Aztec').click()
-  await page.locator(editor).getByText('First idea').click()
-  await page.keyboard.press('End')
+  await placeCaret(page.locator(editor).getByText('First idea'))
+  await caretToLineEnd(page)
   await page.keyboard.type(' and more')
   const row = page.getByTestId('sidebar-row-Aztec')
   await row.hover()
@@ -57,8 +64,8 @@ test('a parent open in another tab shows the new sub-page link without a conflic
   await writeFile(join(nb.workspace, 'Aztec.md'), 'First idea\n')
   const page = await nb.relaunch()
   await page.getByTestId('sidebar-row-Aztec').click()
-  await page.locator(editor).getByText('First idea').click()
-  await page.keyboard.press('End')
+  await placeCaret(page.locator(editor).getByText('First idea'))
+  await caretToLineEnd(page)
   await page.keyboard.type(' and more')
   await page.getByRole('button', { name: 'New tab' }).click()
   const row = page.getByTestId('sidebar-row-Aztec')
@@ -123,8 +130,8 @@ test('a sub-page made with /page is linked only once', async ({ nb }) => {
   await writeFile(join(nb.workspace, 'Parent.md'), 'Body\n')
   const page = await nb.relaunch()
   await page.getByTestId('sidebar-row-Parent').click()
-  await page.locator(editor).click()
-  await page.keyboard.press('End')
+  await placeCaret(page.locator(editor))
+  await caretToLineEnd(page)
   await page.keyboard.press('Enter')
   await page.keyboard.type('/page')
   await page.keyboard.press('Enter')

@@ -2,7 +2,7 @@ import { chmod, readFile, readdir, unlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { ElectronApplication, Locator, Page } from '@playwright/test'
 import { expect, test } from './fixtures'
-import { caretToLineEnd, editor, placeCaret, rowAction, waitForFile } from './helpers'
+import { caretToLineEnd, editor, newTab, placeCaret, rowAction, waitForFile } from './helpers'
 
 /** Clicks an application menu item by label, hidden ones included, as its accelerator would. */
 async function menu(app: ElectronApplication, label: string): Promise<void> {
@@ -45,7 +45,7 @@ async function open(page: Page, title: string): Promise<void> {
 
 /** Opens a page in a new tab without modifier clicks: a new tab, then the page in it. */
 async function tabOn(app: ElectronApplication, page: Page, title: string): Promise<void> {
-  await menu(app, 'New Tab')
+  await newTab(app, page)
   await open(page, title)
 }
 
@@ -59,14 +59,14 @@ async function header(file: string): Promise<string> {
 test('Cmd+T and + open the current page in a new tab right after it', async ({ nb }) => {
   const page = await pages(nb, { Alpha: 'A.\n', Beta: 'B.\n' })
   await open(page, 'Alpha')
-  await menu(nb.app, 'New Tab')
-  expect(await tabTitles(page)).toEqual(['Alpha', 'Alpha'])
+  await newTab(nb.app, page)
+  await expect.poll(() => tabTitles(page)).toEqual(['Alpha', 'Alpha'])
   await expect(page.locator('.tab').nth(1)).toHaveClass(/active/)
   await open(page, 'Beta')
   await page.locator('.tab').first().click()
   await page.getByRole('button', { name: 'New tab' }).click()
-  expect(await tabTitles(page)).toEqual(['Alpha', 'Alpha', 'Beta'])
-  expect(await activeTitle(page)).toBe('Alpha')
+  await expect.poll(() => tabTitles(page)).toEqual(['Alpha', 'Alpha', 'Beta'])
+  await expect.poll(() => activeTitle(page)).toBe('Alpha')
   await expect(page.locator('.tab').nth(1)).toHaveClass(/active/)
 })
 
@@ -78,10 +78,10 @@ test('closing tabs hands over to a neighbour, and closing the last one closes th
   await tabOn(nb.app, page, 'Two')
   await tabOn(nb.app, page, 'Three')
   await page.getByTestId('tab-Two').click({ button: 'middle' })
-  expect(await tabTitles(page)).toEqual(['One', 'Three'])
+  await expect.poll(() => tabTitles(page)).toEqual(['One', 'Three'])
   await page.getByTestId('tab-One').hover()
   await page.getByRole('button', { name: 'Close One' }).click()
-  expect(await tabTitles(page)).toEqual(['Three'])
+  await expect.poll(() => tabTitles(page)).toEqual(['Three'])
   await expect(pane(page).getByTestId('page-title')).toHaveText('Three')
   await menu(nb.app, 'Close Tab')
   await expect
@@ -116,17 +116,17 @@ test('the tab shortcuts switch tabs', async ({ nb }) => {
     'Select Last Tab': 'CmdOrCtrl+9'
   })
   await menu(nb.app, 'Show Next Tab')
-  expect(await activeTitle(page)).toBe('One')
+  await expect.poll(() => activeTitle(page)).toBe('One')
   await menu(nb.app, 'Alt+CmdOrCtrl+Right')
-  expect(await activeTitle(page)).toBe('Two')
+  await expect.poll(() => activeTitle(page)).toBe('Two')
   await menu(nb.app, 'CmdOrCtrl+Shift+[')
-  expect(await activeTitle(page)).toBe('One')
+  await expect.poll(() => activeTitle(page)).toBe('One')
   await menu(nb.app, 'Show Previous Tab')
-  expect(await activeTitle(page)).toBe('Three')
+  await expect.poll(() => activeTitle(page)).toBe('Three')
   await menu(nb.app, 'Select Tab 2')
-  expect(await activeTitle(page)).toBe('Two')
+  await expect.poll(() => activeTitle(page)).toBe('Two')
   await menu(nb.app, 'Select Last Tab')
-  expect(await activeTitle(page)).toBe('Three')
+  await expect.poll(() => activeTitle(page)).toBe('Three')
 })
 
 test('each tab keeps its own back and forward, with scroll positions', async ({ nb }) => {
@@ -146,7 +146,7 @@ test('each tab keeps its own back and forward, with scroll positions', async ({ 
     )
     .toBe(700)
   await expect(page.getByRole('button', { name: 'Forward' })).toBeEnabled()
-  await menu(nb.app, 'New Tab')
+  await newTab(nb.app, page)
   await expect(pane(page).getByTestId('page-title')).toHaveText('Long')
   await expect(page.getByRole('button', { name: 'Back' })).toBeDisabled()
   await expect(page.getByRole('button', { name: 'Forward' })).toBeDisabled()
@@ -201,7 +201,7 @@ test('a renamed page renames its tabs', async ({ nb }) => {
   await page.keyboard.press('Meta+A')
   await page.keyboard.type('Final')
   await page.keyboard.press('Enter')
-  expect(await tabTitles(page)).toEqual(['Final', 'Other'])
+  await expect.poll(() => tabTitles(page)).toEqual(['Final', 'Other'])
   const file = join(nb.workspace, 'Other.md')
   const text = await readFile(file, 'utf8')
   await writeFile(file, text.replace('---\n', '---\nicon: 🌿\n'))
@@ -213,10 +213,10 @@ test('a deleted page shows the Trash banner in its tabs and comes back when rest
 }) => {
   const page = await pages(nb, { Doomed: 'Keep me.\n', Other: 'Other.\n' })
   await open(page, 'Doomed')
-  await menu(nb.app, 'New Tab')
+  await newTab(nb.app, page)
   await rowAction(page, 'Doomed', 'Delete')
   await expect(pane(page).getByRole('status')).toContainText('This page is in Trash.')
-  expect(await tabTitles(page)).toEqual(['Doomed', 'Doomed'])
+  await expect.poll(() => tabTitles(page)).toEqual(['Doomed', 'Doomed'])
   await page.locator('.tab').first().click()
   await expect(pane(page).getByRole('status')).toContainText('This page is in Trash.')
   await pane(page).getByRole('button', { name: 'Restore page' }).click()
@@ -231,7 +231,7 @@ test('a page deleted outside the app sends its tab back to the previous page', a
   await open(page, 'Second')
   await unlink(join(nb.workspace, 'Second.md'))
   await expect(pane(page).getByTestId('page-title')).toHaveText('First')
-  expect(await tabTitles(page)).toEqual(['First'])
+  await expect.poll(() => tabTitles(page)).toEqual(['First'])
 })
 
 test('an outside edit reloads a hidden tab quietly', async ({ nb }) => {
@@ -254,7 +254,7 @@ test('closing a tab saves what was typed in it', async ({ nb }) => {
   await caretToLineEnd(page)
   await page.keyboard.type(' Last words.')
   await menu(nb.app, 'Close Tab')
-  expect(await tabTitles(page)).toEqual(['Alpha'])
+  await expect.poll(() => tabTitles(page)).toEqual(['Alpha'])
   await waitForFile(join(nb.workspace, 'Beta.md'), 'B. Last words.')
 })
 
@@ -265,7 +265,7 @@ test('tabs come back after a relaunch, for each notes folder', async ({ nb, tmp 
   await tabOn(nb.app, page, 'Three')
   page = await nb.relaunch()
   await expect.poll(() => tabTitles(page)).toEqual(['Two', 'Three'])
-  expect(await activeTitle(page)).toBe('Three')
+  await expect.poll(() => activeTitle(page)).toBe('Three')
   await page.getByTestId('tab-Two').click()
   await page.getByRole('button', { name: 'Back' }).click()
   await expect(pane(page).getByTestId('page-title')).toHaveText('One')
@@ -333,7 +333,7 @@ test('a file dropped on a page is attached to the visible tab only', async ({ nb
 test('the active tab stays in view when the tabs do not fit', async ({ nb }) => {
   const page = await pages(nb, { Alpha: 'A.\n' })
   await open(page, 'Alpha')
-  for (let i = 0; i < 30; i++) await menu(nb.app, 'New Tab')
+  for (let i = 0; i < 30; i++) await newTab(nb.app, page)
   await expect(page.locator('.tab')).toHaveCount(31)
   const inView = async (): Promise<boolean> => {
     const list = (await page.locator('.tab-list').boundingBox())!
@@ -355,12 +355,12 @@ test('Cmd-click and middle-click open background tabs in a row; Cmd+Shift-click 
   await open(page, 'One')
   await page.getByTestId('sidebar-row-Two').click({ modifiers: ['Meta'] })
   await page.getByTestId('sidebar-row-Three').click({ button: 'middle' })
-  expect(await tabTitles(page)).toEqual(['One', 'Two', 'Three'])
-  expect(await activeTitle(page)).toBe('One')
+  await expect.poll(() => tabTitles(page)).toEqual(['One', 'Two', 'Three'])
+  await expect.poll(() => activeTitle(page)).toBe('One')
   await expect(pane(page).getByTestId('page-title')).toHaveText('One')
   await page.getByTestId('sidebar-row-Four').click({ modifiers: ['Meta', 'Shift'] })
-  expect(await tabTitles(page)).toEqual(['One', 'Two', 'Three', 'Four'])
-  expect(await activeTitle(page)).toBe('Four')
+  await expect.poll(() => tabTitles(page)).toEqual(['One', 'Two', 'Three', 'Four'])
+  await expect.poll(() => activeTitle(page)).toBe('Four')
   await expect(pane(page).getByTestId('page-title')).toHaveText('Four')
 })
 
@@ -378,8 +378,8 @@ test('links and mentions in a page open in a background tab with Cmd or the midd
     .getByRole('link', { name: 'the plan' })
     .click({ modifiers: ['Meta'] })
   await pane(page).locator('.nb-mention').click({ button: 'middle' })
-  expect(await tabTitles(page)).toEqual(['Hub', 'Plan', 'Notes'])
-  expect(await activeTitle(page)).toBe('Hub')
+  await expect.poll(() => tabTitles(page)).toEqual(['Hub', 'Plan', 'Notes'])
+  await expect.poll(() => activeTitle(page)).toBe('Hub')
   // A plain click still opens the page in the tab it is in.
   await pane(page).locator('.nb-mention').click()
   await expect.poll(() => tabTitles(page)).toEqual(['Notes', 'Plan', 'Notes'])
@@ -392,8 +392,8 @@ test('Cmd+Enter in Search opens the result in a background tab', async ({ nb }) 
   await page.getByPlaceholder(/^Search/).fill('Findable')
   await expect(page.locator('.search-item')).toHaveCount(1)
   await page.keyboard.press('Meta+Enter')
-  expect(await tabTitles(page)).toEqual(['Alpha', 'Beta'])
-  expect(await activeTitle(page)).toBe('Alpha')
+  await expect.poll(() => tabTitles(page)).toEqual(['Alpha', 'Beta'])
+  await expect.poll(() => activeTitle(page)).toBe('Alpha')
 })
 
 test('Reopen Closed Tab brings back a closed tab, and a batch closed together', async ({ nb }) => {
@@ -403,15 +403,15 @@ test('Reopen Closed Tab brings back a closed tab, and a batch closed together', 
   await page.getByTestId('sidebar-row-Three').click({ modifiers: ['Meta'] })
   await page.getByTestId('tab-Two').click({ button: 'right' })
   await page.getByRole('menuitem', { name: 'Close Other Tabs' }).click()
-  expect(await tabTitles(page)).toEqual(['Two'])
+  await expect.poll(() => tabTitles(page)).toEqual(['Two'])
   await menu(nb.app, 'Reopen Closed Tab')
-  expect(await tabTitles(page)).toEqual(['One', 'Two', 'Three'])
+  await expect.poll(() => tabTitles(page)).toEqual(['One', 'Two', 'Three'])
 
   await page.getByTestId('tab-Three').click({ button: 'middle' })
   await page.getByTestId('tab-One').click({ button: 'right' })
   await page.getByRole('menuitem', { name: 'Reopen Closed Tab' }).click()
-  expect(await tabTitles(page)).toEqual(['One', 'Two', 'Three'])
-  expect(await activeTitle(page)).toBe('Three')
+  await expect.poll(() => tabTitles(page)).toEqual(['One', 'Two', 'Three'])
+  await expect.poll(() => activeTitle(page)).toBe('Three')
 })
 
 test('the tab menu disables what would do nothing', async ({ nb }) => {
@@ -425,7 +425,7 @@ test('the tab menu disables what would do nothing', async ({ nb }) => {
     )
   }
   await page.getByRole('menuitem', { name: 'Duplicate Tab' }).click()
-  expect(await tabTitles(page)).toEqual(['One', 'One'])
+  await expect.poll(() => tabTitles(page)).toEqual(['One', 'One'])
 })
 
 test('dragging a tab moves it', async ({ nb }) => {
@@ -441,8 +441,8 @@ test('dragging a tab moves it', async ({ nb }) => {
   await expect(page.locator('.tab-drop-line')).toBeVisible()
   await page.mouse.move(three!.x + three!.width - 10, three!.y + 18, { steps: 8 })
   await page.mouse.up()
-  expect(await tabTitles(page)).toEqual(['Two', 'Three', 'One'])
-  expect(await activeTitle(page)).toBe('One')
+  await expect.poll(() => tabTitles(page)).toEqual(['Two', 'Three', 'One'])
+  await expect.poll(() => activeTitle(page)).toBe('One')
   await expect(page.locator('.tab-drop-line')).toHaveCount(0)
 })
 
@@ -467,7 +467,7 @@ test('a hidden tab whose page is in conflict shows a dot until it is looked at',
 test('typing in one tab updates the same page in another', async ({ nb }) => {
   const page = await pages(nb, { Shared: 'Start.\n' })
   await open(page, 'Shared')
-  await menu(nb.app, 'New Tab')
+  await newTab(nb.app, page)
   await placeCaret(pane(page).locator(editor).getByText('Start.'))
   await caretToLineEnd(page)
   await page.keyboard.type(' More.')
@@ -484,7 +484,7 @@ test('a page open in two tabs keeps one history version and the other tab in pla
 }) => {
   const page = await pages(nb, { Shared: 'Start.\n' })
   await open(page, 'Shared')
-  await menu(nb.app, 'New Tab')
+  await newTab(nb.app, page)
   await placeCaret(pane(page).locator(editor).getByText('Start.'))
   await caretToLineEnd(page)
   for (const word of [' one', ' two', ' three', ' four', ' five']) {
@@ -514,7 +514,7 @@ test('Cmd+Shift-click on a link in a page opens it in a tab in front', async ({ 
     .getByRole('link', { name: 'the plan' })
     .click({ modifiers: ['Meta', 'Shift'] })
   await expect.poll(() => tabTitles(page)).toEqual(['Hub', 'Plan'])
-  expect(await activeTitle(page)).toBe('Plan')
+  await expect.poll(() => activeTitle(page)).toBe('Plan')
 })
 
 test('moving a tab keeps the scroll position of a hidden tab', async ({ nb }) => {
@@ -532,7 +532,7 @@ test('moving a tab keeps the scroll position of a hidden tab', async ({ nb }) =>
   await page.mouse.move(short.x - 10, short.y + 18, { steps: 4 })
   await page.mouse.move(longTab.x + 5, longTab.y + 18, { steps: 8 })
   await page.mouse.up()
-  expect(await tabTitles(page)).toEqual(['Short', 'Long'])
+  await expect.poll(() => tabTitles(page)).toEqual(['Short', 'Long'])
   await page.getByTestId('tab-Long').click()
   expect(
     await pane(page)
@@ -548,6 +548,7 @@ test('reopening a tab whose page was deleted since shows the Trash banner or ste
   await open(page, 'Keep')
   await tabOn(nb.app, page, 'Doomed')
   await menu(nb.app, 'Close Tab')
+  await expect(page.locator('.tab')).toHaveCount(1)
   await rowAction(page, 'Doomed', 'Delete')
   await expect(page.getByTestId('sidebar-row-Doomed')).toHaveCount(0)
   await menu(nb.app, 'Reopen Closed Tab')
@@ -558,6 +559,7 @@ test('reopening a tab whose page was deleted since shows the Trash banner or ste
   await page.getByTestId('tab-Keep').click()
   await tabOn(nb.app, page, 'Gone')
   await menu(nb.app, 'Close Tab')
+  await expect(page.locator('.tab')).toHaveCount(2)
   await unlink(join(nb.workspace, 'Gone.md'))
   await expect(page.getByTestId('sidebar-row-Gone')).toHaveCount(0)
   await menu(nb.app, 'Reopen Closed Tab')
@@ -568,7 +570,7 @@ test('reopening a tab whose page was deleted since shows the Trash banner or ste
 test('a tab squeezed to 36px shows only its icon, centred', async ({ nb }) => {
   const page = await pages(nb, { Alpha: '---\nicon: 🚀\n---\n\nA.\n' })
   await open(page, 'Alpha')
-  for (let i = 0; i < 30; i++) await menu(nb.app, 'New Tab')
+  for (let i = 0; i < 30; i++) await newTab(nb.app, page)
   const tab = (await page.locator('.tab').first().boundingBox())!
   const icon = (await page.locator('.tab').first().locator('.tab-icon').boundingBox())!
   expect(tab.width).toBe(36)
@@ -625,13 +627,18 @@ test('a new tab opened while the page is still saving shows the saved text, and 
       const doc = await read(...args)
       if (late) await wait(2500)
       late = false
+      ;(globalThis as { lateReadDone?: boolean }).lateReadDone = true
       return doc
     })
   })
   await placeCaret(pane(page).locator(editor).getByText('Start.'))
   await caretToLineEnd(page)
   await page.keyboard.type(' Fresh words.')
-  await menu(nb.app, 'New Tab')
+  await newTab(nb.app, page)
+  // Checked only once the late read has answered, since that answer is what could undo the save.
+  await expect
+    .poll(() => nb.app.evaluate(() => (globalThis as { lateReadDone?: boolean }).lateReadDone))
+    .toBe(true)
   await expect(pane(page).locator(editor)).toHaveText('Start. Fresh words.')
   await placeCaret(pane(page).locator(editor).getByText('Start. Fresh words.'))
   await caretToLineEnd(page)
@@ -642,7 +649,7 @@ test('a new tab opened while the page is still saving shows the saved text, and 
 test('a width change that cannot be saved is undone in every tab of the page', async ({ nb }) => {
   const page = await pages(nb, { Wide: 'Text.\n' })
   await open(page, 'Wide')
-  await menu(nb.app, 'New Tab')
+  await newTab(nb.app, page)
   try {
     await chmod(nb.workspace, 0o555)
     await pane(page).getByRole('button', { name: 'Page menu' }).click()

@@ -46,7 +46,7 @@ test('a menu opened near the window edge stays on screen', async ({ nb }) => {
 test('the trash popover and icon picker keep their own widths', async ({ nb }) => {
   const { page } = nb
   await newPage(page, 'Widths')
-  await page.getByRole('button', { name: 'Trash' }).click()
+  await page.getByRole('button', { name: 'Trash', exact: true }).click()
   expect((await page.locator('.menu.trash-popover').boundingBox())!.width).toBe(414)
   await page.keyboard.press('Escape')
   await page.getByTestId('page-title').hover()

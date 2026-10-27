@@ -1,4 +1,4 @@
-import { chmod, mkdir, readFile, readdir, rename, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { ElectronApplication, Locator, Page } from '@playwright/test'
 import { expect, test } from './fixtures'
@@ -215,7 +215,7 @@ test('a drawing in a read-only page does not open', async ({ nb }) => {
   const page = await openFile(nb, 'Old', 'Text\n\n![](attachments/Old.excalidraw.svg)\n')
   await expect(page.locator('.nb-drawing')).toHaveCSS('cursor', 'pointer')
   await rowAction(page, 'Old', 'Delete')
-  await page.getByRole('button', { name: 'Trash' }).click()
+  await page.getByRole('button', { name: 'Trash', exact: true }).click()
   await page.getByTestId('trash-item-Old').click()
   await expect(page.getByRole('status')).toContainText('This page is in Trash.')
   await expect(page.locator('.nb-drawing')).toHaveCSS('cursor', 'auto')
@@ -377,20 +377,18 @@ test('the page under the drawing editor cannot be reached', async ({ nb }) => {
 test('the drawing editor failing to load shows an error instead of a blank window', async ({
   nb
 }) => {
-  const assets = join('out', 'renderer', 'assets')
-  const chunk = (await readdir(assets)).find((f) => /^DrawingEditor-.*\.js$/.test(f))!
-  await rename(join(assets, chunk), join(assets, `${chunk}.off`))
-  try {
-    const { page } = nb
-    await newPage(page, 'Broken')
-    await page.keyboard.type('/drawing')
-    await page.keyboard.press('Enter')
-    await expect(overlay(page)).toContainText("Couldn't open the drawing editor")
-    await done(page)
-    await expect(page.getByTestId('sidebar-row-Broken')).toBeVisible()
-  } finally {
-    await rename(join(assets, `${chunk}.off`), join(assets, chunk))
-  }
+  await nb.app.evaluate(({ session }) => {
+    session.defaultSession.webRequest.onBeforeRequest({ urls: ['file://*/*'] }, (req, callback) =>
+      callback({ cancel: /\/DrawingEditor-[^/]*\.js$/.test(req.url) })
+    )
+  })
+  const { page } = nb
+  await newPage(page, 'Broken')
+  await page.keyboard.type('/drawing')
+  await page.keyboard.press('Enter')
+  await expect(overlay(page)).toContainText("Couldn't open the drawing editor")
+  await done(page)
+  await expect(page.getByTestId('sidebar-row-Broken')).toBeVisible()
 })
 
 test('the block menu names a drawing', async ({ nb }) => {
