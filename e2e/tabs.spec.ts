@@ -156,6 +156,22 @@ test('each tab keeps its own back and forward, with scroll positions', async ({ 
   await expect(pane(page).getByTestId('page-title')).toHaveText('Short')
 })
 
+test("the mouse's back and forward buttons move through the tab's history", async ({ nb }) => {
+  const page = await pages(nb, { First: 'First.\n', Second: 'Second.\n' })
+  await open(page, 'First')
+  await open(page, 'Second')
+  const cdp = await page.context().newCDPSession(page)
+  const press = async (button: 'back' | 'forward'): Promise<void> => {
+    const at = { x: 600, y: 300, button, clickCount: 1 }
+    await cdp.send('Input.dispatchMouseEvent', { type: 'mousePressed', ...at })
+    await cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...at })
+  }
+  await press('back')
+  await expect(pane(page).getByTestId('page-title')).toHaveText('First')
+  await press('forward')
+  await expect(pane(page).getByTestId('page-title')).toHaveText('Second')
+})
+
 test('a tab left and come back to keeps its scroll and its undo history', async ({ nb }) => {
   const page = await pages(nb, { Long: long, Other: 'Other.\n' })
   await open(page, 'Long')
