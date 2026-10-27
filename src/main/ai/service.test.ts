@@ -47,19 +47,22 @@ const deltas = (): string[] =>
   events.flatMap((e) => (e.name === 'ai:delta' ? [`${e.data.mode}:${e.data.text}`] : []))
 const last = (): Event => events[events.length - 1]
 
-beforeEach(async () => {
-  dir = await mkdtemp(join(tmpdir(), 'nobsidian-ai-'))
-  fake = await FakeAnthropic.start()
-  keys = new KeyStore(join(dir, 'key.bin'), codec)
-  model = 'claude-opus-5-5'
-  events = []
-  service = new AiService({
+const serviceWith = (keys: KeyStore): AiService =>
+  new AiService({
     keys,
     usage: new UsageLedger(join(dir, 'usage.json')),
     model: () => model,
     client: (apiKey) => new Anthropic({ apiKey, baseURL: fake.url, maxRetries: 0 }),
     idleTimeoutMs: 300
   })
+
+beforeEach(async () => {
+  dir = await mkdtemp(join(tmpdir(), 'nobsidian-ai-'))
+  fake = await FakeAnthropic.start()
+  keys = new KeyStore(join(dir, 'key.json'), codec)
+  model = 'claude-opus-5-5'
+  events = []
+  service = serviceWith(keys)
 })
 afterEach(async () => {
   await fake.close()
@@ -75,15 +78,14 @@ describe('the key', () => {
     })
     expect((await service.status()).hasKey).toBe(false)
     expect(await service.setKey(` ${GOOD_KEY}\n`)).toEqual({ ok: true })
-    const raw = await readFile(join(dir, 'key.bin'), 'utf8')
+    const raw = await readFile(join(dir, 'key.json'), 'utf8')
     expect(raw).not.toContain(GOOD_KEY)
-    expect((await stat(join(dir, 'key.bin'))).mode & 0o777).toBe(0o600)
-    expect(await new KeyStore(join(dir, 'key.bin'), codec).get()).toBe(GOOD_KEY)
+    expect((await stat(join(dir, 'key.json'))).mode & 0o777).toBe(0o600)
+    expect(await new KeyStore(join(dir, 'key.json'), codec).get()).toBe(GOOD_KEY)
     const status = await service.status()
     expect(status).toEqual({
       hasKey: true,
       keyHint: 'sk-ant-…a1b2',
-      encryptionAvailable: true,
       month: { requests: 0, dollars: 0 }
     })
     expect(JSON.stringify(status)).not.toContain('test-key')
@@ -101,6 +103,48 @@ describe('the key', () => {
       ok: false,
       error: "This Mac can't store the key safely, so it was not saved."
     })
+  })
+
+  it('is shown by its hint without touching the Keychain', async () => {
+    const keychain = (): never => {
+      throw new Error('touched the Keychain')
+    }
+    const locked = serviceWith(
+      new KeyStore(join(dir, 'key.json'), {
+        available: keychain,
+        encrypt: keychain,
+        decrypt: keychain
+      })
+    )
+    expect(await locked.status()).toMatchObject({ hasKey: false, keyHint: null })
+    await keys.set(GOOD_KEY)
+    expect(await locked.status()).toMatchObject({ hasKey: true, keyHint: 'sk-ant-…a1b2' })
+  })
+
+  it('is asked of the Keychain again after it was refused', async () => {
+    await keys.set(GOOD_KEY)
+    let refuse = true
+    const guarded = serviceWith(
+      new KeyStore(join(dir, 'key.json'), {
+        ...codec,
+        decrypt: (data) => {
+          if (refuse) throw new Error('User denied Keychain access')
+          return codec.decrypt(data)
+        }
+      })
+    )
+    await guarded.start(request(), send)
+    expect(last()).toMatchObject({
+      name: 'ai:error',
+      data: {
+        kind: 'auth',
+        message: "Couldn't read your API key from the Keychain. Try again and choose Allow."
+      }
+    })
+    expect(fake.messages()).toHaveLength(0)
+    refuse = false
+    await guarded.start(request(), send)
+    expect(last().name).toBe('ai:done')
   })
 
   it('without one, a request asks for it', async () => {
@@ -283,7 +327,7 @@ describe('requests', () => {
   it('never reach Anthropic when cancelled or ended while the key is still being read', async () => {
     const cold = (): AiService =>
       new AiService({
-        keys: new KeyStore(join(dir, 'key.bin'), codec),
+        keys: new KeyStore(join(dir, 'key.json'), codec),
         usage: new UsageLedger(join(dir, 'usage.json')),
         model: () => model,
         client: (apiKey) => new Anthropic({ apiKey, baseURL: fake.url, maxRetries: 0 })
