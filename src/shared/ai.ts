@@ -176,7 +176,6 @@ export interface AiError {
 export interface AiStatus {
   hasKey: boolean
   keyHint: string | null
-  encryptionAvailable: boolean
   month: { requests: number; dollars: number }
 }
 

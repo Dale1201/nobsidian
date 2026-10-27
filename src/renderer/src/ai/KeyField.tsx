@@ -17,13 +17,6 @@ export function KeyField({
   const [removeFailed, setRemoveFailed] = useState(false)
 
   if (!status) return <></>
-  if (!status.encryptionAvailable) {
-    return (
-      <div className="settings-key-note">
-        This Mac can&apos;t store the key safely, so AI can&apos;t be set up.
-      </div>
-    )
-  }
   if (status.hasKey) {
     return (
       <div className="settings-key">

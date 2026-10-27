@@ -3,7 +3,7 @@ import type { AiError, AiKeyResult, AiMode, AiModel, AiStart, AiStatus } from '.
 import type { IpcEvents } from '../../shared/ipc'
 import { createClient } from './client'
 import { aiError } from './errors'
-import { keyHint, type KeyStore } from './keyStore'
+import type { KeyStore } from './keyStore'
 import { firstMessage, followUpMessage, modeFor, SYSTEM_PROMPT, toolsFor } from './prompts'
 import type { UsageLedger } from './usage'
 
@@ -53,12 +53,11 @@ export class AiService {
   }
 
   async status(): Promise<AiStatus> {
-    const key = await this.options.keys.get()
+    const hint = await this.options.keys.hint()
     const month = await this.options.usage.month()
     return {
-      hasKey: key !== null,
-      keyHint: key ? keyHint(key) : null,
-      encryptionAvailable: this.options.keys.available(),
+      hasKey: hint !== null,
+      keyHint: hint,
       month: { requests: month.requests, dollars: month.dollars }
     }
   }
@@ -117,8 +116,14 @@ export class AiService {
   private async stream(request: AiStart, send: AiSend, controller: AbortController): Promise<void> {
     const { requestId } = request
     const fail = (error: AiError): void => send('ai:error', { requestId, ...error })
-    const key = await this.options.keys.get()
+    const key = await this.options.keys.get().catch(() => undefined)
     if (controller.signal.aborted) return send('ai:done', { requestId })
+    if (key === undefined) {
+      return fail({
+        kind: 'auth',
+        message: "Couldn't read your API key from the Keychain. Try again and choose Allow."
+      })
+    }
     if (!key) return fail({ kind: 'auth', message: 'Add your Anthropic API key in Settings.' })
 
     const previous = this.sessions.get(request.sessionId)
