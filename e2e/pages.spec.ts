@@ -1,5 +1,4 @@
-import { mkdir, mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Page } from '@playwright/test'
 import { expect, test } from './fixtures'
@@ -214,9 +213,9 @@ test('clicking below the last block adds a line to type on, like Notion', async 
   await expect(body.locator('.bn-block-outer')).toHaveCount(4)
 })
 
-test('dragging an overlay scrollbar below the last block only scrolls', async () => {
-  const userData = await mkdtemp(join(tmpdir(), 'nobsidian-e2e-user-'))
-  const workspace = await mkdtemp(join(tmpdir(), 'nobsidian-e2e-ws-'))
+test('dragging an overlay scrollbar below the last block only scrolls', async ({ tmp }) => {
+  const userData = await tmp('user')
+  const workspace = await tmp('workspace')
   await writeFile(join(userData, 'settings.json'), JSON.stringify({ lastWorkspace: workspace }))
   const lines = Array.from({ length: 60 }, (_, i) => `Line ${i}`)
   await writeFile(join(workspace, 'Long.md'), lines.join('\n\n') + '\n')

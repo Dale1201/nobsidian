@@ -1,5 +1,5 @@
 import { test as base, type ElectronApplication, type Page } from '@playwright/test'
-import { mkdtemp, mkdir, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { FakeAnthropic } from './fakeAnthropic'
@@ -30,17 +30,28 @@ export async function launch(
   return { app, page }
 }
 
+/** Makes a fresh folder for this test; all of them are removed once the test ends. */
+type TempDir = (name: string) => Promise<string>
+
 /** A running app with a fresh, empty workspace already open, talking to a fake Anthropic. */
-export const test = base.extend<{ nb: AppFixture; anthropic: FakeAnthropic }>({
+export const test = base.extend<{ tmp: TempDir; nb: AppFixture; anthropic: FakeAnthropic }>({
+  tmp: async ({}, use) => {
+    const root = await mkdtemp(join(tmpdir(), 'nobsidian-e2e-'))
+    await use(async (name) => {
+      const dir = join(root, name)
+      await mkdir(dir)
+      return dir
+    })
+    await rm(root, { recursive: true, force: true })
+  },
   anthropic: async ({}, use) => {
     const fake = await FakeAnthropic.start()
     await use(fake)
     await fake.close()
   },
-  nb: async ({ anthropic }, use) => {
-    const userData = await mkdtemp(join(tmpdir(), 'nobsidian-e2e-user-'))
-    const workspace = await mkdtemp(join(tmpdir(), 'nobsidian-e2e-ws-'))
-    await mkdir(userData, { recursive: true })
+  nb: async ({ anthropic, tmp }, use) => {
+    const userData = await tmp('user')
+    const workspace = await tmp('workspace')
     await writeFile(join(userData, 'settings.json'), JSON.stringify({ lastWorkspace: workspace }))
     let { app, page } = await launch(userData, anthropic.url)
     const fixture: AppFixture = {

@@ -1,15 +1,14 @@
-import { test, expect } from '@playwright/test'
 import { createServer, type Server } from 'node:http'
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { readFile, writeFile } from 'node:fs/promises'
 import type { AddressInfo } from 'node:net'
-import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { expect, test } from '../e2e/fixtures'
 import { launchElectron } from '../e2e/launch'
 
 const APP = resolve('dist/mac-arm64/Nobsidian.app/Contents/MacOS/Nobsidian')
 
-test('the packaged app launches to the welcome screen', async () => {
-  const userData = await mkdtemp(join(tmpdir(), 'nobsidian-packaged-'))
+test('the packaged app launches to the welcome screen', async ({ tmp }) => {
+  const userData = await tmp('user')
   const app = await launchElectron({
     executablePath: APP,
     env: { NOBSIDIAN_USER_DATA: userData }
@@ -32,9 +31,9 @@ test.beforeAll(async () => {
 })
 test.afterAll(() => server.close())
 
-test('the packaged app imports a Notion export in its worker', async () => {
-  const userData = await mkdtemp(join(tmpdir(), 'nobsidian-packaged-'))
-  const workspace = await mkdtemp(join(tmpdir(), 'nobsidian-packaged-ws-'))
+test('the packaged app imports a Notion export in its worker', async ({ tmp }) => {
+  const userData = await tmp('user')
+  const workspace = await tmp('workspace')
   await writeFile(join(userData, 'settings.json'), JSON.stringify({ lastWorkspace: workspace }))
   const app = await launchElectron({
     executablePath: APP,
@@ -59,9 +58,9 @@ test('the packaged app imports a Notion export in its worker', async () => {
   await app.close()
 })
 
-test('the packaged app draws with the fonts it ships', async () => {
-  const userData = await mkdtemp(join(tmpdir(), 'nobsidian-packaged-'))
-  const workspace = await mkdtemp(join(tmpdir(), 'nobsidian-packaged-ws-'))
+test('the packaged app draws with the fonts it ships', async ({ tmp }) => {
+  const userData = await tmp('user')
+  const workspace = await tmp('workspace')
   await writeFile(join(workspace, 'Sketch.md'), '\n')
   await writeFile(join(userData, 'settings.json'), JSON.stringify({ lastWorkspace: workspace }))
   const app = await launchElectron({ executablePath: APP, env: { NOBSIDIAN_USER_DATA: userData } })
