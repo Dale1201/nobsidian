@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import type { Page } from '@playwright/test'
 import { GOOD_KEY } from './fakeAnthropic'
 import { expect, test, type AppFixture } from './fixtures'
-import { clickInEditor, editor, pressInEditor, waitForFile } from './helpers'
+import { caretToLineEnd, clickInEditor, editor, waitForFile } from './helpers'
 
 const PAGE = 'Intro.\n\nWe spent the hour arguing about launch.\n\nOutro.\n'
 
@@ -90,7 +90,7 @@ test('every entry point opens the Writer, and Space only on an empty line', asyn
   await expect(writer).toBeHidden()
 
   await clickInEditor(page, 'Outro.')
-  await pressInEditor(page, 'Meta+ArrowRight')
+  await caretToLineEnd(page)
   await page.keyboard.press('Enter')
   await expect(page.locator('[data-is-empty-and-focused]')).toHaveCSS(
     'content',
@@ -216,7 +216,7 @@ test('Summarize inserts below, Continue writing at the cursor, Explain replies',
   )
 
   await clickInEditor(page, 'Intro.')
-  await pressInEditor(page, 'Meta+ArrowRight')
+  await caretToLineEnd(page)
   await page.keyboard.press('Meta+j')
   anthropic.reply({ text: 'More intro.' })
   await writer.getByRole('option', { name: 'Continue writing' }).click()
@@ -387,7 +387,7 @@ test('offline, the AI slash item is greyed out and does nothing', async ({ nb })
 
   await page.evaluate(() => window.dispatchEvent(new Event('offline')))
   await clickInEditor(page, 'Outro.')
-  await pressInEditor(page, 'Meta+ArrowRight')
+  await caretToLineEnd(page)
   await page.keyboard.press('Enter')
   await page.keyboard.type('/ai')
   const item = page.getByRole('option', { name: /Ask AI/ })
