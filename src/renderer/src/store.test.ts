@@ -125,6 +125,14 @@ describe('tabs while working', () => {
     expect(world.settings.recent['/notes'].slice(0, 2)).toEqual(['b', 'a'])
   })
 
+  it('counts every page opened before the last one was saved as recent', async () => {
+    useApp.getState().openPage('b')
+    useApp.getState().openPage('c')
+    await settle()
+    expect(world.settings.recent['/notes'].slice(0, 3)).toEqual(['c', 'b', 'a'])
+    expect(useApp.getState().settings!.recent['/notes'].slice(0, 3)).toEqual(['c', 'b', 'a'])
+  })
+
   it('closes the window instead of the last tab', () => {
     useApp.getState().closeTab(useApp.getState().tabs!.activeId)
     expect(invoke).toHaveBeenCalledWith('window:close', undefined)

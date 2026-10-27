@@ -157,6 +157,7 @@ function withScroll(state: tabs.TabsState): tabs.TabsState {
 
 // While a workspace's saved tabs load, a tree update must not open a tab and save over them.
 let restoring = false
+let settingsWrites = 0
 
 export const useApp = create<AppState>((set, get) => {
   const usable = (e: tabs.TabEntry): boolean =>
@@ -543,7 +544,12 @@ export const useApp = create<AppState>((set, get) => {
     },
 
     updateSettings: async (patch) => {
-      set({ settings: await api.invoke('settings:set', patch) })
+      // Applied at once so a patch sent before the last one returns builds on it, not on stale settings.
+      const settings = get().settings
+      if (settings) set({ settings: { ...settings, ...patch } })
+      const write = ++settingsWrites
+      const saved = await api.invoke('settings:set', patch)
+      if (write === settingsWrites) set({ settings: saved })
     },
 
     setExpanded: async (id, open) => {
