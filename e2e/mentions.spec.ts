@@ -76,43 +76,47 @@ test('@ inside an email address or before a space does not create pages', async 
   await expect(rows).toHaveCount(before)
 })
 
-test('copied blocks paste back with their mentions, callouts and page links', async ({ nb }) => {
-  await writeFile(join(nb.workspace, 'Target.md'), 't\n')
-  await writeFile(
-    join(nb.workspace, 'Copy.md'),
-    'Go to [Target](Target.md "mention")\n\n> [!callout] 💡\n> Note\n\n[Target](Target.md "page")\n\nEnd\n'
-  )
-  const page = await nb.relaunch()
-  await page.getByTestId('sidebar-row-Copy').click()
-  const types = page.locator(`${editor} .bn-block-content`)
-  await expect(types).toHaveCount(4)
-  // A click on the first line would land on the mention and open it.
-  const note = page.locator(`${editor} .bn-inline-content`, { hasText: 'Note' })
-  await note.click()
-  // Typing reads the clicked caret at once; a bare key press can beat ProseMirror to it.
-  await page.keyboard.type('!')
-  await expect(note).toContainText('!')
-  await page.keyboard.press('Backspace')
-  await page.keyboard.press('Escape')
-  const selected = page.locator(`${editor} .nb-block-selected`)
-  await expect(selected).toHaveText([/Note/])
-  await page.keyboard.press('Shift+ArrowUp')
-  await page.keyboard.press('Shift+ArrowDown')
-  await expect(selected).toHaveCount(3)
-  await page.keyboard.press('Meta+c')
-  await page.keyboard.press('ArrowDown')
-  await expect(selected).toHaveText(['End'])
-  await page.keyboard.press('Enter')
-  await page.keyboard.press('Enter')
-  await page.keyboard.press('Meta+v')
-  await expect
-    .poll(() => types.evaluateAll((els) => els.map((el) => el.getAttribute('data-content-type'))))
-    .toEqual([
-      ...['paragraph', 'callout', 'pageLink', 'paragraph'],
-      ...['paragraph', 'callout', 'pageLink']
-    ])
-  await expect(page.locator(`${editor} .nb-mention`)).toHaveCount(2)
-})
+test(
+  'copied blocks paste back with their mentions, callouts and page links',
+  { tag: '@clipboard' },
+  async ({ nb }) => {
+    await writeFile(join(nb.workspace, 'Target.md'), 't\n')
+    await writeFile(
+      join(nb.workspace, 'Copy.md'),
+      'Go to [Target](Target.md "mention")\n\n> [!callout] 💡\n> Note\n\n[Target](Target.md "page")\n\nEnd\n'
+    )
+    const page = await nb.relaunch()
+    await page.getByTestId('sidebar-row-Copy').click()
+    const types = page.locator(`${editor} .bn-block-content`)
+    await expect(types).toHaveCount(4)
+    // A click on the first line would land on the mention and open it.
+    const note = page.locator(`${editor} .bn-inline-content`, { hasText: 'Note' })
+    await note.click()
+    // Typing reads the clicked caret at once; a bare key press can beat ProseMirror to it.
+    await page.keyboard.type('!')
+    await expect(note).toContainText('!')
+    await page.keyboard.press('Backspace')
+    await page.keyboard.press('Escape')
+    const selected = page.locator(`${editor} .nb-block-selected`)
+    await expect(selected).toHaveText([/Note/])
+    await page.keyboard.press('Shift+ArrowUp')
+    await page.keyboard.press('Shift+ArrowDown')
+    await expect(selected).toHaveCount(3)
+    await page.keyboard.press('Meta+c')
+    await page.keyboard.press('ArrowDown')
+    await expect(selected).toHaveText(['End'])
+    await page.keyboard.press('Enter')
+    await page.keyboard.press('Enter')
+    await page.keyboard.press('Meta+v')
+    await expect
+      .poll(() => types.evaluateAll((els) => els.map((el) => el.getAttribute('data-content-type'))))
+      .toEqual([
+        ...['paragraph', 'callout', 'pageLink', 'paragraph'],
+        ...['paragraph', 'callout', 'pageLink']
+      ])
+    await expect(page.locator(`${editor} .nb-mention`)).toHaveCount(2)
+  }
+)
 
 const LINKS = 'See [Target](Target.md "mention")\n\n[Target](Target.md "page")\n'
 

@@ -271,6 +271,7 @@ test('typed instructions edit or reply, and a follow-up revises the change', asy
   await expect(page.locator('.nb-ai-added')).toHaveText('The end of these notes.')
   const followUp = anthropic.messages()[2].messages as { role: string }[]
   expect(followUp.map((m) => m.role)).toEqual(['user', 'assistant', 'user'])
+  await expect(writer.getByRole('button', { name: 'Accept' })).toBeVisible()
   await box.press('Enter')
   await expect(writer).toBeHidden()
   await expect(page.locator(editor)).toContainText('The end of these notes.')

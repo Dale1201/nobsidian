@@ -90,6 +90,9 @@ async function settleCaret(page: Page): Promise<void> {
 
 export async function placeCaret(target: Locator, clickCount = 1): Promise<void> {
   await target.click({ clickCount })
+  // A click that focuses the editor makes ProseMirror put its caret back 20ms later; a key
+  // pressed before then is undone. Timers run in deadline order, so this one fires after it.
+  await target.page().evaluate(() => new Promise((r) => setTimeout(r, 20)))
   await settleCaret(target.page())
 }
 
