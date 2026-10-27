@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Block } from '../../shared/core/blocks'
+import { writeFileAtomic } from './fs-utils'
 import { isIgnored, watchWorkspace, type WorkspaceWatcher } from './watcher'
 import { Workspace, type WorkspaceEvent } from './workspace'
 
@@ -19,6 +20,9 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
+/** Saves like most editors, so the workspace (with no settle delay) never reads a half-written file. */
+const writeOutside = (rel: string, body: string): Promise<void> =>
+  writeFileAtomic(join(root, rel), body)
 const text = (t: string): Block => ({
   type: 'paragraph',
   props: {},
@@ -60,7 +64,7 @@ describe('watchWorkspace', () => {
     const { ws, next } = await watched()
     const { id, path } = await ws.createPage(null)
     const changed = next((e) => e.type === 'page' && e.id === id)
-    await writeFile(join(root, path), `---\nid: ${id}\n---\n\nFrom another editor\n`)
+    await writeOutside(path, `---\nid: ${id}\n---\n\nFrom another editor\n`)
     await changed
     expect((await ws.readPage(id)).blocks).toEqual([text('From another editor')])
   })
@@ -73,7 +77,7 @@ describe('watchWorkspace', () => {
     await ws.setFavorite(id, true)
     // An outside file added afterwards proves earlier events were already processed.
     const marker = next((e) => e.type === 'tree')
-    await writeFile(join(root, 'Marker.md'), 'marker\n')
+    await writeOutside('Marker.md', 'marker\n')
     await marker
     expect(events).toEqual([{ type: 'tree' }])
   })
