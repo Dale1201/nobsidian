@@ -1,5 +1,4 @@
-import { chmod, mkdtemp, readFile, readdir, unlink, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { chmod, readFile, readdir, unlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { ElectronApplication, Locator, Page } from '@playwright/test'
 import { expect, test } from './fixtures'
@@ -243,7 +242,7 @@ test('closing a tab saves what was typed in it', async ({ nb }) => {
   await waitForFile(join(nb.workspace, 'Beta.md'), 'B. Last words.')
 })
 
-test('tabs come back after a relaunch, for each notes folder', async ({ nb }) => {
+test('tabs come back after a relaunch, for each notes folder', async ({ nb, tmp }) => {
   let page = await pages(nb, { One: '1\n', Two: '2\n', Three: '3\n' })
   await open(page, 'One')
   await open(page, 'Two')
@@ -255,7 +254,7 @@ test('tabs come back after a relaunch, for each notes folder', async ({ nb }) =>
   await page.getByRole('button', { name: 'Back' }).click()
   await expect(pane(page).getByTestId('page-title')).toHaveText('One')
 
-  const other = await mkdtemp(join(tmpdir(), 'nobsidian-e2e-ws-'))
+  const other = await tmp('other')
   // With an id the page is known at once, instead of after new files settle.
   await writeFile(
     join(other, 'Elsewhere.md'),

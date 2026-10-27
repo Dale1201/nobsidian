@@ -1,11 +1,8 @@
-import { test, expect } from '@playwright/test'
-import { mkdtemp } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { expect, test } from './fixtures'
 import { launchElectron } from './launch'
 
-test('launches a sandboxed window titled Nobsidian', async () => {
-  const userData = await mkdtemp(join(tmpdir(), 'nobsidian-smoke-'))
+test('launches a sandboxed window titled Nobsidian', async ({ tmp }) => {
+  const userData = await tmp('user')
   const app = await launchElectron({
     args: ['out/main/index.js'],
     env: { NOBSIDIAN_USER_DATA: userData }

@@ -1,15 +1,13 @@
 import { readdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { mkdtemp } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
 import { expect, test } from './fixtures'
 import { launchElectron } from './launch'
 
 import { editor, newPage, typeNewPageTitle, waitForFile } from './helpers'
 
-test('first run asks for a folder and creates the first page', async () => {
-  const userData = await mkdtemp(join(tmpdir(), 'nobsidian-e2e-user-'))
-  const folder = await mkdtemp(join(tmpdir(), 'nobsidian-e2e-ws-'))
+test('first run asks for a folder and creates the first page', async ({ tmp }) => {
+  const userData = await tmp('user')
+  const folder = await tmp('workspace')
   const app = await launchElectron({
     args: ['out/main/index.js'],
     env: { NOBSIDIAN_USER_DATA: userData }
@@ -28,8 +26,8 @@ test('first run asks for a folder and creates the first page', async () => {
   await app.close()
 })
 
-test('a missing notes folder is reported, not recreated', async () => {
-  const userData = await mkdtemp(join(tmpdir(), 'nobsidian-e2e-user-'))
+test('a missing notes folder is reported, not recreated', async ({ tmp }) => {
+  const userData = await tmp('user')
   const gone = join(userData, 'Moved Notes')
   await writeFile(join(userData, 'settings.json'), JSON.stringify({ lastWorkspace: gone }))
   const app = await launchElectron({
@@ -186,7 +184,7 @@ test('edits survive a restart, including the last open page', async ({ nb }) => 
   await expect(page.locator(editor)).toContainText('Dear diary')
 })
 
-test('page icon from the emoji picker and an uploaded cover', async ({ nb }) => {
+test('page icon from the emoji picker and an uploaded cover', async ({ nb, tmp }) => {
   const { page, workspace, app } = nb
   await page.getByRole('button', { name: 'New page' }).first().click()
   await typeNewPageTitle(page, 'Trip')
@@ -198,7 +196,7 @@ test('page icon from the emoji picker and an uploaded cover', async ({ nb }) => 
   await expect(page.getByTestId('page-icon')).toHaveText('✈️')
   await waitForFile(join(workspace, 'Trip.md'), 'icon: ✈️')
 
-  const image = join(workspace, '..', `cover-${Date.now()}.png`)
+  const image = join(await tmp('outside'), `cover-${Date.now()}.png`)
   await writeFile(
     image,
     Buffer.from(
