@@ -264,6 +264,7 @@ export class ExternalChanges {
 
   async rescanChanges(): Promise<void> {
     const core = this.core
+    const before = core.pages
     const diff = await this.scan()
     for (const id of diff.added)
       core.indexText(core.pages.get(id)!, core.texts.get(core.pages.get(id)!.path)!)
@@ -276,7 +277,8 @@ export class ExternalChanges {
       const r = core.pages.get(id)!
       await this.contentChanged(r, oldText, oldPath)
     }
-    core.emit({ type: 'tree' })
+    // Watcher events can arrive after the app already applied them, so a rescan may find nothing new.
+    if (!sameTree(before, core.pages)) core.emit({ type: 'tree' })
   }
 
   async applyExternal(r: PageRecord, text: string): Promise<void> {
@@ -333,6 +335,23 @@ export class ExternalChanges {
     core.state = await loadState(core.root)
     core.emit({ type: 'tree' })
   }
+}
+
+function sameTree(a: Map<string, PageRecord>, b: Map<string, PageRecord>): boolean {
+  if (a.size !== b.size) return false
+  for (const [id, r] of a) {
+    const s = b.get(id)
+    if (
+      !s ||
+      s.title !== r.title ||
+      s.icon !== r.icon ||
+      s.path !== r.path ||
+      s.parentId !== r.parentId
+    ) {
+      return false
+    }
+  }
+  return true
 }
 
 function isStubText(text: string): boolean {
