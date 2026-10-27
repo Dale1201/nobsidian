@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { ElectronApplication, Locator, Page } from '@playwright/test'
 import { expect, test } from './fixtures'
-import { editor, placeCaret, pressInEditor, rowAction, waitForFile } from './helpers'
+import { caretToLineEnd, editor, placeCaret, rowAction, waitForFile } from './helpers'
 
 /** Clicks an application menu item by label, hidden ones included, as its accelerator would. */
 async function menu(app: ElectronApplication, label: string): Promise<void> {
@@ -156,11 +156,27 @@ test('each tab keeps its own back and forward, with scroll positions', async ({ 
   await expect(pane(page).getByTestId('page-title')).toHaveText('Short')
 })
 
+test("the mouse's back and forward buttons move through the tab's history", async ({ nb }) => {
+  const page = await pages(nb, { First: 'First.\n', Second: 'Second.\n' })
+  await open(page, 'First')
+  await open(page, 'Second')
+  const cdp = await page.context().newCDPSession(page)
+  const press = async (button: 'back' | 'forward'): Promise<void> => {
+    const at = { x: 600, y: 300, button, clickCount: 1 }
+    await cdp.send('Input.dispatchMouseEvent', { type: 'mousePressed', ...at })
+    await cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...at })
+  }
+  await press('back')
+  await expect(pane(page).getByTestId('page-title')).toHaveText('First')
+  await press('forward')
+  await expect(pane(page).getByTestId('page-title')).toHaveText('Second')
+})
+
 test('a tab left and come back to keeps its scroll and its undo history', async ({ nb }) => {
   const page = await pages(nb, { Long: long, Other: 'Other.\n' })
   await open(page, 'Long')
   await placeCaret(pane(page).locator(editor).getByText('Paragraph 3.'))
-  await pressInEditor(page, 'Meta+ArrowRight')
+  await caretToLineEnd(page)
   await page.keyboard.type(' typed')
   await pane(page)
     .getByTestId('page-scroll')
@@ -236,7 +252,7 @@ test('closing a tab saves what was typed in it', async ({ nb }) => {
   await open(page, 'Alpha')
   await tabOn(nb.app, page, 'Beta')
   await placeCaret(pane(page).locator(editor).getByText('B.'))
-  await pressInEditor(page, 'Meta+ArrowRight')
+  await caretToLineEnd(page)
   await page.keyboard.type(' Last words.')
   await menu(nb.app, 'Close Tab')
   expect(await tabTitles(page)).toEqual(['Alpha'])
@@ -280,11 +296,12 @@ test('tabs come back after a relaunch, for each notes folder', async ({ nb }) =>
   await page.getByText('Open another folder…').click()
   await expect.poll(() => tabTitles(page)).toEqual(['One', 'Three'])
 })
+
 test('closing the last tab saves what was typed before the window closes', async ({ nb }) => {
   const page = await pages(nb, { Alpha: 'A.\n' })
   await open(page, 'Alpha')
   await placeCaret(pane(page).locator(editor).getByText('A.'))
-  await pressInEditor(page, 'Meta+ArrowRight')
+  await caretToLineEnd(page)
   await page.keyboard.type(' Final words.')
   await menu(nb.app, 'Close Tab')
   await waitForFile(join(nb.workspace, 'Alpha.md'), 'A. Final words.')
@@ -436,7 +453,7 @@ test('a hidden tab whose page is in conflict shows a dot until it is looked at',
   const file = join(nb.workspace, 'Shared.md')
   const head = await header(file)
   await placeCaret(pane(page).locator(editor).getByText('Base'))
-  await pressInEditor(page, 'Meta+ArrowRight')
+  await caretToLineEnd(page)
   await page.keyboard.type(' plus mine')
   await writeFile(file, `${head}\nTheirs\n`)
   await expect(pane(page).getByRole('status')).toContainText('changed outside Nobsidian')
@@ -453,7 +470,7 @@ test('typing in one tab updates the same page in another', async ({ nb }) => {
   await open(page, 'Shared')
   await menu(nb.app, 'New Tab')
   await placeCaret(pane(page).locator(editor).getByText('Start.'))
-  await pressInEditor(page, 'Meta+ArrowRight')
+  await caretToLineEnd(page)
   await page.keyboard.type(' More.')
   await waitForFile(join(nb.workspace, 'Shared.md'), 'Start. More.')
   await page.locator('.tab').first().click()
@@ -470,7 +487,7 @@ test('a page open in two tabs keeps one history version and the other tab in pla
   await open(page, 'Shared')
   await menu(nb.app, 'New Tab')
   await placeCaret(pane(page).locator(editor).getByText('Start.'))
-  await pressInEditor(page, 'Meta+ArrowRight')
+  await caretToLineEnd(page)
   for (const word of [' one', ' two', ' three', ' four', ' five']) {
     await page.keyboard.type(word)
     await page.waitForTimeout(800)
@@ -483,7 +500,7 @@ test('a page open in two tabs keeps one history version and the other tab in pla
   await page.locator('.tab').first().click()
   await expect(pane(page).locator(editor)).toHaveText('Start. one two three four five')
   await placeCaret(pane(page).locator(editor).getByText('Start.', { exact: false }))
-  await pressInEditor(page, 'Meta+ArrowRight')
+  await caretToLineEnd(page)
   await page.keyboard.type(' six')
   await expect(pane(page).locator(editor)).toContainText(' six')
   const text = await pane(page).locator(editor).textContent()
@@ -576,7 +593,7 @@ test('coming back to a tab puts the caret back where it was', async ({ nb }) => 
   await tabOn(nb.app, page, 'Beta')
   await page.locator('.tab').first().click()
   await placeCaret(pane(page).locator(editor).getByText('A.'))
-  await pressInEditor(page, 'Meta+ArrowRight')
+  await caretToLineEnd(page)
   await menu(nb.app, 'Show Next Tab')
   await expect(pane(page).getByTestId('page-title')).toHaveText('Beta')
   await menu(nb.app, 'Show Previous Tab')
@@ -613,12 +630,12 @@ test('a new tab opened while the page is still saving shows the saved text, and 
     })
   })
   await placeCaret(pane(page).locator(editor).getByText('Start.'))
-  await pressInEditor(page, 'Meta+ArrowRight')
+  await caretToLineEnd(page)
   await page.keyboard.type(' Fresh words.')
   await menu(nb.app, 'New Tab')
   await expect(pane(page).locator(editor)).toHaveText('Start. Fresh words.')
   await placeCaret(pane(page).locator(editor).getByText('Start. Fresh words.'))
-  await pressInEditor(page, 'Meta+ArrowRight')
+  await caretToLineEnd(page)
   await page.keyboard.type(' More.')
   await waitForFile(join(nb.workspace, 'Shared.md'), 'Start. Fresh words. More.')
 })

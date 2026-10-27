@@ -3,7 +3,14 @@ import { join } from 'node:path'
 import type { Page } from '@playwright/test'
 import { GOOD_KEY } from './fakeAnthropic'
 import { expect, test, type AppFixture } from './fixtures'
-import { clickInEditor, clickMenuItem, editor, pressInEditor, waitForFile } from './helpers'
+import {
+  caretToLineEnd,
+  clickInEditor,
+  clickMenuItem,
+  editor,
+  pressInEditor,
+  waitForFile
+} from './helpers'
 
 const PAGE = 'Intro.\n\nWe spent the hour arguing about launch.\n\nOutro.\n'
 const MARKS = '.nb-ai-added, .nb-ai-removed, .nb-ai-added-block, .nb-ai-removed-block'
@@ -184,7 +191,7 @@ test('quitting while Claude writes keeps the page as it was', async ({ nb, anthr
   const page = await setUp(nb)
   const before = await readFile(join(nb.workspace, 'Notes.md'), 'utf8')
   await clickInEditor(page, 'Intro.')
-  await pressInEditor(page, 'Meta+ArrowRight')
+  await caretToLineEnd(page)
   await page.keyboard.type(' Typed.')
   anthropic.reply({ text: 'A rewrite in progress.', chunks: 4, hold: true })
   await askAbout(page, 'Outro.')

@@ -101,3 +101,25 @@ export async function pressInEditor(page: Page, key: string): Promise<void> {
   await page.keyboard.press(key)
   await settleCaret(page)
 }
+
+/** Chromium now and then drops a Cmd+Right pressed just after a click, so it is pressed until it lands. */
+export async function caretToLineEnd(page: Page): Promise<void> {
+  await expect(async () => {
+    await pressInEditor(page, 'Meta+ArrowRight')
+    const atEnd = await page.evaluate(() => {
+      type Editor = {
+        state: {
+          selection: {
+            empty: boolean
+            $head: { parentOffset: number; parent: { content: { size: number } } }
+          }
+        }
+      }
+      const editor = (document.activeElement?.closest('.ProseMirror') as { editor?: Editor })
+        ?.editor
+      const { empty, $head } = editor!.state.selection
+      return empty && $head.parentOffset === $head.parent.content.size
+    })
+    expect(atEnd).toBe(true)
+  }).toPass({ timeout: 5000 })
+}
