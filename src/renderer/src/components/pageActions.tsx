@@ -59,7 +59,7 @@ export function moveToEntry(id: string): MenuItemEntry {
   }
 }
 
-export function trashEntry(id: string, before?: () => void): MenuItemEntry {
+export function trashEntry(id: string): MenuItemEntry {
   return {
     kind: 'item',
     id: 'delete',
@@ -67,10 +67,7 @@ export function trashEntry(id: string, before?: () => void): MenuItemEntry {
     keywords: ['delete', 'remove'],
     icon: <TrashIcon size={16} />,
     danger: true,
-    onSelect: () => {
-      before?.()
-      void app().trashPage(id)
-    }
+    onSelect: () => void app().trashPage(id)
   }
 }
 

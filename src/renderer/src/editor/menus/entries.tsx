@@ -156,7 +156,7 @@ function pageBlockEntries(
     { kind: 'separator' },
     duplicatePageEntry(pageId, { open: false }),
     moveToEntry(pageId),
-    trashEntry(pageId, () => deleteBlocks(editor, [block.id])),
+    trashEntry(pageId),
     ...askAiEntries(editor, [block.id], options)
   ]
 }

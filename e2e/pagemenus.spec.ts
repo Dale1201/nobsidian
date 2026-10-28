@@ -55,7 +55,9 @@ test('a sub-page block menu has page actions with their shortcuts', async ({ nb 
   await expect(hint('Ask AI')).toHaveText('⌘J')
 })
 
-test('Move to Trash on a page block trashes the page and removes the block', async ({ nb }) => {
+test('Move to Trash on a page block removes the block, and a restore puts it back', async ({
+  nb
+}) => {
   const page = await withSubPage(nb)
   await openBlockMenu(page, pageBlock)
   await page.getByRole('menuitem', { name: 'Move to Trash' }).click()
@@ -63,6 +65,12 @@ test('Move to Trash on a page block trashes the page and removes the block', asy
   await expect(page.locator(pageBlock)).toHaveCount(0)
   await expect(title(page)).toHaveText('Aztec')
   await waitForFile(join(nb.workspace, 'Aztec.md'), /---\n\nFirst idea\n$/)
+  await expect(page.getByText('This page was changed outside Nobsidian.')).toHaveCount(0)
+
+  await page.getByRole('button', { name: 'Trash', exact: true }).click()
+  await page.getByTestId('trash-item-Plan').click()
+  await page.getByRole('button', { name: 'Restore page' }).click()
+  await waitForFile(join(nb.workspace, 'Aztec.md'), 'First idea\n\n[Plan](Aztec/Plan.md "page")\n')
 })
 
 test('Rename on a page block renames the page in place', async ({ nb }) => {
