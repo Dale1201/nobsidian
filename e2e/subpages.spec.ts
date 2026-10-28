@@ -140,19 +140,54 @@ test('a sub-page made with /page is linked only once', async ({ nb }) => {
   await expect(page.locator(`${editor} .nb-page-link`)).toHaveCount(1)
 })
 
-test('a link to a deleted sub-page shows its name, greyed out', async ({ nb }) => {
+test('deleting a sub-page removes its link from the parent, and restoring puts it back', async ({
+  nb
+}) => {
   await mkdir(join(nb.workspace, 'Plan'))
-  await writeFile(join(nb.workspace, 'Plan.md'), '[Step](Plan/Step.md "page")\n')
+  await writeFile(join(nb.workspace, 'Plan.md'), 'Before\n\n[Step](Plan/Step.md "page")\n\nAfter\n')
+  await writeFile(join(nb.workspace, 'Plan', 'Step.md'), 's\n')
+  const page = await nb.relaunch()
+  await page.getByTestId('sidebar-row-Plan').click()
+  await page.getByTestId('sidebar-row-Plan').getByRole('button', { name: 'Expand' }).click()
+  const shown = page.locator(editor)
+  await expect(shown.locator('.nb-page-link-title')).toHaveText('Step')
+  await rowAction(page, 'Step', 'Move to Trash')
+  await expect(shown.locator('.nb-page-link')).toHaveCount(0)
+  await expect(shown).toContainText('Before')
+  await expect(shown).toContainText('After')
+  await waitForFile(join(nb.workspace, 'Plan.md'), 'Before\n\nAfter\n')
+  await expect(page.getByText('This page was changed outside Nobsidian.')).toHaveCount(0)
+
+  await page.getByRole('button', { name: 'Trash', exact: true }).click()
+  await page.getByTestId('trash-item-Step').click()
+  await page.getByRole('button', { name: 'Restore page' }).click()
+  await expect(page.getByTestId('page-title')).toHaveText('Step')
+  await waitForFile(
+    join(nb.workspace, 'Plan.md'),
+    'Before\n\n[Step](Plan/Step.md "page")\n\nAfter\n'
+  )
+  await page.getByTestId('sidebar-row-Plan').click()
+  await expect(shown.locator('.nb-page-link-title')).toHaveText('Step')
+})
+
+test('restoring a sub-page right after typing in its parent keeps both the text and the link', async ({
+  nb
+}) => {
+  await mkdir(join(nb.workspace, 'Plan'))
+  await writeFile(join(nb.workspace, 'Plan.md'), 'Before\n\n[Step](Plan/Step.md "page")\n')
   await writeFile(join(nb.workspace, 'Plan', 'Step.md'), 's\n')
   const page = await nb.relaunch()
   await page.getByTestId('sidebar-row-Plan').click()
   await page.getByTestId('sidebar-row-Plan').getByRole('button', { name: 'Expand' }).click()
   await rowAction(page, 'Step', 'Move to Trash')
-  const link = page.locator(`${editor} .nb-page-link`)
-  await expect(link).toHaveAttribute('data-missing', 'true')
-  await expect(link.locator('.nb-page-link-title')).toHaveText('Step')
-  await nb.relaunch()
-  await nb.page.getByTestId('sidebar-row-Plan').click()
-  await expect(nb.page.locator(`${editor} .nb-page-link-title`)).toHaveText('Step')
-  await expect(nb.page.locator(`${editor} .nb-page-link`)).toHaveAttribute('data-missing', 'true')
+  await waitForFile(join(nb.workspace, 'Plan.md'), /---\n\nBefore\n$/)
+  await placeCaret(page.locator(editor).getByText('Before'))
+  await caretToLineEnd(page)
+  await page.keyboard.type(' typed')
+  await page.getByRole('button', { name: 'Trash', exact: true }).click()
+  await page.getByTestId('trash-item-Step').getByRole('button', { name: 'Restore' }).click()
+  await waitForFile(join(nb.workspace, 'Plan.md'), 'Before typed\n\n[Step](Plan/Step.md "page")\n')
+  await page.getByTestId('sidebar-row-Plan').click()
+  await expect(page.locator(`${editor} .nb-page-link-title`)).toHaveText('Step')
+  await expect(page.getByText('This page was changed outside Nobsidian.')).toHaveCount(0)
 })

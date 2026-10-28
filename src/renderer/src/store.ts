@@ -486,6 +486,8 @@ export const useApp = create<AppState>((set, get) => {
     },
 
     restoreTrash: async (entry) => {
+      // A restore can link the page from its parent again; open editors save first.
+      if (!(await flushAll())) return
       try {
         const id = await api.invoke('trash:restore', { entry })
         let state = get().tabs

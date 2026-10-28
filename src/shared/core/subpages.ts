@@ -44,6 +44,38 @@ export function insertSubPageLinkAfter(blocks: Block[], after: string, id: strin
   return place(blocks)
 }
 
+/** Where a link sits: its index at each nesting level, and the type of each block it is in. */
+export interface LinkPlace {
+  path: number[]
+  within: string[]
+}
+
+/** Where the first link to the page sits, through nested children; null without one. */
+export function subPageLinkPlace(blocks: Block[], id: string): LinkPlace | null {
+  for (const [i, b] of blocks.entries()) {
+    if (isLinkTo(b, id)) return { path: [i], within: [] }
+    const inner = subPageLinkPlace(b.children, id)
+    if (inner) return { path: [i, ...inner.path], within: [b.type, ...inner.within] }
+  }
+  return null
+}
+
+/** Adds a link back at its place, or at the end once the place no longer fits; null when linked. */
+export function insertSubPageLinkAt(blocks: Block[], id: string, at: LinkPlace): Block[] | null {
+  if (linksToSubPage(blocks, id)) return null
+  const insert = (list: Block[], depth: number): Block[] | null => {
+    const i = at.path[depth]
+    if (depth === at.path.length - 1) {
+      return i <= list.length ? [...list.slice(0, i), linkBlock(id), ...list.slice(i)] : null
+    }
+    // Only into a block of the type that held it, so an edited parent never nests it elsewhere.
+    const holder = list[i]
+    const children = holder?.type === at.within[depth] ? insert(holder.children, depth + 1) : null
+    return children ? list.map((b, j) => (j === i ? ({ ...b, children } as Block) : b)) : null
+  }
+  return insert(blocks, 0) ?? appendSubPageLink(blocks, id)
+}
+
 /** Removes every link to the page; null when there is none. */
 export function removeSubPageLinks(blocks: Block[], id: string): Block[] | null {
   if (!linksToSubPage(blocks, id)) return null

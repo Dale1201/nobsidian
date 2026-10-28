@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import type { Block } from './blocks'
 import { pageLinkHref } from './links'
-import { appendSubPageLink, insertSubPageLinkAfter, removeSubPageLinks } from './subpages'
+import {
+  appendSubPageLink,
+  insertSubPageLinkAfter,
+  insertSubPageLinkAt,
+  type LinkPlace,
+  removeSubPageLinks,
+  subPageLinkPlace
+} from './subpages'
 
 const link = (id: string): Block => ({
   type: 'pageLink',
@@ -44,5 +51,40 @@ describe('sub-page links', () => {
     const blocks = [link('x'), text('t', [link('x')]), column([link('x')])]
     expect(removeSubPageLinks(blocks, 'x')).toEqual([text('t'), column([text('')])])
     expect(removeSubPageLinks([text('t')], 'x')).toBeNull()
+  })
+
+  it('are found by index path, nested or not', () => {
+    expect(subPageLinkPlace([text('t'), link('x')], 'x')).toEqual({ path: [1], within: [] })
+    expect(subPageLinkPlace([text('t'), column([text('u'), link('x')])], 'x')).toEqual({
+      path: [1, 1],
+      within: ['column']
+    })
+    expect(subPageLinkPlace([text('t')], 'x')).toBeNull()
+  })
+
+  it('go back at their place, or at the end once it no longer fits', () => {
+    const at = (path: number[], within: string[] = []): LinkPlace => ({ path, within })
+    expect(insertSubPageLinkAt([text('a'), text('b')], 'x', at([1]))).toEqual([
+      text('a'),
+      link('x'),
+      text('b')
+    ])
+    expect(
+      insertSubPageLinkAt([text('a'), column([text('u')])], 'x', at([1, 1], ['column']))
+    ).toEqual([text('a'), column([text('u'), link('x')])])
+    expect(insertSubPageLinkAt([text('a')], 'x', at([0, 0], ['paragraph']))).toEqual([
+      text('a', [link('x')])
+    ])
+    expect(insertSubPageLinkAt([text('a'), text('b')], 'x', at([1, 0], ['column']))).toEqual([
+      text('a'),
+      text('b'),
+      link('x')
+    ])
+    expect(insertSubPageLinkAt([text('a'), text('')], 'x', at([5]))).toEqual([
+      text('a'),
+      link('x'),
+      text('')
+    ])
+    expect(insertSubPageLinkAt([link('x')], 'x', at([0]))).toBeNull()
   })
 })

@@ -1,6 +1,12 @@
 import { mkdir, readFile, rename } from 'node:fs/promises'
 import { metaFromData, splitFrontmatter } from '../../shared/core/page'
+import type { Block } from '../../shared/core/blocks'
 import { childDirOf, dirOf, joinPath } from '../../shared/core/paths'
+import {
+  insertSubPageLinkAt,
+  removeSubPageLinks,
+  subPageLinkPlace
+} from '../../shared/core/subpages'
 import type { PageDoc, TrashItem } from '../../shared/types'
 import { iconToInternal, type WorkspaceCore } from './core'
 import type { ExternalChanges } from './external'
@@ -17,7 +23,11 @@ export class PageTrash {
     private readonly core: WorkspaceCore,
     private readonly external: ExternalChanges,
     private readonly links: LinkRewriter,
-    private readonly history: PageHistory
+    private readonly history: PageHistory,
+    private readonly editBlocks: (
+      id: string,
+      edit: (blocks: Block[]) => Block[] | null
+    ) => Promise<void>
   ) {
     this.store = new Trash(core.root, core.now)
   }
@@ -32,6 +42,11 @@ export class PageTrash {
       const text = core.texts.get(d.path) ?? ''
       Object.assign(links, core.linkIds(d.path, text, byPath))
     }
+    const parent = r.parentId ? core.record(r.parentId) : null
+    const parentBlocks = parent
+      ? core.toDoc(parent.path, await core.readCurrent(parent)).blocks
+      : []
+    const linkAt = subPageLinkPlace(parentBlocks, id) ?? undefined
     await this.store.add({
       id,
       title: r.title,
@@ -39,8 +54,11 @@ export class PageTrash {
       parentId: r.parentId,
       index: core.childrenOf(r.parentId).indexOf(r),
       favorites: core.state.favorites.filter((f) => removed.some((d) => d.id === f)),
-      links
+      links,
+      linkAt
     })
+    // While the page is still indexed, so the parent's link resolves to its id.
+    if (parent && linkAt) await this.editBlocks(parent.id, (b) => removeSubPageLinks(b, id))
     for (const d of removed) {
       core.stubs.delete(d.path)
       core.pages.delete(d.id)
@@ -119,6 +137,10 @@ export class PageTrash {
       if (favorite) core.state.favorites.push(d.id)
     }
     await core.persist()
+    const linkAt = sameParent ? e.meta.linkAt : undefined
+    if (parent && linkAt) {
+      await this.editBlocks(parent.id, (b) => insertSubPageLinkAt(b, r.id, linkAt))
+    }
     return r.id
   }
 
