@@ -61,7 +61,8 @@ export function insertSubPageLinkAt(blocks: Block[], id: string, at: number[]): 
     if (rest.length === 0) {
       return i <= list.length ? [...list.slice(0, i), linkBlock(id), ...list.slice(i)] : null
     }
-    const children = list[i] ? insert(list[i].children, rest) : null
+    // Only into blocks that still nest others, so an edited parent never indents it under a stranger.
+    const children = list[i]?.children.length ? insert(list[i].children, rest) : null
     return children ? list.map((b, j) => (j === i ? ({ ...b, children } as Block) : b)) : null
   }
   return insert(blocks, at) ?? appendSubPageLink(blocks, id)

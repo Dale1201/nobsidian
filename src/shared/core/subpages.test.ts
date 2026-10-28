@@ -74,6 +74,11 @@ describe('sub-page links', () => {
       text('')
     ])
     expect(insertSubPageLinkAt([text('a')], 'x', [3, 0])).toEqual([text('a'), link('x')])
+    expect(insertSubPageLinkAt([text('a'), text('b')], 'x', [1, 0])).toEqual([
+      text('a'),
+      text('b'),
+      link('x')
+    ])
     expect(insertSubPageLinkAt([link('x')], 'x', [0])).toBeNull()
   })
 })
