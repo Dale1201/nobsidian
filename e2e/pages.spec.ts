@@ -3,7 +3,15 @@ import { join } from 'node:path'
 import type { Page } from '@playwright/test'
 import { expect, test } from './fixtures'
 import { launchElectron } from './launch'
-import { caretToLineEnd, editor, newPage, placeCaret, rowAction, waitForFile } from './helpers'
+import {
+  caretToLineEnd,
+  caretToLineStart,
+  editor,
+  newPage,
+  placeCaret,
+  rowAction,
+  waitForFile
+} from './helpers'
 
 test('duplicate copies a page and its sub-pages below the original', async ({ nb }) => {
   await writeFile(join(nb.workspace, 'Plan.md'), 'Body\n')
@@ -135,7 +143,7 @@ test('Cmd+Shift+H applies the last color picked in the toolbar', async ({ nb }) 
   await page.keyboard.press('Meta+Shift+h')
   await waitForFile(join(workspace, 'Colors.md'), 'alpha <span data-bg="yellow">beta</span>')
 
-  await page.keyboard.press('Home')
+  await caretToLineStart(page)
   await page.keyboard.press('Shift+Alt+ArrowRight')
   // "alpha" has no color yet, unlike the "beta" selected before.
   await expect(
@@ -174,7 +182,7 @@ test('the last picked color survives a restart', async ({ nb }) => {
   await newPage(page, 'Persist')
   await page.keyboard.type('alpha beta')
   await waitForFile(file, 'alpha beta')
-  await page.keyboard.press('Home')
+  await caretToLineStart(page)
   await page.keyboard.press('Shift+Alt+ArrowRight')
   await expect(page.locator('[data-test="colors"]')).toBeVisible()
   await page.locator('[data-test="colors"]').click()
