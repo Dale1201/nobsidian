@@ -116,11 +116,10 @@ export async function pressInEditor(page: Page, key: string): Promise<void> {
   await settleCaret(page)
 }
 
-/** Chromium now and then drops a Cmd+Right pressed just after a click, so it is pressed until it lands. */
-export async function caretToLineEnd(page: Page): Promise<void> {
+async function caretToLineEdge(page: Page, key: string, edge: 'start' | 'end'): Promise<void> {
   await expect(async () => {
-    await pressInEditor(page, 'Meta+ArrowRight')
-    const atEnd = await page.evaluate(() => {
+    await pressInEditor(page, key)
+    const atEdge = await page.evaluate((edge) => {
       type Editor = {
         state: {
           selection: {
@@ -132,8 +131,21 @@ export async function caretToLineEnd(page: Page): Promise<void> {
       const editor = (document.activeElement?.closest('.ProseMirror') as { editor?: Editor })
         ?.editor
       const { empty, $head } = editor!.state.selection
-      return empty && $head.parentOffset === $head.parent.content.size
-    })
-    expect(atEnd).toBe(true)
+      return empty && $head.parentOffset === (edge === 'start' ? 0 : $head.parent.content.size)
+    }, edge)
+    expect(atEdge).toBe(true)
   }).toPass({ timeout: 5000 })
+}
+
+/** Chromium now and then drops a Cmd+Right pressed just after a click, so it is pressed until it lands. */
+export function caretToLineEnd(page: Page): Promise<void> {
+  return caretToLineEdge(page, 'Meta+ArrowRight', 'end')
+}
+
+/**
+ * Within 200ms of the editor gaining focus, ProseMirror takes a caret at the start of the document
+ * for a browser reset and puts the old one back, so Home is pressed until it lands.
+ */
+export function caretToLineStart(page: Page): Promise<void> {
+  return caretToLineEdge(page, 'Home', 'start')
 }
