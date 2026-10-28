@@ -214,7 +214,7 @@ test('a drawing in a read-only page does not open', async ({ nb }) => {
   await writeDrawing(nb.workspace, 'Old.excalidraw.svg')
   const page = await openFile(nb, 'Old', 'Text\n\n![](attachments/Old.excalidraw.svg)\n')
   await expect(page.locator('.nb-drawing')).toHaveCSS('cursor', 'pointer')
-  await rowAction(page, 'Old', 'Delete')
+  await rowAction(page, 'Old', 'Move to Trash')
   await page.getByRole('button', { name: 'Trash', exact: true }).click()
   await page.getByTestId('trash-item-Old').click()
   await expect(page.getByRole('status')).toContainText('This page is in Trash.')

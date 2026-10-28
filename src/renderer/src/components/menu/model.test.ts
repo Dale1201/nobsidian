@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { filterEntries, moveIndex, type MenuEntry } from './model'
+import { filterEntries, hintMatches, moveIndex, type HintKey, type MenuEntry } from './model'
 
 const entries: MenuEntry[] = [
   { kind: 'section', label: 'Actions' },
@@ -56,5 +56,35 @@ describe('moveIndex', () => {
 
   it('returns -1 when there is nothing to select', () => {
     expect(moveIndex([{ kind: 'separator' }], -1, 1)).toBe(-1)
+  })
+})
+
+describe('hintMatches', () => {
+  const key = (k: string, mods: Partial<HintKey> = {}): HintKey => ({
+    key: k,
+    metaKey: false,
+    shiftKey: false,
+    altKey: false,
+    ctrlKey: false,
+    ...mods
+  })
+
+  it('needs the exact modifiers', () => {
+    expect(hintMatches('⌘D', key('d', { metaKey: true }))).toBe(true)
+    expect(hintMatches('⌘D', key('d', { metaKey: true, shiftKey: true }))).toBe(false)
+    expect(hintMatches('⌘D', key('d'))).toBe(false)
+    expect(hintMatches('⌘⇧P', key('P', { metaKey: true, shiftKey: true }))).toBe(true)
+  })
+
+  it('reads Return and Del', () => {
+    expect(hintMatches('⌘⇧↵', key('Enter', { metaKey: true, shiftKey: true }))).toBe(true)
+    expect(hintMatches('Del', key('Delete'))).toBe(true)
+    expect(hintMatches('Del', key('Backspace'))).toBe(true)
+    expect(hintMatches('Del', key('Backspace', { metaKey: true }))).toBe(false)
+  })
+
+  it('ignores hints that are not shortcuts', () => {
+    expect(hintMatches('#', key('#'))).toBe(false)
+    expect(hintMatches('-', key('-'))).toBe(false)
   })
 })

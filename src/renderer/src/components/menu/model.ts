@@ -46,3 +46,24 @@ export function moveIndex(entries: MenuEntry[], from: number, delta: 1 | -1): nu
   if (at === -1) return delta === 1 ? items[0] : items[items.length - 1]
   return items[(at + delta + items.length) % items.length]
 }
+
+export type HintKey = Pick<KeyboardEvent, 'key' | 'metaKey' | 'shiftKey' | 'altKey' | 'ctrlKey'>
+
+const MODIFIERS = { '⌘': 'metaKey', '⇧': 'shiftKey', '⌥': 'altKey', '^': 'ctrlKey' } as const
+
+/** Whether a key press is the shortcut a hint such as "⌘⇧P" or "Del" shows. */
+export function hintMatches(hint: string, e: HintKey): boolean {
+  if (hint === 'Del') {
+    return (e.key === 'Delete' || e.key === 'Backspace') && !e.metaKey && !e.altKey && !e.ctrlKey
+  }
+  const mods = new Set<string>()
+  let rest = hint
+  while (rest[0] in MODIFIERS) {
+    mods.add(MODIFIERS[rest[0] as keyof typeof MODIFIERS])
+    rest = rest.slice(1)
+  }
+  // Without a modifier a hint is a Markdown shortcut such as "#", typed in the editor.
+  if (mods.size === 0 || !rest) return false
+  if (Object.values(MODIFIERS).some((m) => e[m] !== mods.has(m))) return false
+  return rest === '↵' ? e.key === 'Enter' : e.key.toLowerCase() === rest.toLowerCase()
+}

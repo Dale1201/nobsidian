@@ -50,7 +50,7 @@ test('a mention shows the new title after a rename, and goes grey when the page 
   const renamed = page.getByTestId('sidebar-row-Renamed')
   await renamed.hover()
   await renamed.getByRole('button', { name: 'Page actions' }).click()
-  await page.getByRole('menuitem', { name: 'Delete' }).click()
+  await page.getByRole('menuitem', { name: 'Move to Trash' }).click()
   await expect(page.locator(`${editor} .nb-mention`)).toHaveAttribute('data-missing', 'true')
 })
 

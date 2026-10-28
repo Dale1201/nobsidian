@@ -656,6 +656,12 @@ button {
     inset 0 0 0 1px var(--accent),
     0 0 0 2px var(--selected);
 }
+.rename-popover {
+  width: 300px;
+}
+.rename-popover-input {
+  margin-bottom: 0;
+}
 .menu-empty {
   padding: 4px 8px;
   color: var(--text-tertiary);

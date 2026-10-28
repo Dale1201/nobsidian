@@ -111,7 +111,8 @@ interface AppState {
   renamePage: (id: string, title: string) => Promise<void>
   movePage: (id: string, parentId: string | null, index: number) => Promise<void>
   trashPage: (id: string) => Promise<void>
-  duplicatePage: (id: string) => Promise<void>
+  /** `open: false` stays on the current page, as duplicating a page block does. */
+  duplicatePage: (id: string, options?: { open?: boolean }) => Promise<void>
   showTrashEntry: (item: TrashItem) => void
   restoreTrash: (entry: string) => Promise<void>
   deleteTrash: (entry: string) => Promise<void>
@@ -460,11 +461,11 @@ export const useApp = create<AppState>((set, get) => {
       await api.invoke('page:trash', { id }).catch((e) => get().reportError('delete', e))
     },
 
-    duplicatePage: async (id) => {
+    duplicatePage: async (id, options) => {
       if (!(await flushAll())) return
       try {
         const node = await api.invoke('page:duplicate', { id })
-        get().openPage(node.id)
+        if (options?.open !== false) get().openPage(node.id)
       } catch (e) {
         await get().reportError('duplicate', e)
       }

@@ -138,36 +138,55 @@ export function PageIconAndControls({
         )}
       </div>
       {picker && (
-        <Popover anchor={picker} onClose={() => setPicker(null)} className="icon-picker">
-          <div className="icon-picker-bar">
-            <button
-              className="page-header-control"
-              onClick={async () => {
-                const icon = await api.invoke('attachment:chooseImage', undefined)
-                if (icon) onChange({ icon })
-                setPicker(null)
-              }}
-            >
-              Upload
-            </button>
-            <button
-              className="page-header-control"
-              onClick={() => {
-                onChange({ icon: null })
-                setPicker(null)
-              }}
-            >
-              Remove
-            </button>
-          </div>
-          <IconPicker
-            onSelect={(emoji) => {
-              onChange({ icon: emoji })
-              setPicker(null)
-            }}
-          />
-        </Popover>
+        <IconPickerPopover
+          anchor={picker}
+          onChange={(icon) => onChange({ icon })}
+          onClose={() => setPicker(null)}
+        />
       )}
     </>
+  )
+}
+
+/** Emoji, an uploaded image, or no icon; closes once one is chosen. */
+export function IconPickerPopover({
+  anchor,
+  onChange,
+  onClose
+}: {
+  anchor: DOMRect
+  onChange: (icon: string | null) => void
+  onClose: () => void
+}): React.JSX.Element {
+  return (
+    <Popover anchor={anchor} onClose={onClose} className="icon-picker">
+      <div className="icon-picker-bar">
+        <button
+          className="page-header-control"
+          onClick={async () => {
+            const icon = await api.invoke('attachment:chooseImage', undefined)
+            if (icon) onChange(icon)
+            onClose()
+          }}
+        >
+          Upload
+        </button>
+        <button
+          className="page-header-control"
+          onClick={() => {
+            onChange(null)
+            onClose()
+          }}
+        >
+          Remove
+        </button>
+      </div>
+      <IconPicker
+        onSelect={(emoji) => {
+          onChange(emoji)
+          onClose()
+        }}
+      />
+    </Popover>
   )
 }

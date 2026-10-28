@@ -3,18 +3,16 @@ import type { PageNode } from '@shared/types'
 import { tabTarget } from '../lib/navigation'
 import { dropTarget, type DropPosition } from '../lib/tree'
 import { useApp } from '../store'
-import {
-  ChevronRightIcon,
-  DotsIcon,
-  DuplicateIcon,
-  MoveIcon,
-  OpenInTabIcon,
-  PlusIcon,
-  RenameIcon,
-  StarIcon,
-  TrashIcon
-} from './icons'
+import { ChevronRightIcon, DotsIcon, PlusIcon } from './icons'
 import { Menu } from './menu/Menu'
+import {
+  duplicatePageEntry,
+  favoriteEntry,
+  moveToEntry,
+  openInTabEntry,
+  renameEntry,
+  trashEntry
+} from './pageActions'
 import { PageIconView } from './PageIconView'
 
 const DRAG_TYPE = 'application/x-nobsidian-page'
@@ -177,53 +175,16 @@ export function SidebarRow({
         <Menu
           anchor={menu}
           onClose={() => setMenu(null)}
+          header="Page"
           entries={[
-            {
-              kind: 'item',
-              id: 'favorite',
-              label: isFavorite ? 'Remove from Favorites' : 'Add to Favorites',
-              icon: <StarIcon size={16} filled={isFavorite} />,
-              onSelect: () => void app().toggleFavorite(node.id)
-            },
+            favoriteEntry(node.id, isFavorite),
             { kind: 'separator' },
-            {
-              kind: 'item',
-              id: 'duplicate',
-              label: 'Duplicate',
-              icon: <DuplicateIcon size={16} />,
-              onSelect: () => void app().duplicatePage(node.id)
-            },
-            {
-              kind: 'item',
-              id: 'rename',
-              label: 'Rename',
-              icon: <RenameIcon size={16} />,
-              onSelect: () => app().setRenaming(node.id)
-            },
-            {
-              kind: 'item',
-              id: 'move',
-              label: 'Move to',
-              icon: <MoveIcon size={16} />,
-              onSelect: () => app().setOverlay({ kind: 'move', pageId: node.id })
-            },
+            duplicatePageEntry(node.id),
+            renameEntry(() => app().setRenaming(node.id)),
+            moveToEntry(node.id),
+            trashEntry(node.id),
             { kind: 'separator' },
-            {
-              kind: 'item',
-              id: 'delete',
-              label: 'Delete',
-              icon: <TrashIcon size={16} />,
-              danger: true,
-              onSelect: () => void app().trashPage(node.id)
-            },
-            { kind: 'separator' },
-            {
-              kind: 'item',
-              id: 'open-tab',
-              label: 'Open in new tab',
-              icon: <OpenInTabIcon size={16} />,
-              onSelect: () => app().openPage(node.id, { tab: 'foreground' })
-            }
+            openInTabEntry(node.id)
           ]}
         />
       )}

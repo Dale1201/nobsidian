@@ -1,7 +1,27 @@
 import { COLOR_NAMES } from '@shared/core/blocks'
+import { openWriter } from '../../ai/writerRegistry'
+import {
+  DuplicateIcon,
+  PaletteIcon,
+  SmileIcon,
+  SparkleIcon,
+  TrashIcon,
+  TurnIntoIcon
+} from '../../components/icons'
 import type { MenuEntry } from '../../components/menu/model'
-import { DuplicateIcon, PaletteIcon, TrashIcon, TurnIntoIcon } from '../../components/icons'
+import {
+  duplicatePageEntry,
+  favoriteEntry,
+  moveToEntry,
+  openInTabEntry,
+  renameEntry,
+  SHORTCUTS,
+  trashEntry
+} from '../../components/pageActions'
+import { findNode, pageIdForHref, parentOf } from '../../lib/tree'
+import { useApp } from '../../store'
 import { colorBlocks, deleteBlocks, duplicateBlocks, turnIntoBlocks } from '../blockActions'
+import { selectBlocks } from '../blockSelection'
 import type { AppBlock, AppEditor } from '../schema'
 import { canTurnInto, currentTurnInto, TURN_INTO } from '../turnInto'
 
@@ -72,8 +92,83 @@ export function colorEntries(editor: AppEditor, blocks: AppBlock[]): MenuEntry[]
   ]
 }
 
-export function blockMenuEntries(editor: AppEditor, blocks: AppBlock[]): MenuEntry[] {
+export interface BlockMenuOptions {
+  /** The page this editor shows; blocks for its own sub-pages act on those pages. */
+  pageId?: string
+  ai: { shown: boolean; online: boolean }
+  editIcon(pageId: string, blockId: string): void
+  rename(pageId: string, blockId: string): void
+}
+
+/** The page a page block points to, when it is a sub-page of `parentId`, as Notion's page blocks are. */
+function subPageOf(block: AppBlock, parentId: string | undefined): string | null {
+  if (block.type !== 'pageLink' || !parentId) return null
+  const tree = useApp.getState().tree
+  const id = pageIdForHref(tree, block.props.href)
+  return id && parentOf(tree, id)?.id === parentId ? id : null
+}
+
+function linkedPageOf(block: AppBlock): string | null {
+  if (block.type !== 'pageLink') return null
+  const tree = useApp.getState().tree
+  const id = pageIdForHref(tree, block.props.href)
+  return id && findNode(tree, id) ? id : null
+}
+
+function askAiEntries(editor: AppEditor, ids: string[], options: BlockMenuOptions): MenuEntry[] {
+  if (!options.ai.shown) return []
+  return [
+    { kind: 'separator' },
+    {
+      kind: 'item',
+      id: 'ask-ai',
+      label: 'Ask AI',
+      hint: SHORTCUTS.askAi,
+      icon: <SparkleIcon size={16} />,
+      disabled: !options.ai.online,
+      onSelect: () => {
+        // The menu cleared the block selection as it closed; the Writer works on it.
+        selectBlocks(editor, ids)
+        openWriter(editor)
+      }
+    }
+  ]
+}
+
+function pageBlockEntries(
+  editor: AppEditor,
+  block: AppBlock,
+  pageId: string,
+  options: BlockMenuOptions
+): MenuEntry[] {
+  return [
+    {
+      kind: 'item',
+      id: 'edit-icon',
+      label: 'Edit icon',
+      icon: <SmileIcon size={16} />,
+      onSelect: () => options.editIcon(pageId, block.id)
+    },
+    favoriteEntry(pageId, useApp.getState().favorites.includes(pageId)),
+    renameEntry(() => options.rename(pageId, block.id)),
+    { kind: 'separator' },
+    openInTabEntry(pageId),
+    { kind: 'separator' },
+    duplicatePageEntry(pageId, { open: false }),
+    moveToEntry(pageId),
+    trashEntry(pageId, () => deleteBlocks(editor, [block.id])),
+    ...askAiEntries(editor, [block.id], options)
+  ]
+}
+
+export function blockMenuEntries(
+  editor: AppEditor,
+  blocks: AppBlock[],
+  options: BlockMenuOptions
+): MenuEntry[] {
   const ids = blocks.map((b) => b.id)
+  const subPage = blocks.length === 1 ? subPageOf(blocks[0], options.pageId) : null
+  if (subPage) return pageBlockEntries(editor, blocks[0], subPage, options)
   const entries: MenuEntry[] = []
   if (blocks.every(canTurnInto)) {
     entries.push({
@@ -93,13 +188,15 @@ export function blockMenuEntries(editor: AppEditor, blocks: AppBlock[]): MenuEnt
       submenu: colorEntries(editor, blocks)
     })
   }
+  const linked = blocks.length === 1 ? linkedPageOf(blocks[0]) : null
+  if (linked) entries.push(openInTabEntry(linked))
   if (entries.length) entries.push({ kind: 'separator' })
   entries.push(
     {
       kind: 'item',
       id: 'duplicate',
       label: 'Duplicate',
-      hint: '⌘D',
+      hint: SHORTCUTS.duplicate,
       icon: <DuplicateIcon size={16} />,
       onSelect: () => duplicateBlocks(editor, ids)
     },
@@ -107,11 +204,12 @@ export function blockMenuEntries(editor: AppEditor, blocks: AppBlock[]): MenuEnt
       kind: 'item',
       id: 'delete',
       label: 'Delete',
-      hint: 'Del',
+      hint: SHORTCUTS.delete,
       danger: true,
       icon: <TrashIcon size={16} />,
       onSelect: () => deleteBlocks(editor, ids)
-    }
+    },
+    ...askAiEntries(editor, ids, options)
   )
   return entries
 }

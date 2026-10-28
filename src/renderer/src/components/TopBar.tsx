@@ -3,8 +3,9 @@ import type { PageDoc } from '@shared/types'
 import { tabTarget } from '../lib/navigation'
 import { findNode, pathTo } from '../lib/tree'
 import { useApp } from '../store'
-import { ClockIcon, DotsIcon, DuplicateIcon, StarIcon, TrashIcon, WidthIcon } from './icons'
+import { ClockIcon, DotsIcon, StarIcon, WidthIcon } from './icons'
 import { Menu } from './menu/Menu'
+import { duplicatePageEntry, moveToEntry, trashEntry } from './pageActions'
 import { PageIconView } from './PageIconView'
 
 export function TopBar({
@@ -73,37 +74,28 @@ export function TopBar({
           anchor={menu}
           align="end"
           onClose={() => setMenu(null)}
+          search="Search actions…"
           entries={[
+            duplicatePageEntry(currentId),
+            moveToEntry(currentId),
+            trashEntry(currentId),
+            { kind: 'separator' },
             {
               kind: 'item',
               id: 'full-width',
-              label: doc?.meta.fullWidth ? 'Use default width' : 'Full width',
+              label: 'Full width',
               icon: <WidthIcon size={16} />,
+              checked: Boolean(doc?.meta.fullWidth),
               onSelect: onToggleFullWidth
             },
             { kind: 'separator' },
             {
               kind: 'item',
-              id: 'duplicate',
-              label: 'Duplicate',
-              icon: <DuplicateIcon size={16} />,
-              onSelect: () => void app().duplicatePage(currentId)
-            },
-            {
-              kind: 'item',
               id: 'page-history',
               label: 'Page history',
+              keywords: ['version'],
               icon: <ClockIcon size={16} />,
               onSelect: () => app().setOverlay({ kind: 'history', pageId: currentId })
-            },
-            { kind: 'separator' },
-            {
-              kind: 'item',
-              id: 'delete',
-              label: 'Delete',
-              icon: <TrashIcon size={16} />,
-              danger: true,
-              onSelect: () => void app().trashPage(currentId)
             }
           ]}
         />
