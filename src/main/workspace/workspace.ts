@@ -76,7 +76,9 @@ export class Workspace {
       (task) => this.run(task)
     )
     this.links = new LinkRewriter(this.core, this.history)
-    this.trash = new PageTrash(this.core, this.external, this.links, this.history)
+    this.trash = new PageTrash(this.core, this.external, this.links, this.history, (id, edit) =>
+      this.editBlocks(id, edit)
+    )
     this.imports = new PageImports(this.core)
   }
 

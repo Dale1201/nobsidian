@@ -17,6 +17,8 @@ export interface TrashMeta {
   favorites?: string[]
   /** Workspace path of each page the trashed pages link to -> its id, as of the delete. */
   links?: Record<string, string>
+  /** Index path of the parent's link to the page, so a restore puts it back in place. */
+  linkAt?: number[]
 }
 
 /** One deleted page (with its sub-pages) as stored in `.nobsidian/trash/<entry>/`. */

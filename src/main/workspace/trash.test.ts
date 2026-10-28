@@ -91,6 +91,36 @@ describe('Trash', () => {
     expect(await read('Other.md')).toContain('(Parent/A/Child.md "page")')
   })
 
+  it("removes a page's link from its parent, and puts it back in place on restore", async () => {
+    const ws = await open()
+    const parent = await page(ws, null, 'Parent')
+    const a = await page(ws, parent, 'A')
+    const other = await page(ws, null, 'Other')
+    await ws.writePage(parent, [text('Before'), link(a), text('After')])
+    await ws.writePage(other, [link(a)])
+    const events: unknown[] = []
+    ws.onEvent((e) => events.push(e))
+    await ws.trashPage(a)
+    expect((await ws.readPage(parent)).blocks).toEqual([text('Before'), text('After')])
+    expect(events).toContainEqual(expect.objectContaining({ type: 'page', id: parent }))
+    expect(await read('Other.md')).toContain('(Parent/A.md "page")')
+    const [item] = await ws.listTrash()
+    await ws.restoreTrash(item.entry)
+    expect((await ws.readPage(parent)).blocks).toEqual([text('Before'), link(a), text('After')])
+    expect(await read('Parent.md')).toContain('Before\n\n[A](Parent/A.md "page")\n\nAfter\n')
+  })
+
+  it('does not link a restored page from a parent that never linked it', async () => {
+    const ws = await open()
+    const parent = await page(ws, null, 'Parent')
+    const a = await page(ws, parent, 'A')
+    await ws.writePage(parent, [text('Body')])
+    await ws.trashPage(a)
+    const [item] = await ws.listTrash()
+    await ws.restoreTrash(item.entry)
+    expect((await ws.readPage(parent)).blocks).toEqual([text('Body')])
+  })
+
   it('restores to the top level when the parent is gone, renaming on conflict and fixing links', async () => {
     const ws = await open()
     const parent = await page(ws, null, 'Parent')

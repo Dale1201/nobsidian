@@ -44,6 +44,29 @@ export function insertSubPageLinkAfter(blocks: Block[], after: string, id: strin
   return place(blocks)
 }
 
+/** Index path to the first link to the page, through nested children; null without one. */
+export function subPageLinkPath(blocks: Block[], id: string): number[] | null {
+  for (const [i, b] of blocks.entries()) {
+    if (isLinkTo(b, id)) return [i]
+    const inner = subPageLinkPath(b.children, id)
+    if (inner) return [i, ...inner]
+  }
+  return null
+}
+
+/** Adds a link at an index path, or at the end once the path no longer fits; null when linked. */
+export function insertSubPageLinkAt(blocks: Block[], id: string, at: number[]): Block[] | null {
+  if (linksToSubPage(blocks, id)) return null
+  const insert = (list: Block[], [i, ...rest]: number[]): Block[] | null => {
+    if (rest.length === 0) {
+      return i <= list.length ? [...list.slice(0, i), linkBlock(id), ...list.slice(i)] : null
+    }
+    const children = list[i] ? insert(list[i].children, rest) : null
+    return children ? list.map((b, j) => (j === i ? ({ ...b, children } as Block) : b)) : null
+  }
+  return insert(blocks, at) ?? appendSubPageLink(blocks, id)
+}
+
 /** Removes every link to the page; null when there is none. */
 export function removeSubPageLinks(blocks: Block[], id: string): Block[] | null {
   if (!linksToSubPage(blocks, id)) return null
