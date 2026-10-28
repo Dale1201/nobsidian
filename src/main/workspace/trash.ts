@@ -2,6 +2,7 @@ import { mkdir, readFile, readdir, rename, rm } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import { metaFromData, splitFrontmatter } from '../../shared/core/page'
 import { childDirOf } from '../../shared/core/paths'
+import type { LinkPlace } from '../../shared/core/subpages'
 import { exists, writeFileAtomic } from './fs-utils'
 import { APP_DIR } from './state'
 
@@ -17,8 +18,8 @@ export interface TrashMeta {
   favorites?: string[]
   /** Workspace path of each page the trashed pages link to -> its id, as of the delete. */
   links?: Record<string, string>
-  /** Index path of the parent's link to the page, so a restore puts it back in place. */
-  linkAt?: number[]
+  /** Where the parent linked to the page, so a restore puts the link back in place. */
+  linkAt?: LinkPlace
 }
 
 /** One deleted page (with its sub-pages) as stored in `.nobsidian/trash/<entry>/`. */

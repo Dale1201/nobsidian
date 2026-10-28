@@ -5,8 +5,9 @@ import {
   appendSubPageLink,
   insertSubPageLinkAfter,
   insertSubPageLinkAt,
+  type LinkPlace,
   removeSubPageLinks,
-  subPageLinkPath
+  subPageLinkPlace
 } from './subpages'
 
 const link = (id: string): Block => ({
@@ -53,32 +54,37 @@ describe('sub-page links', () => {
   })
 
   it('are found by index path, nested or not', () => {
-    expect(subPageLinkPath([text('t'), link('x')], 'x')).toEqual([1])
-    expect(subPageLinkPath([text('t'), column([text('u'), link('x')])], 'x')).toEqual([1, 1])
-    expect(subPageLinkPath([text('t')], 'x')).toBeNull()
+    expect(subPageLinkPlace([text('t'), link('x')], 'x')).toEqual({ path: [1], within: [] })
+    expect(subPageLinkPlace([text('t'), column([text('u'), link('x')])], 'x')).toEqual({
+      path: [1, 1],
+      within: ['column']
+    })
+    expect(subPageLinkPlace([text('t')], 'x')).toBeNull()
   })
 
-  it('go back at their index path, or at the end once it no longer fits', () => {
-    expect(insertSubPageLinkAt([text('a'), text('b')], 'x', [1])).toEqual([
+  it('go back at their place, or at the end once it no longer fits', () => {
+    const at = (path: number[], within: string[] = []): LinkPlace => ({ path, within })
+    expect(insertSubPageLinkAt([text('a'), text('b')], 'x', at([1]))).toEqual([
       text('a'),
       link('x'),
       text('b')
     ])
-    expect(insertSubPageLinkAt([text('a'), column([text('u')])], 'x', [1, 1])).toEqual([
-      text('a'),
-      column([text('u'), link('x')])
+    expect(
+      insertSubPageLinkAt([text('a'), column([text('u')])], 'x', at([1, 1], ['column']))
+    ).toEqual([text('a'), column([text('u'), link('x')])])
+    expect(insertSubPageLinkAt([text('a')], 'x', at([0, 0], ['paragraph']))).toEqual([
+      text('a', [link('x')])
     ])
-    expect(insertSubPageLinkAt([text('a'), text('')], 'x', [5])).toEqual([
-      text('a'),
-      link('x'),
-      text('')
-    ])
-    expect(insertSubPageLinkAt([text('a')], 'x', [3, 0])).toEqual([text('a'), link('x')])
-    expect(insertSubPageLinkAt([text('a'), text('b')], 'x', [1, 0])).toEqual([
+    expect(insertSubPageLinkAt([text('a'), text('b')], 'x', at([1, 0], ['column']))).toEqual([
       text('a'),
       text('b'),
       link('x')
     ])
-    expect(insertSubPageLinkAt([link('x')], 'x', [0])).toBeNull()
+    expect(insertSubPageLinkAt([text('a'), text('')], 'x', at([5]))).toEqual([
+      text('a'),
+      link('x'),
+      text('')
+    ])
+    expect(insertSubPageLinkAt([link('x')], 'x', at([0]))).toBeNull()
   })
 })

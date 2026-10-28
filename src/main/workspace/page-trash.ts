@@ -5,7 +5,7 @@ import { childDirOf, dirOf, joinPath } from '../../shared/core/paths'
 import {
   insertSubPageLinkAt,
   removeSubPageLinks,
-  subPageLinkPath
+  subPageLinkPlace
 } from '../../shared/core/subpages'
 import type { PageDoc, TrashItem } from '../../shared/types'
 import { iconToInternal, type WorkspaceCore } from './core'
@@ -46,7 +46,7 @@ export class PageTrash {
     const parentBlocks = parent
       ? core.toDoc(parent.path, await core.readCurrent(parent)).blocks
       : []
-    const linkAt = subPageLinkPath(parentBlocks, id) ?? undefined
+    const linkAt = subPageLinkPlace(parentBlocks, id) ?? undefined
     await this.store.add({
       id,
       title: r.title,

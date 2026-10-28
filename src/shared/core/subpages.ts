@@ -44,28 +44,36 @@ export function insertSubPageLinkAfter(blocks: Block[], after: string, id: strin
   return place(blocks)
 }
 
-/** Index path to the first link to the page, through nested children; null without one. */
-export function subPageLinkPath(blocks: Block[], id: string): number[] | null {
+/** Where a link sits: its index at each nesting level, and the type of each block it is in. */
+export interface LinkPlace {
+  path: number[]
+  within: string[]
+}
+
+/** Where the first link to the page sits, through nested children; null without one. */
+export function subPageLinkPlace(blocks: Block[], id: string): LinkPlace | null {
   for (const [i, b] of blocks.entries()) {
-    if (isLinkTo(b, id)) return [i]
-    const inner = subPageLinkPath(b.children, id)
-    if (inner) return [i, ...inner]
+    if (isLinkTo(b, id)) return { path: [i], within: [] }
+    const inner = subPageLinkPlace(b.children, id)
+    if (inner) return { path: [i, ...inner.path], within: [b.type, ...inner.within] }
   }
   return null
 }
 
-/** Adds a link at an index path, or at the end once the path no longer fits; null when linked. */
-export function insertSubPageLinkAt(blocks: Block[], id: string, at: number[]): Block[] | null {
+/** Adds a link back at its place, or at the end once the place no longer fits; null when linked. */
+export function insertSubPageLinkAt(blocks: Block[], id: string, at: LinkPlace): Block[] | null {
   if (linksToSubPage(blocks, id)) return null
-  const insert = (list: Block[], [i, ...rest]: number[]): Block[] | null => {
-    if (rest.length === 0) {
+  const insert = (list: Block[], depth: number): Block[] | null => {
+    const i = at.path[depth]
+    if (depth === at.path.length - 1) {
       return i <= list.length ? [...list.slice(0, i), linkBlock(id), ...list.slice(i)] : null
     }
-    // Only into blocks that still nest others, so an edited parent never indents it under a stranger.
-    const children = list[i]?.children.length ? insert(list[i].children, rest) : null
+    // Only into a block of the type that held it, so an edited parent never nests it elsewhere.
+    const holder = list[i]
+    const children = holder?.type === at.within[depth] ? insert(holder.children, depth + 1) : null
     return children ? list.map((b, j) => (j === i ? ({ ...b, children } as Block) : b)) : null
   }
-  return insert(blocks, at) ?? appendSubPageLink(blocks, id)
+  return insert(blocks, 0) ?? appendSubPageLink(blocks, id)
 }
 
 /** Removes every link to the page; null when there is none. */

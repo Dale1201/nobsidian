@@ -110,6 +110,24 @@ describe('Trash', () => {
     expect(await read('Parent.md')).toContain('Before\n\n[A](Parent/A.md "page")\n\nAfter\n')
   })
 
+  it('puts a link nested alone under a toggle back inside it on restore', async () => {
+    const ws = await open()
+    const parent = await page(ws, null, 'Parent')
+    const a = await page(ws, parent, 'A')
+    const toggle = (children: Block[]): Block => ({
+      type: 'toggleListItem',
+      props: {},
+      content: [{ type: 'text', text: 'Archive', styles: {} }],
+      children
+    })
+    await ws.writePage(parent, [toggle([link(a)]), text('After')])
+    await ws.trashPage(a)
+    expect((await ws.readPage(parent)).blocks).toEqual([toggle([]), text('After')])
+    const [item] = await ws.listTrash()
+    await ws.restoreTrash(item.entry)
+    expect((await ws.readPage(parent)).blocks).toEqual([toggle([link(a)]), text('After')])
+  })
+
   it('does not link a restored page from a parent that never linked it', async () => {
     const ws = await open()
     const parent = await page(ws, null, 'Parent')
