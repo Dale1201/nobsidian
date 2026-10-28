@@ -81,6 +81,8 @@ export type EditorProps = {
   pageLink: PageLinkContextValue
   /** Swaps in content saved by another tab, keeping this editor, its undo history and focus. */
   contentRef?: Ref<EditorContent>
+  /** The page shown, so the block menu can tell its sub-page blocks from other page links. */
+  pageId?: string
   /** The tab and page an editable page editor belongs to, so drawings land in the right one. */
   drawingSlot?: { tabId: string; pageId: string }
   editable?: boolean
@@ -402,7 +404,7 @@ export function Editor(props: EditorProps): React.JSX.Element {
             sideMenu={false}
             onChange={(ed) => replacing.current || hasPending(ed) || props.onChange(ed.document)}
           >
-            <BlockMenuHost>
+            <BlockMenuHost pageId={props.pageId}>
               {props.editable !== false && (
                 <>
                   <SuggestionMenuController

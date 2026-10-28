@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Popover } from '../Popover'
 import { ChevronRightIcon } from '../icons'
-import { filterEntries, moveIndex, type MenuEntry, type MenuItemEntry } from './model'
+import { filterEntries, hintMatches, moveIndex, type MenuEntry, type MenuItemEntry } from './model'
 
 export interface MenuProps {
   anchor: DOMRect
@@ -69,8 +69,21 @@ export function Menu(props: MenuProps): React.JSX.Element {
     const onKey = (e: KeyboardEvent): void => {
       if (sub) return
       const current = shown[active] as MenuItemEntry | undefined
+      // "Del" must not take Backspace from a search box that still has text in it.
+      const byHint = entries.find(
+        (entry): entry is MenuItemEntry =>
+          entry.kind === 'item' &&
+          !entry.disabled &&
+          !entry.submenu &&
+          entry.hint !== undefined &&
+          (entry.hint !== 'Del' || query === '') &&
+          hintMatches(entry.hint, e)
+      )
       let handled = true
-      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      if (byHint) {
+        onClose()
+        byHint.onSelect?.()
+      } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         setActiveId(idAt(moveIndex(shown, active, e.key === 'ArrowDown' ? 1 : -1)))
       } else if (e.key === 'Enter' || (e.key === 'ArrowRight' && current?.submenu)) {
         select(active)

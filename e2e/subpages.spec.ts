@@ -147,7 +147,7 @@ test('a link to a deleted sub-page shows its name, greyed out', async ({ nb }) =
   const page = await nb.relaunch()
   await page.getByTestId('sidebar-row-Plan').click()
   await page.getByTestId('sidebar-row-Plan').getByRole('button', { name: 'Expand' }).click()
-  await rowAction(page, 'Step', 'Delete')
+  await rowAction(page, 'Step', 'Move to Trash')
   const link = page.locator(`${editor} .nb-page-link`)
   await expect(link).toHaveAttribute('data-missing', 'true')
   await expect(link.locator('.nb-page-link-title')).toHaveText('Step')
