@@ -62,6 +62,24 @@ export async function clickMenuItem(app: ElectronApplication, label: string): Pr
   }, label)
 }
 
+/** Clicks an application menu item by label, hidden ones included, as its accelerator would. */
+export async function menu(app: ElectronApplication, label: string): Promise<void> {
+  const found = await app.evaluate(({ Menu }, label) => {
+    const walk = (items: Electron.MenuItem[]): Electron.MenuItem | undefined => {
+      for (const item of items) {
+        if (item.label === label) return item
+        const inner = item.submenu && walk(item.submenu.items)
+        if (inner) return inner
+      }
+      return undefined
+    }
+    const item = walk(Menu.getApplicationMenu()?.items ?? [])
+    item?.click()
+    return Boolean(item)
+  }, label)
+  expect(found, `menu item ${label}`).toBe(true)
+}
+
 /** A menu click reaches the window later, so this waits for the new tab before anything acts on it. */
 export async function newTab(app: ElectronApplication, page: Page): Promise<void> {
   const tabs = page.locator('.tab')

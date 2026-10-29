@@ -37,6 +37,12 @@ export const OpenInTabIcon = (p: IconProps): React.JSX.Element => (
   </Svg>
 )
 
+export const BacklinkIcon = (p: IconProps): React.JSX.Element => (
+  <Svg {...p}>
+    <path d="M6 14 14 6M8 6h6v6" {...stroke} />
+  </Svg>
+)
+
 export const PlusIcon = (p: IconProps): React.JSX.Element => (
   <Svg {...p}>
     <path d="M10 3.75a.75.75 0 0 1 .75.75v4.75h4.75a.75.75 0 0 1 0 1.5h-4.75v4.75a.75.75 0 0 1-1.5 0v-4.75H4.5a.75.75 0 0 1 0-1.5h4.75V4.5a.75.75 0 0 1 .75-.75Z" />

@@ -20,6 +20,7 @@ import {
 import { blocksText } from '../../shared/core/text'
 import type { PageDoc } from '../../shared/types'
 import { SearchIndex } from '../search/index'
+import { LinkGraph } from './backlinks'
 import { uniqueName, writeFileAtomic } from './fs-utils'
 import { ROOT_ORDER_KEY, saveState, serializeState, type WorkspaceState } from './state'
 
@@ -54,6 +55,7 @@ export class WorkspaceCore {
   readonly listeners = new Set<(event: WorkspaceEvent) => void>()
   stateText = ''
   readonly index = new SearchIndex()
+  readonly links = new LinkGraph()
 
   constructor(
     readonly root: string,
@@ -100,7 +102,13 @@ export class WorkspaceCore {
   }
 
   indexText(r: PageRecord, text: string): void {
-    this.index.set(r.id, r.title, blocksText(parsePage(text).blocks))
+    this.indexBlocks(r, text, parsePage(text).blocks)
+  }
+
+  /** Indexes a page from blocks already parsed out of its file text. */
+  indexBlocks(r: PageRecord, text: string, fileBlocks: Block[]): void {
+    this.index.set(r.id, r.title, blocksText(fileBlocks))
+    this.links.note(r.path, text, fileBlocks)
   }
 
   // ---------- tree ----------

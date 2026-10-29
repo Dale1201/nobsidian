@@ -8,6 +8,8 @@ import { PageCover, PageIconAndControls } from './PageHeader'
 import { EditorErrorBoundary } from './EditorErrorBoundary'
 import { PageEditor, type PageEditorHandle } from './PageEditor'
 import { PageTitle } from './PageTitle'
+import { Backlinks } from './Backlinks'
+import { FindBar } from './FindBar'
 import { TopBar } from './TopBar'
 
 const api = window.api
@@ -55,6 +57,7 @@ export function PageView({
   const bodyRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const editorRef = useRef<PageEditorHandle>(null)
+  const getEditor = useCallback(() => editorRef.current?.editor() ?? null, [])
   const keepScroll = useRef<number | null>(initialScroll || null)
   const docRef = useRef(doc)
   useLayoutEffect(() => {
@@ -189,6 +192,7 @@ export function PageView({
           message="This page's frontmatter couldn't be read, so it's shown as text."
         />
       )}
+      {ready && <FindBar active={active} getEditor={getEditor} />}
       <div className="page-scroll editable" data-testid="page-scroll" ref={scrollRef}>
         {ready && (
           <>
@@ -204,6 +208,7 @@ export function PageView({
                     bodyRef.current?.querySelector<HTMLElement>('[contenteditable="true"]')?.focus()
                   }
                 />
+                <Backlinks pageId={doc.id} />
               </div>
             </div>
             <div

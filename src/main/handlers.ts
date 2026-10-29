@@ -154,6 +154,7 @@ export function registerHandlers(ctx: AppContext): void {
     mutate((w, { id, favorite }) => w.setFavorite(id, favorite))
   )
   handle('search:query', ({ query }) => ws().search(query))
+  handle('page:backlinks', ({ id }) => ws().backlinks(id))
   handle('trash:list', () => ws().listTrash())
   handle('trash:read', ({ entry }) => ws().readTrash(entry))
   handle(

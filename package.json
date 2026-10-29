@@ -28,6 +28,7 @@
     "chokidar": "6.0.0",
     "hast-util-from-html": "^2.0.3",
     "minisearch": "^7.2.0",
+    "prosemirror-history": "1.5.1",
     "prosemirror-model": "1.25.12",
     "prosemirror-state": "1.4.4",
     "prosemirror-view": "1.42.6",

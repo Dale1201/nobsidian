@@ -164,6 +164,25 @@ export class Workspace {
     return this.core.index.search(query).filter((hit) => this.core.pages.has(hit.id))
   }
 
+  /** Pages that link to `id`, by title; a parent's sub-page block alone does not count. */
+  async backlinks(id: string): Promise<string[]> {
+    await this.indexing
+    const core = this.core
+    const target = core.pages.get(id)
+    if (!target) return []
+    const out: PageRecord[] = []
+    for (const r of core.pages.values()) {
+      const text = core.texts.get(r.path)
+      if (r.id === id || text === undefined) continue
+      const onlyBlocks = core.links.targetsOf(r.path, text).get(target.path)
+      if (onlyBlocks === undefined || (onlyBlocks && target.parentId === r.id)) continue
+      out.push(r)
+    }
+    return out
+      .sort((a, b) => a.title.localeCompare(b.title, undefined, { numeric: true }))
+      .map((r) => r.id)
+  }
+
   // ---------- reading and writing ----------
 
   /** Queued like writes, so a page never loads content that a pending save is replacing. */
@@ -203,7 +222,7 @@ export class Workspace {
       const { meta } = parsePage(disk)
       const fileBlocks = this.core.toFileBlocks(r.path, blocks)
       await this.history.writeOwn(r, disk, serializePage({ ...meta, id }, fileBlocks))
-      this.core.index.set(id, r.title, blocksText(fileBlocks))
+      this.core.indexBlocks(r, this.core.texts.get(r.path) ?? '', fileBlocks)
       return { ok: true, revision }
     })
   }

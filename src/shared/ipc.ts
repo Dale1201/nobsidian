@@ -64,6 +64,10 @@ export type MenuCommand =
   | 'reopen-tab'
   | 'next-tab'
   | 'previous-tab'
+  | 'find'
+  | 'find-replace'
+  | 'find-next'
+  | 'find-previous'
   | `select-tab-${1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9}`
 
 /** What a dropped zip is, judged from its file names. */
@@ -95,6 +99,8 @@ export interface IpcContract {
   'page:trash': [payload: { id: string }, result: void]
   'page:duplicate': [payload: { id: string }, result: PageNode]
   'search:query': [payload: { query: string }, result: SearchHit[]]
+  /** Ids of the pages linking to a page, by title. */
+  'page:backlinks': [payload: { id: string }, result: string[]]
   'trash:list': [payload: void, result: TrashItem[]]
   'trash:read': [payload: { entry: string }, result: PageDoc]
   'trash:restore': [payload: { entry: string }, result: string]

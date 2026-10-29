@@ -873,6 +873,137 @@ button.breadcrumb:hover {
   content: attr(data-placeholder);
   color: var(--text-tertiary);
 }
+/* ---------- find ---------- */
+.find-bar {
+  position: absolute;
+  top: calc(var(--topbar-height) + 8px);
+  right: 16px;
+  z-index: 50;
+  width: 380px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--menu-bg);
+  box-shadow: var(--menu-shadow);
+  border-radius: 10px;
+}
+.find-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.find-bar .icon-button {
+  width: 26px;
+  height: 26px;
+}
+.find-bar .icon-button:disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+.find-input {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  font: inherit;
+  color: var(--text);
+  background: var(--input-bg);
+  border: 1px solid var(--border-translucent);
+  border-radius: 6px;
+  outline: none;
+}
+.find-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+/* Lines the replace field up under the find field, past the chevron. */
+.find-replace-row {
+  padding-left: 30px;
+}
+.find-count {
+  min-width: 56px;
+  text-align: right;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.find-action {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border-translucent);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.find-action:hover {
+  background: var(--hover);
+}
+.find-action:disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+.nb-find-match {
+  background: var(--find-match);
+  border-radius: 2px;
+}
+.nb-find-current {
+  background: var(--find-current);
+}
+
+.backlinks {
+  margin: 0 0 4px;
+}
+.backlinks-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 6px;
+  margin-left: -4px;
+  border-radius: 4px;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+.backlinks-button:hover {
+  background: var(--hover);
+}
+.menu.backlinks-popover {
+  width: 320px;
+  max-height: min(420px, 60vh);
+  overflow-y: auto;
+}
+.backlinks-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.backlinks-item:hover,
+.backlinks-item:focus-visible {
+  background: var(--hover);
+  outline: none;
+}
+.backlinks-item-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.backlinks-item-title,
+.backlinks-item-meta {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.backlinks-item-meta {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
 .page-body {
   padding-bottom: 30vh;
 }
