@@ -192,7 +192,7 @@ export function PageView({
           message="This page's frontmatter couldn't be read, so it's shown as text."
         />
       )}
-      {ready && <FindBar active={active} getEditor={getEditor} />}
+      {ready && <FindBar active={active} getEditor={getEditor} editorKey={generation} />}
       <div className="page-scroll editable" data-testid="page-scroll" ref={scrollRef}>
         {ready && (
           <>

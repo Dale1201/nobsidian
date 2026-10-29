@@ -1,9 +1,10 @@
 // @vitest-environment happy-dom
 import { BlockNoteEditor, type PartialBlock } from '@blocknote/core'
 import { Schema } from 'prosemirror-model'
+import { EditorState, TextSelection } from 'prosemirror-state'
 import { describe, expect, it } from 'vitest'
 import { find, findState, replaceAll, replaceCurrent, setFindQuery, stepFind } from './findPlugin'
-import { findMatches, fold } from './matches'
+import { findMatches, fold, selectionQuery } from './matches'
 
 const schema = new Schema({
   nodes: {
@@ -56,6 +57,23 @@ describe('findMatches', () => {
   })
 })
 
+describe('selectionQuery', () => {
+  const doc = schema.node('doc', null, [para('ab', 'CHIP', 'cd'), para('ef')])
+  const selected = (from: number, to: number): string =>
+    selectionQuery(EditorState.create({ doc, selection: TextSelection.create(doc, from, to) }))
+
+  it('is the text selected within one block', () => {
+    expect(selected(1, 3)).toBe('ab')
+    expect(selected(4, 6)).toBe('cd')
+  })
+
+  it('is empty for a selection holding a chip, crossing blocks, or empty', () => {
+    expect(selected(2, 5)).toBe('')
+    expect(selected(5, 10)).toBe('')
+    expect(selected(2, 2)).toBe('')
+  })
+})
+
 function editorWith(blocks: PartialBlock[]): BlockNoteEditor {
   const editor = BlockNoteEditor.create({ initialContent: blocks, extensions: [find] })
   editor.mount(document.createElement('div'))
@@ -79,7 +97,11 @@ describe('find plugin', () => {
     expect(findState(view.state).current).toBe(2)
     stepFind(view, 1)
     expect(findState(view.state).current).toBe(0)
-    editor.insertBlocks([{ type: 'paragraph', content: 'one more cat' }], editor.document[1], 'after')
+    editor.insertBlocks(
+      [{ type: 'paragraph', content: 'one more cat' }],
+      editor.document[1],
+      'after'
+    )
     expect(findState(view.state).matches).toHaveLength(4)
     setFindQuery(view, '')
     expect(findState(view.state).matches).toEqual([])

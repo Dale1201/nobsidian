@@ -10,6 +10,7 @@ import {
   setFindQuery,
   stepFind
 } from '../editor/find/findPlugin'
+import { selectionQuery } from '../editor/find/matches'
 import type { AppEditor } from '../editor/schema'
 import { ArrowUpIcon, ChevronDownIcon, CloseIcon } from './icons'
 
@@ -17,24 +18,21 @@ import { ArrowUpIcon, ChevronDownIcon, CloseIcon } from './icons'
 export const FIND_EVENT = 'nobsidian:find'
 export type FindCommand = Extract<MenuCommand, `find${string}`>
 
-/** Text selected within one block, to search for when the bar opens. */
-function selectedText(editor: AppEditor): string {
-  const { selection, doc } = editor.prosemirrorState
-  if (selection.empty || selection.$from.parent !== selection.$to.parent) return ''
-  return doc.textBetween(selection.from, selection.to)
-}
-
 /** Notion's find and replace bar, at the top right of the page. */
 export function FindBar({
   active,
-  getEditor
+  getEditor,
+  editorKey
 }: {
   active: boolean
   getEditor: () => AppEditor | null
+  /** Changes when the page's editor is replaced, as a reload does. */
+  editorKey: number
 }): React.JSX.Element | null {
   const [open, setOpen] = useState(false)
   const [showReplace, setShowReplace] = useState(false)
   const [query, setQuery] = useState('')
+  const queryRef = useRef('')
   const [replacement, setReplacement] = useState('')
   const [, refresh] = useReducer((n: number) => n + 1, 0)
   const findInput = useRef<HTMLInputElement>(null)
@@ -47,6 +45,7 @@ export function FindBar({
       const ed = getEditor()
       if (!ed) return
       setQuery(text)
+      queryRef.current = text
       setFindQuery(ed.prosemirrorView, text)
       revealCurrent(ed.prosemirrorView)
     },
@@ -94,7 +93,7 @@ export function FindBar({
         return
       }
       if (cmd === 'find-replace') setShowReplace(true)
-      const seed = open ? '' : selectedText(ed)
+      const seed = open ? '' : selectionQuery(ed.prosemirrorState)
       setOpen(true)
       if (seed || !open) search(seed || query)
       requestFocus()
@@ -109,8 +108,15 @@ export function FindBar({
     findInput.current?.select()
   }, [focusRequest])
 
-  // Matches follow edits made while the bar is open.
-  useEffect(() => (editor ? editor.onChange(refresh) : undefined), [editor])
+  // Matches follow edits made while the bar is open, and a reloaded page's new editor.
+  useEffect(() => {
+    const ed = open ? getEditor() : null
+    if (!ed) return
+    if (findState(ed.prosemirrorState).query !== queryRef.current)
+      setFindQuery(ed.prosemirrorView, queryRef.current)
+    refresh()
+    return ed.onChange(refresh)
+  }, [open, editorKey, getEditor])
 
   if (!open || !editor) return null
   const { matches, current } = findState(editor.prosemirrorState)

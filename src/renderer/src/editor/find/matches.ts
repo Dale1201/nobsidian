@@ -1,4 +1,5 @@
 import type { Node } from 'prosemirror-model'
+import type { EditorState } from 'prosemirror-state'
 
 export interface Match {
   from: number
@@ -32,4 +33,11 @@ export function findMatches(doc: Node, query: string): Match[] {
     return false
   })
   return out
+}
+
+/** Text selected within one block to search for; none when it holds a chip no query can match. */
+export function selectionQuery({ selection, doc }: EditorState): string {
+  if (selection.empty || selection.$from.parent !== selection.$to.parent) return ''
+  const text = doc.textBetween(selection.from, selection.to, undefined, OBJECT)
+  return text.includes(OBJECT) ? '' : text
 }

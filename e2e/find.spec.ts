@@ -1,3 +1,4 @@
+import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { ElectronApplication, Locator, Page } from '@playwright/test'
 import { expect, test } from './fixtures'
@@ -13,7 +14,11 @@ async function openFind(app: ElectronApplication, page: Page, label = 'Find…')
 }
 
 test('Cmd+F finds, steps through matches and leaves the match selected', async ({ nb }) => {
-  const page = await openFile(nb, 'Fruit', 'Apple pie\n\nan apple a day\n\nNo fruit here\n\nAPPLE\n')
+  const page = await openFile(
+    nb,
+    'Fruit',
+    'Apple pie\n\nan apple a day\n\nNo fruit here\n\nAPPLE\n'
+  )
   await openFind(nb.app, page)
   await page.keyboard.type('apple')
   await expect(count(page)).toHaveText('1/3')
@@ -94,4 +99,23 @@ test('each tab keeps its own find bar', async ({ nb }) => {
   await expect(bar(page)).toHaveCount(0)
   await page.locator('.tab').first().click()
   await expect(count(page)).toHaveText('1/1')
+})
+
+test('the bar keeps searching a page another app edits', async ({ nb }) => {
+  const page = await openFile(nb, 'Shared', 'one apple\n')
+  const file = join(nb.workspace, 'Shared.md')
+  await waitForFile(file, 'id: ')
+  await openFind(nb.app, page)
+  await page.keyboard.type('apple')
+  await expect(count(page)).toHaveText('1/1')
+  const head = /^---\n[\s\S]*?\n---\n/.exec(await readFile(file, 'utf8'))![0]
+  await writeFile(file, `${head}\napple pie\n\nand an apple\n`)
+  await expect(page.locator(editor)).toContainText('and an apple')
+  await expect(count(page)).toHaveText('1/2')
+  await expect(page.locator(`${editor} .nb-find-match`)).toHaveCount(2)
+  await bar(page).getByRole('button', { name: 'Show replace' }).click()
+  await bar(page).getByTestId('replace-input').fill('pear')
+  await bar(page).getByRole('button', { name: 'Replace all' }).click()
+  await expect(page.locator(editor)).toContainText('pear pie')
+  await waitForFile(file, 'and an pear')
 })
