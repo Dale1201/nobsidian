@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import type { MenuCommand } from '@shared/ipc'
 import { useAi } from './ai/aiStore'
 import { DrawingHost } from './drawing/DrawingHost'
+import { FIND_EVENT } from './components/FindBar'
 import { HistoryModal } from './components/HistoryModal'
 import { ImportDrop } from './components/ImportDrop'
 import { ImportPanel } from './components/ImportPanel'
@@ -91,6 +92,8 @@ export function App(): React.JSX.Element | null {
       if (cmd === 'toggle-sidebar')
         void app.updateSettings({ sidebarCollapsed: !app.settings?.sidebarCollapsed })
       if (cmd === 'toggle-theme') void app.updateSettings({ theme: toggledPreference(theme) })
+      if (cmd.startsWith('find') && !app.overlay)
+        window.dispatchEvent(new CustomEvent(FIND_EVENT, { detail: cmd }))
     }
     const offMenu = api.on('menu:command', run)
     // A mouse's side buttons arrive as buttons 3 and 4.

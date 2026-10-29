@@ -14,7 +14,7 @@ import type { PageDoc } from '@shared/types'
 import { codeBlockOptions } from '@blocknote/code-block'
 import { Editor, type EditorContent } from '../editor/Editor'
 import { createLanguageResolver, withEditorLanguages } from '../editor/codeLanguages'
-import type { AppBlock, AppPartialBlock } from '../editor/schema'
+import type { AppBlock, AppEditor, AppPartialBlock } from '../editor/schema'
 import { resolveAssetUrl } from '../lib/assets'
 import { usePageLink } from '../lib/pageLink'
 import { prepareNotionPaste } from '../editor/notionPaste'
@@ -43,6 +43,8 @@ export interface PageEditorHandle {
   markConflicted(): void
   /** Puts the caret on an empty line at the end of the page. */
   focusEnd(): void
+  /** The page's editor, once it is ready. */
+  editor(): AppEditor | null
 }
 
 export function PageEditor({
@@ -138,6 +140,7 @@ export function PageEditor({
         conflicted.current = true
       },
       focusEnd: () => content.current?.focusEnd(),
+      editor: () => content.current?.editor ?? null,
       keepMine: async () => {
         pending.current = latest.current ?? pending.current
         await save('force')

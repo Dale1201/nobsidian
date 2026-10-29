@@ -2,25 +2,7 @@ import { chmod, readFile, readdir, unlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { ElectronApplication, Locator, Page } from '@playwright/test'
 import { expect, test } from './fixtures'
-import { caretToLineEnd, editor, newTab, placeCaret, rowAction, waitForFile } from './helpers'
-
-/** Clicks an application menu item by label, hidden ones included, as its accelerator would. */
-async function menu(app: ElectronApplication, label: string): Promise<void> {
-  const found = await app.evaluate(({ Menu }, label) => {
-    const walk = (items: Electron.MenuItem[]): Electron.MenuItem | undefined => {
-      for (const item of items) {
-        if (item.label === label) return item
-        const inner = item.submenu && walk(item.submenu.items)
-        if (inner) return inner
-      }
-      return undefined
-    }
-    const item = walk(Menu.getApplicationMenu()?.items ?? [])
-    item?.click()
-    return Boolean(item)
-  }, label)
-  expect(found, `menu item ${label}`).toBe(true)
-}
+import { caretToLineEnd, editor, menu, newTab, placeCaret, rowAction, waitForFile } from './helpers'
 
 const pane = (page: Page): Locator => page.locator('.tab-pane.active')
 const tabTitles = (page: Page): Promise<(string | null)[]> =>

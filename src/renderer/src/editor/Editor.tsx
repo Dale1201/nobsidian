@@ -50,12 +50,14 @@ import { BlockSelectionKeys } from './BlockSelectionKeys'
 import { listMarkers } from './listMarkersPlugin'
 import { markdownShortcuts, tildeStrike } from './markdownShortcuts'
 import { notionKeys } from './notionKeys'
+import { find } from './find/findPlugin'
 import type { WebImage } from './notionPaste'
 import {
   PageLinkContext,
   schema,
   type AppSchema,
   type AppBlock,
+  type AppEditor,
   type AppPartialBlock,
   type PageLinkContextValue
 } from './schema'
@@ -105,6 +107,7 @@ export type EditorProps = {
 const DEFAULT_COLOR: PickedColor = { kind: 'background', color: 'yellow' }
 
 export interface EditorContent {
+  editor: AppEditor
   replace(blocks: AppPartialBlock[]): void
   /** Puts the caret on an empty last line, adding one unless the page already ends in one. */
   focusEnd(): void
@@ -234,7 +237,8 @@ export function Editor(props: EditorProps): React.JSX.Element {
       markdownShortcuts,
       tildeStrike,
       notionKeys,
-      aiPending
+      aiPending,
+      find
     ],
     uploadFile: (file) => props.uploadFile(file),
     resolveFileUrl: (url) => props.resolveFileUrl(url),
@@ -305,6 +309,7 @@ export function Editor(props: EditorProps): React.JSX.Element {
   useImperativeHandle(
     props.contentRef,
     () => ({
+      editor,
       replace: (blocks) => {
         closeWriter(editor)
         replacing.current = true

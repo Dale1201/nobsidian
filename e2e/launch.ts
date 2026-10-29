@@ -6,6 +6,8 @@ type LaunchOptions = NonNullable<Parameters<typeof electron.launch>[0]>
 export function launchElectron(options: LaunchOptions): Promise<ElectronApplication> {
   return electron.launch({
     ...options,
+    // Pixel checks read colors in the display's profile; sRGB keeps them the same on every Mac.
+    args: ['--force-color-profile=srgb', ...(options.args ?? [])],
     env: { ...process.env, ...options.env, NOBSIDIAN_E2E: '1' }
   })
 }

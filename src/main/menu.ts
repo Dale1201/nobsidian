@@ -58,7 +58,43 @@ export function buildMenu(getWindow: () => BrowserWindow | null): Menu {
         { role: 'close', label: 'Close Window', accelerator: 'CmdOrCtrl+Shift+W' }
       ]
     },
-    { role: 'editMenu' },
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'pasteAndMatchStyle' },
+        { role: 'delete' },
+        { role: 'selectAll' },
+        { type: 'separator' },
+        {
+          label: 'Find',
+          submenu: [
+            { label: 'Find…', accelerator: 'CmdOrCtrl+F', click: command('find') },
+            {
+              label: 'Find and Replace…',
+              accelerator: 'Alt+CmdOrCtrl+F',
+              click: command('find-replace')
+            },
+            { label: 'Find Next', accelerator: 'CmdOrCtrl+G', click: command('find-next') },
+            {
+              label: 'Find Previous',
+              accelerator: 'Shift+CmdOrCtrl+G',
+              click: command('find-previous')
+            }
+          ]
+        },
+        { type: 'separator' },
+        {
+          label: 'Speech',
+          submenu: [{ role: 'startSpeaking' }, { role: 'stopSpeaking' }]
+        }
+      ]
+    },
     {
       label: 'View',
       submenu: [

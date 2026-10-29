@@ -55,6 +55,8 @@
   --bg-purple: #f4f0f7;
   --bg-pink: #f9eef3;
   --bg-red: #fdebec;
+  --find-match: rgba(255, 212, 0, 0.35);
+  --find-current: rgba(255, 145, 0, 0.55);
 
   --tab-hover: hsl(from var(--bg-sidebar) h s calc(l - 5));
   --tab-bar-height: 36px;
@@ -115,4 +117,6 @@
   --bg-purple: #3c2d49;
   --bg-pink: #4e2c3c;
   --bg-red: #522e2a;
+  --find-match: rgba(255, 200, 0, 0.25);
+  --find-current: rgba(255, 145, 0, 0.5);
 }

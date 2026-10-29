@@ -89,8 +89,16 @@ test('scrollbars are thin rounded thumbs with no track, like Notion’s', async 
       { x, y, width: 1, height: 1 }
     )
   }
-  const expectColor = (actual: number[], expected: number[]): void =>
-    actual.forEach((c, i) => expect(Math.abs(c - expected[i])).toBeLessThanOrEqual(2))
+  // A theme switch repaints scrollbars a little after the attribute changes.
+  const expectColor = (
+    scroller: keyof typeof scrollers,
+    fromRight: number,
+    expected: number[]
+  ): Promise<void> =>
+    expect(async () => {
+      const actual = await pixel(scroller, fromRight)
+      actual.forEach((c, i) => expect(Math.abs(c - expected[i])).toBeLessThanOrEqual(2))
+    }).toPass({ timeout: 5000 })
 
   for (const scroller of Object.values(scrollers)) {
     expect(await scroller.evaluate((el: HTMLElement) => el.offsetWidth - el.clientWidth)).toBe(12)
@@ -100,15 +108,15 @@ test('scrollbars are thin rounded thumbs with no track, like Notion’s', async 
     nativeTheme.themeSource = 'light'
   })
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
-  expectColor(await pixel('sidebar', 6), [205, 205, 203])
-  expectColor(await pixel('sidebar', 1), [248, 248, 247])
-  expectColor(await pixel('page', 6), [211, 211, 209])
-  expectColor(await pixel('page', 1), [255, 255, 255])
+  await expectColor('sidebar', 6, [205, 205, 203])
+  await expectColor('sidebar', 1, [248, 248, 247])
+  await expectColor('page', 6, [211, 211, 209])
+  await expectColor('page', 1, [255, 255, 255])
 
   await clickMenuItem(nb.app, 'Toggle Dark Mode')
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
-  expectColor(await pixel('sidebar', 6), [81, 81, 81])
-  expectColor(await pixel('sidebar', 1), [32, 32, 32])
-  expectColor(await pixel('page', 6), [76, 76, 76])
-  expectColor(await pixel('page', 1), [25, 25, 25])
+  await expectColor('sidebar', 6, [81, 81, 81])
+  await expectColor('sidebar', 1, [32, 32, 32])
+  await expectColor('page', 6, [76, 76, 76])
+  await expectColor('page', 1, [25, 25, 25])
 })
