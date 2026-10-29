@@ -136,7 +136,8 @@ test('the sidebar scrolls while a page is dragged near its bottom edge', async (
   }
   const page = await nb.relaunch()
   const scroller = page.locator('.sidebar-scroll')
-  await expect(page.getByTestId('sidebar-row-Page 00')).toBeVisible()
+  // The last pages written may join a second later, once they settle.
+  await expect(page.getByTestId('sidebar-row-Page 39')).toBeAttached()
   await page.getByTestId('sidebar-row-Page 00').hover()
   await page.mouse.down()
   const box = (await scroller.boundingBox())!
