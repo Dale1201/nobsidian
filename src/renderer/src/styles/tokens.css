@@ -28,6 +28,8 @@
   --bg-elevated: #ffffff;
   --border-translucent: rgba(28, 19, 1, 0.11);
   --toggle-off: rgba(135, 131, 120, 0.3);
+  --scrollbar-thumb: rgba(55, 53, 47, 0.22);
+  --scrollbar-thumb-hover: rgba(55, 53, 47, 0.35);
   --ai-added: rgba(35, 131, 226, 0.1);
   --ai-removed: rgba(224, 62, 62, 0.08);
   --popup-shadow: var(--menu-shadow);
@@ -81,6 +83,8 @@
   --bg-elevated: #202020;
   --border-translucent: rgba(255, 255, 255, 0.094);
   --toggle-off: rgba(120, 129, 135, 0.3);
+  --scrollbar-thumb: rgba(255, 255, 255, 0.22);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.32);
   --ai-added: rgba(35, 131, 226, 0.18);
   --ai-removed: rgba(224, 62, 62, 0.14);
   /* Notion rings raised surfaces in dark mode, where a shadow barely shows. */

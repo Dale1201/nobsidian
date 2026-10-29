@@ -221,13 +221,15 @@ test('clicking below the last block adds a line to type on, like Notion', async 
   await expect(body.locator('.bn-block-outer')).toHaveCount(4)
 })
 
-test('dragging an overlay scrollbar below the last block only scrolls', async ({ tmp }) => {
+test('dragging the scrollbar below the last block only scrolls, even with floating scrollbars on', async ({
+  tmp
+}) => {
   const userData = await tmp('user')
   const workspace = await tmp('workspace')
   await writeFile(join(userData, 'settings.json'), JSON.stringify({ lastWorkspace: workspace }))
   const lines = Array.from({ length: 60 }, (_, i) => `Line ${i}`)
   await writeFile(join(workspace, 'Long.md'), lines.join('\n\n') + '\n')
-  // macOS's trackpad default: scrollbars float over the content instead of taking a gutter.
+  // macOS's trackpad default, where native scrollbars would float over the content.
   const app = await launchElectron({
     args: ['out/main/index.js', '-AppleShowScrollBars', 'WhenScrolling'],
     env: { NOBSIDIAN_USER_DATA: userData, NODE_ENV: 'test' }
@@ -236,7 +238,7 @@ test('dragging an overlay scrollbar below the last block only scrolls', async ({
   await page.getByTestId('sidebar-row-Long').click()
   const scroll = page.getByTestId('page-scroll')
   await expect(scroll.locator(editor)).toBeVisible()
-  expect(await scroll.evaluate((el: HTMLElement) => el.offsetWidth - el.clientWidth)).toBe(0)
+  expect(await scroll.evaluate((el: HTMLElement) => el.offsetWidth - el.clientWidth)).toBe(12)
   await scroll.evaluate((el) => (el.scrollTop = el.scrollHeight))
   const box = (await scroll.boundingBox())!
   await page.mouse.move(box.x + box.width - 4, box.y + box.height - 30)
