@@ -339,7 +339,8 @@ test('an answer the page cannot take ends with an error and keeps the change und
   await expect(writer.getByRole('alert')).toHaveText('The answer could not be placed here.')
   await expect(page.locator('.nb-ai-added-block')).toHaveText(['Goodbye.', 'For now.'])
 
-  // What fitted while it streamed, the held first piece, goes once the whole answer does not.
+  // What fitted while it streamed goes once the whole answer does not.
+  // Its 101 characters in 10 chunks make the held first piece exactly "Left, then.".
   anthropic.reply({ text: `Left, then.\n\n${columnsOf('A', 'B')}`, chunks: 10, hold: true })
   await box.fill('then columns')
   await box.press('Enter')
