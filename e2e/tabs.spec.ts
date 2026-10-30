@@ -17,7 +17,12 @@ async function pages(
   for (const [name, body] of Object.entries(files)) {
     await writeFile(join(nb.workspace, `${name}.md`), body)
   }
-  return nb.relaunch()
+  const page = await nb.relaunch()
+  // A file written under a second before the scan waits to settle, so pages can show up one by one.
+  for (const name of Object.keys(files)) {
+    await expect(page.getByTestId(`sidebar-row-${name}`)).toBeAttached()
+  }
+  return page
 }
 
 async function open(page: Page, title: string): Promise<void> {

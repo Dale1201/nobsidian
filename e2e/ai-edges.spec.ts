@@ -340,12 +340,13 @@ test('an answer the page cannot take ends with an error and keeps the change und
   await expect(page.locator('.nb-ai-added-block')).toHaveText(['Goodbye.', 'For now.'])
 
   // What fitted while it streamed goes once the whole answer does not.
-  const added = await watchAdded(page)
-  anthropic.reply({ text: `Left, then.\n\n${columnsOf('A', 'B')}`, chunks: 10, delayMs: 100 })
+  // Its 101 characters in 10 chunks make the held first piece exactly "Left, then.".
+  anthropic.reply({ text: `Left, then.\n\n${columnsOf('A', 'B')}`, chunks: 10, hold: true })
   await box.fill('then columns')
   await box.press('Enter')
+  await expect(page.locator('.nb-ai-added')).toHaveText('Left, then.')
+  anthropic.release()
   await expect(writer.getByRole('alert')).toHaveText('The answer could not be placed here.')
-  expect(await added()).toContain('Left, then.')
   await expect(page.locator('.nb-ai-added')).toHaveCount(0)
   await expect(page.locator('.nb-ai-added-block')).toHaveText(['Goodbye.', 'For now.'])
   await writer.getByRole('button', { name: 'Accept' }).click()
@@ -354,20 +355,6 @@ test('an answer the page cannot take ends with an error and keeps the change und
   await expect.poll(() => blockText(page, 2)).toBe('Right.')
   await waitForFile(join(nb.workspace, 'Notes.md'), 'For now.')
 })
-
-/** Every text the added marks showed from now on, so a state shown only while streaming is not missed. */
-async function watchAdded(page: Page): Promise<() => Promise<string[]>> {
-  await page.evaluate((selector) => {
-    const w = window as unknown as { addedSeen: string[] }
-    w.addedSeen = []
-    const root = document.querySelector(selector)!
-    new MutationObserver(() => {
-      const text = [...root.querySelectorAll('.nb-ai-added')].map((e) => e.textContent).join('')
-      if (text && !w.addedSeen.includes(text)) w.addedSeen.push(text)
-    }).observe(root, { subtree: true, childList: true, characterData: true })
-  }, editor)
-  return () => page.evaluate(() => (window as unknown as { addedSeen: string[] }).addedSeen)
-}
 
 /** Whether Markdown the page cannot show as blocks, a raw block, has appeared in the editor. */
 async function watchForRaw(page: Page): Promise<() => Promise<boolean>> {
